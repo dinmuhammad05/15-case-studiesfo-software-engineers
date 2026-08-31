@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   SKIN TOKEN SHARTNOMASI
+   Har bir dars shu 12 ta o'zgaruvchini qayta belgilaydi (theme.css),
+   qolgan hamma komponent faqat shu tokenlarga tayanadi.
+   ------------------------------------------------------------------ */
+:root {
+  --skin-bg: #0b0d10;
+  --skin-surface: #14171c;
+  --skin-surface-2: #1c2027;
+  --skin-border: #272c35;
+  --skin-text: #e8ecf1;
+  --skin-muted: #9aa4b2;
+  --skin-accent: #f5a524;
+  --skin-accent-text: #0b0d10;
+  --skin-ring: color-mix(in srgb, var(--skin-accent) 35%, transparent);
+  --skin-radius: 12px;
+  --skin-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --skin-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+
+@theme inline {
+  --color-bg: var(--skin-bg);
+  --color-surface: var(--skin-surface);
+  --color-surface-2: var(--skin-surface-2);
+  --color-line: var(--skin-border);
+  --color-ink: var(--skin-text);
+  --color-muted: var(--skin-muted);
+  --color-accent: var(--skin-accent);
+  --color-accent-ink: var(--skin-accent-text);
+  --radius-skin: var(--skin-radius);
+  --font-skin: var(--skin-font);
+  --font-skin-mono: var(--skin-mono);
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--skin-bg);
+  color: var(--skin-text);
+  font-family: var(--skin-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--skin-accent);
+  color: var(--skin-accent-text);
+}
+
+/* Dars matni uchun tipografiya — prose plaginisiz, tokenlarga bog'langan */
+.lesson-prose {
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--skin-text);
+}
+.lesson-prose > * + * { margin-top: 1.15em; }
+.lesson-prose h2 {
+  margin-top: 2.6em;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  scroll-margin-top: 90px;
+}
+.lesson-prose h3 {
+  margin-top: 2em;
+  font-size: 1.2rem;
+  font-weight: 650;
+  scroll-margin-top: 90px;
+}
+.lesson-prose p { color: color-mix(in srgb, var(--skin-text) 88%, var(--skin-muted)); }
+.lesson-prose strong { color: var(--skin-text); font-weight: 650; }
+.lesson-prose a {
+  color: var(--skin-accent);
+  text-underline-offset: 3px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--skin-accent) 45%, transparent);
+}
+.lesson-prose ul, .lesson-prose ol { padding-left: 1.35em; }
+.lesson-prose ul { list-style: disc; }
+.lesson-prose ol { list-style: decimal; }
+.lesson-prose li { margin-top: 0.45em; }
+.lesson-prose li::marker { color: var(--skin-accent); }
+.lesson-prose code {
+  font-family: var(--skin-mono);
+  font-size: 0.86em;
+  background: var(--skin-surface-2);
+  border: 1px solid var(--skin-border);
+  border-radius: 6px;
+  padding: 0.1em 0.38em;
+}
+.lesson-prose pre {
+  font-family: var(--skin-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  background: var(--skin-surface-2);
+  border: 1px solid var(--skin-border);
+  border-radius: var(--skin-radius);
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+}
+.lesson-prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+.lesson-prose blockquote {
+  border-left: 3px solid var(--skin-accent);
+  padding-left: 1rem;
+  color: var(--skin-muted);
+  font-style: italic;
+}
+.lesson-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+.lesson-prose th, .lesson-prose td {
+  border: 1px solid var(--skin-border);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.lesson-prose th {
+  background: var(--skin-surface-2);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.lesson-prose hr { border: 0; border-top: 1px solid var(--skin-border); margin: 2.5em 0; }

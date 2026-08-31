@@ -1,0 +1,360 @@
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+ChatGPT tashqaridan oddiy ko‘rinadi: matn yozasiz, javob token-token oqib keladi. Ichkarida esa
+bu **dunyodagi eng qimmat “so‘rov–javob” tizimlaridan biri**. Bitta oddiy veb-so‘rov 1–2 ms CPU
+vaqti yesa, bitta chat javobi o‘nlab GPU-soniya talab qilishi mumkin.
+
+<StatGrid>
+  <Stat value="~800M" label="Haftalik foydalanuvchi" hint="OpenAI ochiq bayonotlari, 2025" />
+  <Stat value="≤ 1 s" label="TTFT maqsadi" hint="birinchi tokengacha vaqt" />
+  <Stat value="30–50 ms" label="Token orasidagi vaqt" hint="odam o‘qish tezligidan tez" />
+  <Stat value="20 000×" label="Narx farqi" hint="oddiy CRUD so‘rovga nisbatan, taxminiy" />
+</StatGrid>
+
+Talablarni muhandis tilida yozamiz:
+
+| Talab | Aniq ko‘rsatkich | Nega shunday |
+| --- | --- | --- |
+| Birinchi token tez chiqsin (TTFT) | 1 soniyadan kam | Kutish paytida foydalanuvchi ketib qoladi |
+| Tokenlar tekis oqsin (TPOT) | 30–50 ms | Sekin bo‘lsa “o‘ylayapti” degan taassurot |
+| Kontekst uzun bo‘lsin | 100K+ token | Uzun hujjat va suhbat tarixi |
+| Narx boshqariladigan bo‘lsin | GPU foydalanish darajasi 60% dan yuqori | GPU soatiga qimmat turadi |
+| Ishonchlilik | 99.9% | Model tushsa butun mahsulot tushadi |
+
+<Callout type="maslahat" title="Asosiy tushuncha">
+LLM xizmatining butun arxitekturasi bitta savolga javobdan o‘sib chiqqan:
+**GPU xotira tarmog‘i (memory bandwidth) qanday qilib behuda sarflanmasin?** Quyidagi har bir
+qadam — shu savolga navbatdagi javob.
+</Callout>
+
+## 2. v0: eng sodda ishlaydigan yechim
+
+Prototipni har qanday dasturchi bir kunda yozadi:
+
+```python
+# v0 — bitta GPU, bitta so'rov, bitta javob
+model = load_model("llm-70b").to("cuda")
+
+@app.post("/chat")
+def chat(req):
+    tokens = tokenizer.encode(req.prompt)
+    out = []
+    for _ in range(req.max_tokens):
+        logits = model(tokens + out)      # HAR SAFAR butun ketma-ketlik qayta hisoblanadi
+        next_id = sample(logits[-1])
+        if next_id == EOS:
+            break
+        out.append(next_id)
+    return tokenizer.decode(out)          # javob TO'LIQ tayyor bo'lgach jo'natiladi
+```
+
+<Flow nodes={["Brauzer", "HTTP server", "GPU", "model.generate()", "To'liq javob"]} caption="v0: bitta so'rov butun GPU'ni band qiladi va tugagunicha qo'yib yubormaydi." />
+
+Bu kod **to‘g‘ri ishlaydi**. Demo uchun yetarli. Endi uni buzamiz.
+
+## 3. Nima sindi: v0 dagi to‘rtta o‘lim
+
+### 3.1 Har token uchun butun tarix qayta hisoblanadi
+
+`model(tokens + out)` — 500-tokenli javob uchun model 500 marta ishlaydi va har safar
+oldingi barcha tokenlar bo‘yicha attention qayta hisoblanadi. Umumiy ish hajmi ketma-ketlik
+uzunligiga kvadratik bog‘liq: `O(n²)`.
+
+### 3.2 Bitta so‘rov butun GPU‘ni egallaydi
+
+Generatsiya bosqichi (decode) **hisob emas, xotira tarmog‘iga bog‘liq**. Har bir token uchun
+modelning butun vazni HBM xotiradan o‘qib chiqiladi:
+
+```
+70B model, fp16   →  140 GB vazn
+H100 HBM tezligi  →  ~3.35 TB/s
+Bitta token       =  140 / 3350 ≈ 0.042 s  →  taxminan 24 token/soniya
+```
+
+Diqqat: bu hisob **batch hajmiga deyarli bog‘liq emas**. Ya’ni bitta so‘rovga ham, 64 ta
+parallel so‘rovga ham vazn bir marta o‘qiladi. Bitta so‘rovga xizmat qilish — GPU‘ning 98%
+imkoniyatini yoqib yuborish demak.
+
+### 3.3 Foydalanuvchi butun javobni kutadi
+
+500 token × 42 ms = 21 soniya bo‘sh ekran. Model birinchi tokenni 1 soniyada tayyorlagan bo‘lsa
+ham, foydalanuvchi buni ko‘rmaydi.
+
+### 3.4 Model bitta GPU‘ga sig‘maydi
+
+140 GB vazn + KV cache 80 GB li H100‘ga sig‘maydi. Modelni bir nechta GPU orasida bo‘lish kerak.
+
+<Callout type="ogoh" title="Diqqat: ikki xil bosqich, ikki xil xarakter">
+**Prefill** (savolni o‘qish) — hisobga bog‘liq (compute-bound), parallel, tez.
+**Decode** (javob yozish) — xotira tarmog‘iga bog‘liq (memory-bound), ketma-ket, sekin.
+Bitta tizimda ikkita butunlay boshqa yuk turi bor. Keyingi barcha optimizatsiyalar shu
+farqdan kelib chiqadi.
+</Callout>
+
+## 4. Evolyutsiya: har bir qadam nimani hal qildi
+
+<Step n="1" title="KV cache — kvadratikni chiziqli qilish" gain="Har token uchun ish hajmi O(n²) dan O(n) ga tushdi" cost="Har bir so'rov gigabaytlab GPU xotirasini band qiladi">
+
+Attention hisobida oldingi tokenlarning Key va Value vektorlari **o‘zgarmaydi**. Demak ularni
+bir marta hisoblab, keshda saqlash mumkin. Yangi token faqat o‘zining Q, K, V sini hisoblaydi.
+
+Lekin kesh bepul emas. Bitta token uchun kesh hajmi:
+
+```
+2 (K va V) × qatlamlar × KV boshlar × bosh o'lchami × bayt
+= 2 × 80 × 8 × 128 × 2 bayt
+= 320 KB / token
+```
+
+8000 tokenli suhbat = **2.5 GB faqat bitta foydalanuvchi uchun**. 80 GB li GPU‘da vazndan keyin
+qolgan joyga bor-yo‘g‘i bir necha o‘nta so‘rov sig‘adi. Xotira endi asosiy resurs.
+</Step>
+
+<Step n="2" title="Streaming — kutishni yashirish" gain="TTFT 21 soniyadan 1 soniyaga tushdi" cost="Uzoq ochiq ulanishlar, qayta urinish murakkablashadi">
+
+Javobni to‘liq kutish o‘rniga har bir token tayyor bo‘lishi bilan jo‘natiladi — Server-Sent
+Events yoki WebSocket orqali. Tizimning umumiy tezligi o‘zgarmadi, lekin **sezilgan tezlik**
+20 barobar yaxshilandi.
+
+Buning narxi bor: endi har bir faol suhbat serverda ochiq ulanish ushlab turadi, load balancer
+uzun ulanishlarni qo‘llab-quvvatlashi, uzilishda esa qaysi tokengacha yuborilgani hisobga
+olinishi kerak.
+</Step>
+
+<Step n="3" title="Continuous batching — GPU'ni to'ldirish" gain="Throughput 10–20 barobar oshdi" cost="Har bir token qadamida rejalashtirish, kod ancha murakkab">
+
+Klassik batching: 32 ta so‘rovni to‘playmiz, birga ishga tushiramiz, **hammasi tugagunicha**
+kutamiz. Bitta so‘rov 800 token yozsa, 20 token yozgan qolgan 31 tasi bo‘sh turadi.
+
+Continuous batching (yoki in-flight batching) boshqacha ishlaydi: batch **har bir token
+qadamida** yangilanadi. Kimdir tugadi — o‘rniga navbatdan yangi so‘rov qo‘shiladi.
+
+```
+Klassik:      [====A====][==B==][=======C=======]   GPU bo'sh vaqti ko'p
+Continuous:   [A A A A A A A A]
+              [  B B B B      ]                     har qadamda batch to'liq
+              [    C C C C C C]
+```
+</Step>
+
+<Step n="4" title="PagedAttention — xotira fragmentatsiyasiga qarshi" gain="Xotiradan foydalanish 96% gacha ko'tarildi" cost="Attention yadrolarini qayta yozish kerak">
+
+Muammo: har bir so‘rov uchun “eng yomon holat” (masalan 8K token) bo‘yicha uzluksiz xotira
+ajratilsa, ko‘p qismi bo‘sh qoladi. Bu — operatsion tizimlardagi tanish muammo.
+
+Yechim ham tanish: **virtual xotira va sahifalar**. KV cache 16 tokenlik bloklarga bo‘linadi,
+bloklar xotirada tarqoq joylashadi, blok jadvali ularni mantiqiy ketma-ketlikka bog‘laydi.
+Yon foyda: bir xil prefiksga ega so‘rovlar bir xil bloklarni **birgalikda ishlatadi**
+(copy-on-write).
+</Step>
+
+<Step n="5" title="Prefix caching — bir xil boshlanishni qayta hisoblamaslik" gain="Uzun suhbatlarda prefill narxi keskin kamayadi" cost="Kesh invalidatsiyasi va izolyatsiya masalalari">
+
+Suhbatdagi har bir yangi xabar aslida **butun oldingi tarix + yangi savol** bo‘lib yuboriladi.
+Ya’ni 10-savolda birinchi 9 ta savol-javob qayta prefill qilinadi.
+
+Prefix caching bunga barham beradi: umumiy prefiks uchun KV bloklari saqlanib qoladi va qayta
+ishlatiladi. Tizim promptlari (har bir so‘rovda bir xil bo‘lgan yuzlab token) uchun ayniqsa
+foydali.
+</Step>
+
+<Step n="6" title="Model parallelizmi — bitta GPU chegarasidan chiqish" gain="Katta modellar umuman ishlay boshladi" cost="GPU'lararo aloqa qo'shimcha kechikish beradi">
+
+Uch xil bo‘lish usuli birga ishlatiladi:
+
+- **Tensor parallelism** — har bir qatlamning matritsalari GPU‘lar orasida bo‘linadi. Har
+  qadamda `all-reduce` kerak, shuning uchun faqat tez ulanish (NVLink) ichida.
+- **Pipeline parallelism** — qatlamlar guruhlarga bo‘linib, turli tugunlarga tarqatiladi.
+- **Expert parallelism** — MoE modellarida har bir tokenni faqat bir nechta “ekspert”
+  qismi ko‘radi, ular alohida GPU‘larda turadi.
+</Step>
+
+<Step n="7" title="Spekulyativ dekodlash — arzon model taxmin qiladi, qimmat model tekshiradi" gain="Kechikish 2–3 barobar kamayishi mumkin" cost="Taxmin noto'g'ri chiqsa, hisob behuda ketadi">
+
+Kichik (draft) model 4–8 tokenni tez taxmin qiladi. Katta model ularni **bitta o‘tishda**
+tekshiradi — chunki tekshirish parallel, generatsiya esa ketma-ket. To‘g‘ri taxminlar qabul
+qilinadi, birinchi xatodan keyingisi tashlanadi.
+
+Muhimi: natija sifati o‘zgarmaydi — matematik jihatdan bir xil taqsimot saqlanadi.
+</Step>
+
+<Step n="8" title="Kvantlash — vaznlarni siqish" gain="Xotira va tarmoq yuki 2 barobar kamayadi" cost="Sifatda kichik, lekin o'lchanishi shart bo'lgan yo'qotish">
+
+fp16 dan fp8 yoki int8 ga o‘tish vaznlarni ikki barobar kichraytiradi. Decode bosqichi xotira
+tarmog‘iga bog‘liq bo‘lgani uchun bu **to‘g‘ridan-to‘g‘ri ikki barobar tezlik** degani.
+Amalda kritik qatlamlar yuqori aniqlikda qoldiriladi va sifat benchmark bilan nazorat qilinadi.
+</Step>
+
+<Step n="9" title="Prefill/decode ajratish (disaggregation)" gain="Ikki xil yukni alohida sozlash va alohida masshtablash imkoni" cost="KV cache'ni tugunlar orasida ko'chirish kerak">
+
+Prefill hisobga och, decode xotira tarmog‘iga och. Ularni bitta GPU‘da aralashtirsak, uzun
+prefill qisqa decode qadamlarini “bo‘g‘adi” va tokenlar oqimi sakraydi.
+
+Yechim: **alohida hovuzlar**. Prefill hovuzi promptni o‘qiydi va KV cache ni tayyorlaydi,
+so‘ng kesh decode hovuziga uzatiladi. Har bir hovuz o‘z yukiga qarab mustaqil masshtablanadi.
+</Step>
+
+<Step n="10" title="Model atrofidagi mahsulot qatlami" gain="Chat modelidan mahsulotga aylandi" cost="Har bir qo'shimcha komponent kechikish va nosozlik nuqtasi qo'shadi">
+
+Model o‘zi hech narsani eslamaydi va hech narsa qila olmaydi. Mahsulot ustidagi qatlam beradi:
+
+- **Suhbat holati** — xabarlar bazasi, kontekst oynasiga sig‘dirish, eski qismini qisqartirish
+- **Moderatsiya** — kirish va chiqishni tekshirish (parallel, oqim davomida)
+- **Tool calling** — model JSON chiqaradi, orkestrator kod/qidiruv/API ni chaqiradi va natijani
+  kontekstga qaytadan qo‘shadi
+- **RAG va veb-qidiruv** — tashqi bilimni kontekstga kiritish
+- **Xotira** — foydalanuvchi haqidagi doimiy faktlar
+- **Kvota va tarif** — qaysi foydalanuvchi qaysi modelga, qanday tezlikda kira oladi
+</Step>
+
+## 5. Bugungi arxitektura
+
+<Arch
+  title="ChatGPT darajasidagi tizimning qatlamlari"
+  layers={[
+    { name: "Mijoz", boxes: ["Veb / mobil", "SSE yoki WebSocket oqimi"] },
+    { name: "Chekka (edge)", boxes: ["CDN va statik", "TLS terminatsiya", "Uzun ulanish gateway"] },
+    { name: "API qatlami", boxes: ["Autentifikatsiya", "Rate limit / kvota", "Marshrutlash"], note: "Bu yerda so'rov qaysi model va qaysi mintaqaga borishi hal qilinadi." },
+    { name: "Orkestrator", boxes: ["Suhbat holati", "Moderatsiya", "Tool calling", "RAG / qidiruv"], note: "Modelga bormasdan oldin va keyin bajariladigan barcha mantiq." },
+    { name: "Inference router", boxes: ["Navbat va prioritet", "Prefix cache indeksi", "Yukni taqsimlash"] },
+    { name: "Model serverlar", boxes: ["Prefill hovuzi", "Decode hovuzi", "KV cache menejeri"], note: "Continuous batching aynan shu qatlamda ishlaydi." },
+    { name: "Apparat", boxes: ["GPU klasterlari", "NVLink / InfiniBand", "Ko'p mintaqali sig'im"] },
+  ]}
+/>
+
+Yon tizimlar: suhbatlar uchun OLTP baza va blob xotira, hujjatlar uchun vektor bazasi,
+kuzatuv uchun metrikalar (TTFT, TPOT, batch to‘ldirilishi, kesh urish darajasi, GPU
+foydalanish), hamda A/B va model versiyalarini boshqarish tizimi.
+
+<Flow
+  nodes={["Savol", "Auth + kvota", "Kontekst yig'ish", "Navbat", "Prefill", "Decode (batch ichida)", "Moderatsiya", "Token oqimi"]}
+  caption="Bitta so'rovning to'liq yo'li. Moderatsiya oqimga parallel ishlaydi, uni to'xtatib qo'ymaydi."
+/>
+
+## 6. Trade-off‘lar: nima uchun nima qurbon qilinadi
+
+<TradeOffs
+  rows={[
+    { choice: "Katta batch", pro: "GPU to'liq ishlaydi, bitta token narxi arzonlashadi", con: "Har bir foydalanuvchi uchun tokenlar sekinroq keladi" },
+    { choice: "Prefix cache", pro: "Uzun suhbatlarda prefill narxi keskin tushadi", con: "Xotira band bo'ladi; foydalanuvchilar orasida izolyatsiya qoidasi kerak" },
+    { choice: "Kvantlash (fp8)", pro: "Ikki barobar tez va arzon", con: "Sifat biroz tushadi — har bir vazifada o'lchash shart" },
+    { choice: "Spekulyativ dekodlash", pro: "Kechikish sezilarli kamayadi", con: "Taxmin xato bo'lsa hisob behuda; yuk yuqori bo'lganda foyda yo'qoladi" },
+    { choice: "Prefill/decode ajratish", pro: "Tekis token oqimi, mustaqil masshtablash", con: "KV cache tarmoq orqali ko'chadi, infratuzilma murakkablashadi" },
+    { choice: "Uzun kontekst", pro: "Butun hujjat sig'adi", con: "KV cache chiziqli o'sadi — bitta so'rov o'nlab so'rov o'rnini egallaydi" },
+  ]}
+/>
+
+<Callout type="info" title="Qaysi metrikani optimallashtiryapsiz?">
+Kechikish (TTFT/TPOT) va o‘tkazuvchanlik (throughput) bir-biriga qarama-qarshi. Amalda tizim
+tarifga qarab ikkiga bo‘linadi: interaktiv chat kechikishga, batch API arzonlikka
+sozlanadi. Bitta konfiguratsiya bilan ikkalasini yopishga urinish — eng keng tarqalgan xato.
+</Callout>
+
+## 7. Intervyu savollari
+
+<QA q="Nega decode bosqichi hisobga emas, xotira tarmog'iga bog'liq?">
+Har bir token uchun modelning butun vazni HBM dan o‘qiladi, lekin ular ustida bajariladigan
+amal juda kam (batch=1 da har bir vazn ustida bir necha amal). Arifmetik intensivlik past —
+demak GPU hisob yadrolari kutib turadi, cheklovchi omil xotira tezligi. Prefill esa yuzlab
+tokenni birga qayta ishlaydi, matritsa ko‘paytmalari katta — u compute-bound.
+</QA>
+
+<QA q="KV cache hajmini qanday hisoblaysiz va nega bu muhim?">
+`2 × qatlamlar × KV_boshlar × bosh_o'lchami × bayt` — bu bitta token uchun. Uni kontekst
+uzunligiga va parallel so‘rovlar soniga ko‘paytiring. Muhim, chunki GPU xotirasida vazndan
+qolgan joy aynan shu keshga ketadi va u **bir vaqtda nechta foydalanuvchiga xizmat qila
+olishingizni** belgilaydi. GQA (grouped-query attention) aynan shu sonni kamaytirish uchun
+o‘ylab topilgan.
+</QA>
+
+<QA q="Continuous batching klassik batchingdan nimasi bilan farq qiladi?">
+Klassikda batch tarkibi boshida qotib qoladi va eng uzun so‘rov tugagunicha o‘zgarmaydi —
+tugagan so‘rovlar o‘rni bo‘sh turadi. Continuous batchingda rejalashtiruvchi **har bir token
+qadamidan keyin** batchni qayta yig‘adi: tugaganini chiqaradi, navbatdagini qo‘shadi.
+Natijada GPU doimiy to‘la ishlaydi.
+</QA>
+
+<QA q="PagedAttention qanday muammoni yechadi?">
+KV cache uchun uzluksiz xotira ajratish ichki va tashqi fragmentatsiyaga olib keladi:
+so‘rov qancha token yozishini oldindan bilmaymiz, shu sabab “eng yomon holat” bo‘yicha
+ajratamiz va ko‘p joy bo‘sh qoladi. PagedAttention keshni sobit o‘lchamli bloklarga bo‘lib,
+blok jadvali orqali manzillaydi — xuddi OT dagi sahifali xotira kabi. Qo‘shimcha yutuq:
+umumiy prefiksli so‘rovlar bloklarni birgalikda ishlatadi.
+</QA>
+
+<QA q="Foydalanuvchi 200K tokenli hujjat yuborsa nima bo'ladi?">
+Prefill juda katta bo‘ladi (FLOPs taxminan `2 × parametrlar × tokenlar`), TTFT sekundlarga
+cho‘ziladi va KV cache o‘nlab gigabaytni egallaydi. Amaliy choralar: prefill'ni bo‘laklab
+bajarish (chunked prefill) — shunda u boshqa foydalanuvchilarning decode qadamlarini
+bo‘g‘maydi; uzun kontekstli so‘rovlarni alohida hovuzga yo‘naltirish; kesh urishidan
+foydalanish; va ko‘p hollarda umuman kontekstga tiqish o‘rniga RAG ishlatish.
+</QA>
+
+<QA q="Spekulyativ dekodlash javob sifatini o'zgartiradimi?">
+Yo‘q — to‘g‘ri amalga oshirilganda tekshirish bosqichi qabul/rad qilish (rejection sampling)
+orqali asosiy modelning taqsimotini aynan saqlaydi. Draft model faqat **tezlikka** ta’sir
+qiladi: taxminlari qanchalik yaxshi bo‘lsa, shuncha ko‘p token bir o‘tishda qabul qilinadi.
+</QA>
+
+<QA q="Suhbat tarixi qayerda saqlanadi va kontekstga qanday sig'diriladi?">
+Model holatsiz (stateless) — u faqat kirishdagi tokenlarni ko‘radi. Tarix alohida bazada
+saqlanadi, har so‘rovda orkestrator kontekstni qayta yig‘adi: tizim prompti, xotira faktlari,
+oxirgi N xabar, kerak bo‘lsa eski qismning qisqartmasi (summary). Kontekst oynasi to‘lganda
+siljituvchi oyna yoki iyerarxik qisqartirish qo‘llanadi.
+</QA>
+
+<QA q="Model serverni qanday masshtablaysiz — CPU xizmatlaridan farqi nimada?">
+Odatdagi autoscaling bu yerda yomon ishlaydi: yangi GPU tugunini ko‘tarish va o‘nlab
+gigabaytlik vaznni yuklash daqiqalar oladi, GPU sig‘imi esa cheklangan va qimmat. Shu sabab
+sig‘im oldindan rejalashtiriladi, navbat va prioritet (tarif bo‘yicha), admission control
+hamda graceful degradation — masalan yuk cho‘qqisida kichikroq modelga yoki qisqaroq javobga
+o‘tish — ishlatiladi.
+</QA>
+
+<QA q="Moderatsiya oqimni qanday sekinlashtirmaydi?">
+Kirish tekshiruvi yengil klassifikator bilan prefill'ga parallel bajariladi. Chiqish esa
+tokenlar oqib turgan payt bo‘laklab tekshiriladi; qoida buzilishi aniqlansa oqim to‘xtatiladi
+va allaqachon yuborilgan qism mijoz tomonda olib tashlanadi. Ya’ni tekshiruv kritik yo‘lga
+ketma-ket ulanmaydi.
+</QA>
+
+<QA q="Bir xil savolga javoblarni oddiy keshlab qo'ya olasizmi?">
+To‘liq javob keshi kam foyda beradi: promptlar deyarli hech qachon aynan bir xil bo‘lmaydi,
+temperatura noldan katta bo‘lsa javob ham har safar boshqacha, kontekst esa
+foydalanuvchiga xos. Shuning uchun kesh **javob darajasida emas, KV bloklari darajasida**
+(prefix caching) qilinadi — u qisman mos kelishdan ham foyda oladi.
+</QA>
+
+## 8. Amaliyot
+
+<Task title="Mini inference gateway yozing">
+
+Modelsiz, lekin **haqiqiy rejalashtirish mantiqi bilan** simulyator quring:
+
+1. `POST /chat` — SSE orqali token-token javob qaytaradi (tokenlarni soxta generator bersin).
+2. **Continuous batching**: rejalashtiruvchi har 40 ms da bir “qadam” bajaradi, batchda eng
+   ko‘pi bilan 16 ta so‘rov turadi, tugagan so‘rov o‘rniga navbatdan yangisi qo‘shiladi.
+3. **KV cache byudjeti**: har bir faol so‘rov `320 KB × tokenlar` xotira egallaydi, umumiy
+   byudjet 40 GB. Byudjet to‘lsa yangi so‘rov navbatda kutadi (admission control).
+4. **Metrikalar**: TTFT va TPOT ning p50/p95 ini, batch to‘ldirilishini va rad etilgan
+   so‘rovlar sonini chiqaring.
+
+Tekshiruv mezoni: yukni 5 dan 200 parallel so‘rovgacha oshirganda p95 TTFT va throughput
+grafiklarini chizing. Batch limitini 1 ga tushiring va farqni o‘lchang — bu darsning
+asosiy g‘oyasini raqamda ko‘rasiz.
+
+</Task>
+
+<Callout type="maslahat" title="Keyingi qadam">
+Bu darsdagi g‘oyalarning yarmi — navbat, kesh, batching, orqa bosim — LLM‘ga xos emas.
+Ular Kafka darsida ham, S3 darsida ham qaytadan uchraydi. Shu sabab kursni ketma-ket
+o‘qish tavsiya etiladi.
+</Callout>
+
+---
+
+**Manba va tavsiya:** raqamlar taxminiy va ochiq manbalarga (OpenAI e’lonlari, vLLM va
+Orca maqolalari, NVIDIA texnik hujjatlari) asoslangan; aniq ishlab chiqarish
+konfiguratsiyalari oshkor qilinmagan. Chuqurroq o‘rganish uchun: *Efficient Memory Management
+for LLM Serving with PagedAttention* (vLLM), *Orca: A Distributed Serving System for
+Transformer-Based Generative Models*.
