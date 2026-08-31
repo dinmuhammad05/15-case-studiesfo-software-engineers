@@ -2,7 +2,8 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    # main hali yo'q bo'lsa, ishchi branchdan ham deploy bo'laversin
+    branches: [main, "claude/**"]
   workflow_dispatch:
 
 permissions:

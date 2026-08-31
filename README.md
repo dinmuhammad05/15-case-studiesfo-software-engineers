@@ -63,5 +63,9 @@ bir xil kontent 17 xil UI ichida ham tabiiy ko‘rinadi.
 
 ## Deploy
 
-`main` ga push bo‘lishi bilan GitHub Actions saytni GitHub Pages‘ga chiqaradi.
-Repo sozlamalarida **Settings → Pages → Source: GitHub Actions** tanlangan bo‘lishi kerak.
+Repo sozlamalarida **Settings → Pages → Source: GitHub Actions** tanlangan bo‘lishi shart.
+“Deploy from a branch” tanlansa, GitHub build qilinmagan repo fayllarini (README.md) chiqaradi —
+sayt o‘rniga shu ko‘rinadi.
+
+Source to‘g‘ri tanlangach, `main` yoki `claude/**` branchiga har push saytni yangilaydi.
+Manzil: `https://<foydalanuvchi>.github.io/<repo-nomi>/`.
