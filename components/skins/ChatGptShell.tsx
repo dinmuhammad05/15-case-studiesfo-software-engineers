@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { LessonHeader } from "@/components/lesson/header";
 import { LessonNav, SkinDisclaimer } from "@/components/lesson/nav";
+import { Toc } from "@/components/lesson/Toc";
 import { ChatGptChrome } from "./ChatGptChrome";
 
 /**
@@ -25,6 +26,7 @@ export function ChatGptShell({ children }: { children: ReactNode }) {
         </span>
         <div className="min-w-0 flex-1">
           <LessonHeader slug="chatgpt" />
+          <Toc />
           <article className="lesson-prose">{children}</article>
           <LessonNav slug="chatgpt" />
           <SkinDisclaimer product="ChatGPT" />

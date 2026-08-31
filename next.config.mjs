@@ -1,5 +1,6 @@
 import createMDX from "@next/mdx";
 import remarkGfm from "remark-gfm";
+import rehypeSlug from "rehype-slug";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -13,5 +14,5 @@ const nextConfig = {
 };
 
 export default createMDX({
-  options: { remarkPlugins: [remarkGfm] },
+  options: { remarkPlugins: [remarkGfm], rehypePlugins: [rehypeSlug] },
 })(nextConfig);

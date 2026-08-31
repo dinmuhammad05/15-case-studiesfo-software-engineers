@@ -49,7 +49,7 @@ export function ChatGptChrome({ slug, children }: { slug: string; children: Reac
   return (
     <div className="flex min-h-screen">
       {/* Doimiy sidebar — katta ekranlarda */}
-      <aside className="hidden w-[260px] shrink-0 flex-col border-r border-[var(--skin-border)] bg-[#171717] lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 flex-col border-r border-[var(--skin-border)] bg-[#171717] lg:flex">
         <SidebarContent slug={slug} />
       </aside>
 
