@@ -59,7 +59,7 @@ export function Toc() {
             <a
               href={`#${it.id}`}
               onClick={() => setOpen(false)}
-              className={`flex gap-2.5 rounded-lg px-3 py-1.5 text-sm no-underline hover:bg-white/5 ${
+              className={`flex gap-2.5 rounded-lg px-3 py-1.5 text-sm no-underline hover:bg-[var(--skin-surface-2)] ${
                 active === it.id ? "text-[var(--skin-accent)]" : "text-[var(--skin-muted)]"
               }`}
             >

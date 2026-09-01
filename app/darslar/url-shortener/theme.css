@@ -1,0 +1,29 @@
+/* URL qisqartiruvchi skini — yorug' mavzu (rasmiy brend materiali emas) */
+[data-skin="url-shortener"] {
+  color-scheme: light;
+  --skin-bg: #ffffff;
+  --skin-surface: #f7f8fa;
+  --skin-surface-2: #eef0f4;
+  --skin-border: #dfe3e9;
+  --skin-text: #16202c;
+  --skin-muted: #5c6b7a;
+  --skin-accent: #ee6123;
+  --skin-accent-text: #ffffff;
+  --skin-radius: 10px;
+  --skin-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --skin-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+
+/* Yorug' fonda kod bloklari va matn kontrasti */
+[data-skin="url-shortener"] .lesson-prose pre {
+  background: #16202c;
+  border-color: #16202c;
+  color: #e6edf3;
+}
+[data-skin="url-shortener"] .lesson-prose code {
+  background: var(--skin-surface-2);
+}
+
+body:has([data-skin="url-shortener"]) {
+  background: #ffffff;
+}

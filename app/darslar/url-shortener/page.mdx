@@ -1,0 +1,1891 @@
+## Bu darsda nima o‘rganasiz
+
+URL qisqartiruvchi — intervyularda eng ko‘p so‘raladigan tizim dizayni savoli va eng ko‘p
+yuzaki javob beriladigani. “Hash qilamiz, bazaga yozamiz, redirect qilamiz” — bu javob
+30 soniyada tugaydi va hech narsani ko‘rsatmaydi.
+
+Aslida bu masala **aldamchi darajada chuqur**: unda kalit maydoni matematikasi, tug‘ilgan kun
+paradoksi, taqsimlangan ID generatsiya, kesh strategiyalari, hot key muammosi, CDN
+semantikasi, ochiq redirect zaifligi va analitika quvuri bor. Aynan shuning uchun u yaxshi
+birinchi mashq — kichik masala ichida katta tizimning barcha naqshlari mavjud.
+
+| Savol | Javob shu darsda | Bo‘lim |
+| --- | --- | --- |
+| Kalit uzunligini qanday tanlaysiz? | Base62 va tug‘ilgan kun paradoksi | 3 |
+| Tasodifiy kalit qachon to‘qnashadi? | To‘qnashuv ehtimoli hisobi | 3.2 |
+| 301 va 302 orasida qaysi biri? | Redirect semantikasi va analitika | 2.3 |
+| Nega bitta havola butun tizimni yiqitadi? | Hot key va cache stampede | 5.2, 8.1 |
+| 100 million havolaga qancha joy kerak? | Saqlash hisobi | 4.2 |
+| Kuniga 73 GB analitika bilan nima qilamiz? | Oqim quvuri va HyperLogLog | 6-bo‘lim, 8-qadam |
+| Ochiq redirect nima uchun xavfli? | Xavfsizlik | 9.1 |
+
+<Callout type="maslahat" title="Qanday o'qish kerak">
+Dars uch qatlamda: **asosiy matn** hamma uchun, `Chuqurroq` bloklari matematika va past
+daraja uchun (birinchi o‘qishda tashlansa mantiq uzilmaydi), **nazorat savollari** esa
+bo‘lim oxirida o‘zingizni tekshirish uchun.
+</Callout>
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+1. Uzun URL berilganda qisqa havola qaytarish
+2. Qisqa havola ochilganda foydalanuvchini asl manzilga yo‘naltirish
+3. Foydalanuvchi o‘z kalitini tanlashi (`dars.uz/kafka`)
+4. Havolaning amal qilish muddati va o‘chirilishi
+5. Bosishlar statistikasi: soni, geografiya, qurilma, manba
+
+### 1.2 Nofunksional talablar
+
+| Talab | Aniq ko‘rsatkich | Nega aynan shunday |
+| --- | --- | --- |
+| Redirect kechikishi | p99 ≤ 50 ms (server tomonda) | Bu foydalanuvchi kutayotgan “o‘lik” vaqt |
+| Mavjudlik (o‘qish) | 99.99% | Havola ishlamasa, u chop etilgan hamma joyda ishlamaydi |
+| Mavjudlik (yozish) | 99.9% | Yangi havola yaratish biroz kutishi mumkin |
+| Kalit takrorlanmasligi | 100% | Bitta kalit ikkita manzilga ketsa — halokat |
+| Havola muddati | Cheksiz (agar belgilanmagan bo‘lsa) | Havolalar qog‘ozda, kitobda, bannerda qoladi |
+| Masshtab | Oyiga 100M yangi havola | Bozor yetakchilariga yaqin tartib |
+
+<Callout type="ogoh" title="Eng muhim nofunksional talab">
+**O‘qish va yozish nisbati 100:1 dan 1000:1 gacha.** Bitta havola yaratiladi va million
+marta bosiladi. Bu bitta fakt butun arxitekturani belgilaydi: yozish yo‘li sodda va
+ishonchli bo‘lsa yetarli, o‘qish yo‘li esa keshlangan, tarqatilgan va chekkaga
+(edge) yaqinlashtirilgan bo‘lishi kerak.
+</Callout>
+
+### 1.3 Konvert orqasidagi birinchi hisob
+
+<Calc title="Yuk va sig'im" result="Yozish 38/s — bitta oddiy server uddalaydi. O'qish cho'qqisi 19 000/s — mana shu haqiqiy masala">{`Farazlar:
+  Oyiga yangi havola          100 000 000
+  O'qish / yozish nisbati            100:1
+  Cho'qqi koeffitsienti                  5x
+
+Yozish:
+  100e6 / (30 x 86400) = 38.6 yozuv / soniya
+  Cho'qqida: ~200 / soniya
+
+O'qish:
+  38.6 x 100 = 3860 redirect / soniya
+  Cho'qqida: ~19 300 / soniya
+
+5 yildan keyingi jami havola:
+  100e6 x 12 x 5 = 6 000 000 000 (6 milliard)`}</Calc>
+
+Bu son — 6 milliard havola — keyingi bo‘limdagi kalit uzunligini tanlashning asosi bo‘ladi.
+
+## 2. Nol nuqta: redirect qanday ishlaydi
+
+Butun mahsulot bitta HTTP mexanizmiga tayanadi. Uni aniq bilmasdan qolgan hamma narsani
+tushunib bo‘lmaydi.
+
+### 2.1 Bayt darajasida nima sodir bo‘ladi
+
+Foydalanuvchi `dars.uz/K7xQm2` ni bosdi:
+
+```http
+GET /K7xQm2 HTTP/1.1
+Host: dars.uz
+User-Agent: Mozilla/5.0 ...
+```
+
+Server javobi:
+
+```http
+HTTP/1.1 302 Found
+Location: https://example.com/juda/uzun/manzil?utm_source=newsletter
+Cache-Control: private, max-age=0, no-store
+Content-Length: 0
+```
+
+Brauzer `Location` sarlavhasini ko‘radi va **avtomatik** yangi so‘rov yuboradi. Foydalanuvchi
+uchun bu bir soniyaning ulushi, tizim uchun esa — bitta to‘liq HTTP aylanmasi.
+
+Diqqat qiling: javob tanasi bo‘sh. Ya’ni redirect **juda arzon** — 200–400 bayt. Butun
+mahsulotning asosiy operatsiyasi shu.
+
+### 2.2 To‘liq kechikish byudjeti
+
+<Calc title="Foydalanuvchi bosgandan sahifa ochilgunicha" result="Server tomondagi 5 ms — umumiy vaqtning 3% i. Qolgani tarmoq. Shuning uchun geografik joylashuv keshdan ham muhimroq">{`DNS qidiruv (keshlanmagan)        20-100 ms
+TCP qo'l siqish (RTT)              30 ms
+TLS qo'l siqish (1-2 RTT)          30-60 ms
+So'rov -> server                   15 ms
+  Server ishlov berishi:
+    kesh o'qish                     1 ms
+    (kesh yo'q bo'lsa: baza)      5-10 ms
+Javob -> brauzer                   15 ms
+================================
+Redirect uchun jami:            ~110-220 ms
+Keyin ASL sahifa uchun butun sikl qaytadan boshlanadi`}</Calc>
+
+Bu jadvaldan ikkita muhandislik xulosasi chiqadi:
+
+1. **Serverni 5 ms dan 2 ms ga tushirish deyarli hech narsa bermaydi.** Tarmoq hukmron.
+2. **Foydalanuvchiga yaqin bo‘lish esa 50–100 ms tejaydi.** Shuning uchun anycast, ko‘p
+   mintaqa va chekka (edge) yechimlari kesh optimallashtirishdan muhimroq.
+
+### 2.3 301 va 302: eng ko‘p munozara qilinadigan qaror
+
+| Kod | Ma’nosi | Brauzer keshlaydimi | Oqibati |
+| --- | --- | --- | --- |
+| **301** Moved Permanently | Doimiy ko‘chirildi | **Ha**, agressiv | Takroriy bosishlar serverga umuman yetib kelmaydi |
+| **302** Found | Vaqtincha | Yo‘q (odatda) | Har bosish serverga keladi |
+| **307** Temporary Redirect | Vaqtincha, metodni saqlaydi | Yo‘q | POST so‘rovlar uchun to‘g‘ri |
+| **308** Permanent Redirect | Doimiy, metodni saqlaydi | Ha | 301 ning aniqroq versiyasi |
+
+<Calc title="301 tanlansa nima o'zgaradi" result="301 serverga yukni 5 barobar kamaytiradi, lekin analitikaning 80% ini o'ldiradi va havolani abadiy qotirib qo'yadi">{`Faraz: bitta havola o'rtacha 5 marta bosiladi (bir xil brauzerda)
+
+302 bilan:
+  5 ta bosish = 5 ta server so'rovi
+  Analitika: 5 ta hodisa yozildi
+
+301 bilan:
+  5 ta bosish = 1 ta server so'rovi (qolgani brauzer keshidan)
+  Analitika: 1 ta hodisa yozildi
+  Serverga yuk: 5 barobar kam`}</Calc>
+
+<Callout type="xato" title="301 ning qaytarib bo'lmaydigan tomoni">
+Brauzer 301 ni **oylab** keshda saqlaydi va uni tozalash uchun foydalanuvchi keshni
+qo‘lda o‘chirishi kerak. Ya’ni havola manzilini keyin o‘zgartirib bo‘lmaydi: mijoz
+“bannerdagi havolani yangi sahifaga yo‘naltiring” desa, siz qila olmaysiz —
+allaqachon bosgan foydalanuvchilar abadiy eski manzilga ketaveradi.
+
+Shu sabab tijorat qisqartiruvchilar deyarli hammasi **302** ishlatadi: analitika ular uchun
+mahsulotning o‘zi, o‘zgartirish imkoni esa sotiladigan xususiyat. 301 faqat o‘zgarmasligi
+kafolatlangan va analitika kerak bo‘lmagan holatda mantiqiy.
+</Callout>
+
+<Deep title="Redirect zanjirlari va cheksiz sikl">
+Foydalanuvchi bitta qisqartiruvchining havolasini boshqasiga qisqartirishi mumkin, ular
+esa bir-biriga. Natijada:
+
+- **Uzun zanjir** — har bir bo‘g‘in ~150 ms qo‘shadi; 5 bo‘g‘in = 1 soniyadan ko‘p kutish
+- **Sikl** — A → B → A. Brauzer odatda 20 ta redirectdan keyin to‘xtaydi va xato ko‘rsatadi
+
+Chora: yaratish paytida maqsad URL ni tekshirish (o‘z domenimizga ko‘rsatyaptimi?),
+zanjirni oldindan yechib, oxirgi manzilni saqlash, va bosish paytida `Location` ni
+sanitizatsiya qilish. Bu shunchaki tozalik emas — bu ham xavfsizlik (11-bo‘lim), ham
+kechikish masalasi.
+</Deep>
+
+### 2.4 So‘rov serverni qanday topadi: DNS va anycast
+
+`dars.uz/K7xQm2` bosilganda brauzer avval **qayerga** so‘rov yuborishini bilishi kerak.
+Bu qadam 2.2-bo‘limdagi byudjetning eng katta o‘zgaruvchan qismi.
+
+```
+1. Brauzer keshi        ->  0 ms   (agar oldin ochgan bo'lsa)
+2. OS keshi             ->  0 ms
+3. Rekursiv resolver    ->  5-20 ms  (provayder DNS'i)
+4. Avtoritativ server   ->  20-100 ms (birinchi marta)
+```
+
+Ko‘p mintaqaga tarqalishning ikki usuli bor va ular tubdan farq qiladi:
+
+<Versus
+  left={{
+    title: "GeoDNS",
+    points: [
+      "So'rovchining joylashuviga qarab boshqa IP qaytariladi",
+      "Amalga oshirish oson, har qanday DNS provayderda bor",
+      "Aniqligi past: resolver joylashuvi foydalanuvchi joylashuvi emas",
+      "Failover DNS TTL'ga bog'liq — 60 soniya kutish kerak",
+    ],
+  }}
+  right={{
+    title: "Anycast",
+    points: [
+      "Bir xil IP yuzlab nuqtadan e'lon qilinadi (BGP)",
+      "Marshrutlash tarmoq darajasida — eng yaqin nuqta",
+      "Failover deyarli darhol: marshrut o'zgaradi",
+      "Murakkabroq: o'z AS raqami yoki CDN provayderi kerak",
+    ],
+  }}
+/>
+
+<Deep title="DNS TTL: ikki tomonlama tanlov">
+TTL qisqa bo‘lsa (60 s) — o‘zgarishlar tez tarqaladi, failover tez ishlaydi, lekin DNS
+so‘rovlari ko‘payadi va har bir yangi foydalanuvchi qo‘shimcha kechikish oladi.
+
+TTL uzun bo‘lsa (1 soat) — kechikish kam, lekin nosozlikda **bir soat** davomida trafik
+ishlamayotgan manzilga ketaveradi. Bundan ham yomoni: ba’zi resolverlar TTL ni hurmat
+qilmaydi va o‘z minimumini qo‘yadi.
+
+Amaliy yechim: **anycast** — u bu tanlovni butunlay yo‘q qiladi, chunki failover DNS orqali
+emas, marshrutlash orqali bo‘ladi. Shuning uchun jiddiy qisqartiruvchilar deyarli hammasi
+CDN yoki anycast tarmoqda o‘tiradi.
+</Deep>
+
+<Callout type="maslahat" title="Domen uzunligi ham dizayn qarori">
+`dars.uz/K7xQm2` = 20 belgi, `my-link-shortener.com/K7xQm2` = 34 belgi. Bu farq muhim:
+SMS da 160 belgi limiti bor, Twitter‘da har belgi hisoblanadi, QR kod esa uzunlik oshgani
+sari zichlashadi va skanerlash qiyinlashadi.
+
+Shuning uchun qisqartiruvchilar qisqa domenlarga katta pul to‘laydi — bu texnik emas,
+mahsulot qarori, lekin u tizimning har bir qismiga ta’sir qiladi.
+</Callout>
+
+### 2.5 Demak, biz nima quryapmiz?
+
+Barcha bezaklarni olib tashlasak, mahsulot — bu **juda katta va juda tez kalit-qiymat
+qidiruv**:
+
+```
+kalit:   "K7xQm2"           (6-7 belgi)
+qiymat:  "https://example.com/..."  (o'rtacha 100-500 bayt)
+
+Operatsiyalar:
+  GET(kalit) -> qiymat      19 000 / soniya, p99 < 50 ms
+  PUT(kalit, qiymat)        200 / soniya
+```
+
+Butun qolgan dars — shu ikki operatsiyani ishonchli, arzon va tez qilish haqida.
+
+<Check q="Nega redirect javobining tanasi bo'sh bo'lishi muhim?">
+Chunki bu asosiy operatsiyani juda arzon qiladi: ~300 bayt javob, hech qanday shablon
+render qilish, hech qanday statik fayl yo‘q. Bitta oddiy server sekundiga o‘n minglab
+shunday javob bera oladi va tarmoq trafigi ham minimal.
+
+Solishtiring: agar redirect o‘rniga “yo‘naltirilmoqda…” degan HTML sahifa qaytarsangiz
+(ba’zi qisqartiruvchilar reklama uchun shunday qiladi), javob 50 KB ga chiqadi — bu
+**150 barobar ko‘p trafik**, sekinroq foydalanuvchi tajribasi va sezilarli darajada
+qimmatroq egress hisobi.
+</Check>
+
+## 3. Kalit maydoni: eng muhim dizayn qarori
+
+Kalit uzunligi — bu bitta son, lekin u tizimning umrini, xavfsizligini va bazasining
+hajmini belgilaydi.
+
+### 3.1 Base62 nima uchun
+
+URL da xavfsiz ishlatiladigan belgilar: `a-z`, `A-Z`, `0-9` — jami 62 ta. Nega aynan shu:
+
+| Alifbo | Belgilar | 7 belgi bilan | Muammosi |
+| --- | --- | --- | --- |
+| Base10 | 10 | 10⁷ = 10 million | Juda kichik |
+| Base16 | 16 | 2.7×10⁸ | Kichik, lekin o‘qilishi oson |
+| **Base62** | 62 | **3.5×10¹²** | Standart tanlov |
+| Base64 | 64 | 4.4×10¹² | `+` va `/` URL da muammo qiladi |
+| Base58 | 58 | 2.2×10¹² | `0`, `O`, `l`, `I` olib tashlangan — qo‘lda yozishga qulay |
+
+<Calc title="Kalit uzunligi va sig'im" result="6 belgi 5 yilga yetmaydi (6 mlrd kerak, 56 mlrd bor - lekin to'qnashuv boshlanadi). 7 belgi to'g'ri tanlov: 3.5 trillion">{`62^5 =           916 132 832   (0.9 milliard)
+62^6 =        56 800 235 584   (56 milliard)
+62^7 =     3 521 614 606 208   (3.5 trillion)
+62^8 =   218 340 105 584 896   (218 trillion)
+
+Bizga 5 yilda 6 milliard kerak edi.
+
+6 belgi: 6e9 / 5.68e10 = maydonning 10.6% i band
+7 belgi: 6e9 / 3.52e12 = maydonning 0.17% i band`}</Calc>
+
+### 3.2 Nega bandlik foizi muhim
+
+Agar kalitlarni tasodifiy tanlasak, maydon qanchalik to‘lsa, to‘qnashuv shuncha tez-tez
+sodir bo‘ladi. Har bir to‘qnashuv — bazaga qo‘shimcha so‘rov va qayta urinish.
+
+<Calc title="To'qnashuv ehtimoli" result="7 belgida har 587 yozuvdan bittasi to'qnashadi — arzon. 6 belgida har 9 tadan bittasi — bu allaqachon muammo">{`Bitta yangi kalit mavjud kalitga tushish ehtimoli = n / N
+  n = mavjud kalitlar soni
+  N = maydon hajmi
+
+n = 6 milliard bo'lganda:
+
+6 belgi:  6e9 / 5.68e10 = 0.1056  -> har 9.5 yozuvdan biri
+7 belgi:  6e9 / 3.52e12 = 0.0017  -> har 587 yozuvdan biri
+8 belgi:  6e9 / 2.18e14 = 0.000027 -> har 36 000 yozuvdan biri`}</Calc>
+
+<Deep title="Tug'ilgan kun paradoksi: nega intuitsiya aldaydi">
+“3.5 trillion joy bor, 6 milliard havola — to‘qnashuv deyarli imkonsiz” degan fikr xato.
+Tug‘ilgan kun paradoksiga ko‘ra, **kamida bitta** to‘qnashuv ehtimoli:
+
+```
+P(kamida bitta to'qnashuv) ≈ 1 - e^(-n² / 2N)
+```
+
+n = 6e9, N = 3.52e12 uchun:
+```
+n² / 2N = 3.6e19 / 7.04e12 = 5 113 636
+P ≈ 1 - e^(-5113636) ≈ 1.0  (100%)
+```
+
+Ya’ni to‘qnashuvlar **albatta** bo‘ladi — millionlab marta. Bu qo‘rqinchli emas, chunki biz
+har bir yozuvda tekshiramiz va qayta urinamiz. Muhim son — bitta yozuv uchun to‘qnashuv
+ehtimoli (`n/N`), chunki u qayta urinishlar sonini belgilaydi.
+
+**Xulosa:** “to‘qnashuv bo‘lmaydi” deb loyihalash xato; “to‘qnashuv arzon bo‘lsin” deb
+loyihalash to‘g‘ri.
+</Deep>
+
+### 3.3 Kalit generatsiyasining to‘rt strategiyasi
+
+<Versus
+  left={{
+    title: "Tasodifiy + tekshirish",
+    points: [
+      "7 ta tasodifiy belgi, bazada bor-yo'qligini tekshirish",
+      "Koordinatsiya kerak emas — har bir server mustaqil",
+      "Kalitlar taxmin qilinmaydi (xavfsizlik)",
+      "Har yozuvda 1 ta qo'shimcha o'qish; to'qnashuvda qayta urinish",
+    ],
+  }}
+  right={{
+    title: "Hisoblagich + base62",
+    points: [
+      "Ketma-ket son base62 ga o'giriladi",
+      "To'qnashuv umuman bo'lmaydi",
+      "Kalitlar bashoratli — begona havolalarni sanab chiqish mumkin",
+      "Taqsimlangan hisoblagich koordinatsiya talab qiladi",
+    ],
+  }}
+/>
+
+Yana ikkita variant:
+
+**Hash qilib kesish** — `base62(md5(url))[0:7]`. Jozibali ko‘rinadi, lekin ikkita jiddiy
+kamchiligi bor: bir xil URL har doim bir xil kalit oladi (ya’ni ikki foydalanuvchi bir xil
+havolani qisqartirsa, ular bitta statistikani baham ko‘radi va biri ikkinchisining
+havolasini o‘chira oladi), hamda kesilgan hash to‘qnashuvi baribir tekshirishni talab
+qiladi. Foydali holati bitta: **deduplikatsiya** ataylab kerak bo‘lganda.
+
+**Oldindan generatsiya (Key Generation Service)** — alohida xizmat bo‘sh kalitlarni
+oldindan yaratib qo‘yadi, ilova serverlari ulardan **bloklab** oladi (masalan bir marta
+10 000 ta). Yozish yo‘lidan tekshirish ham, koordinatsiya ham butunlay yo‘qoladi.
+
+<Calc title="Nega blok bo'lib olish koordinatsiyani deyarli nolga tushiradi" result="Markazga murojaat 200/s dan 0.02/s ga tushadi — 10 000 barobar kam. Bu naqsh Snowflake, Ticket Server va sequence allocator'larda bir xil">{`Cho'qqi yozish tezligi: 200 / soniya
+
+Har yozuvda markaziy hisoblagichni so'rasak:
+  200 so'rov / soniya markazga -> u tor joy (bottleneck) va SPOF
+
+Blok bo'lib olsak (10 000 tadan):
+  200 / 10 000 = 0.02 so'rov / soniya markazga
+  Bitta blok 50 soniyaga yetadi
+
+Narxi: server qayta ishga tushsa, ishlatilmagan kalitlar yo'qoladi
+  Kuniga 100 marta restart x 10 000 = 1M kalit yo'qoladi
+  3.5e12 maydonda bu 0.00003% — mutlaqo ahamiyatsiz`}</Calc>
+
+### 3.4 Qaysi birini tanlash kerak
+
+| Mezon | Tasodifiy | Hisoblagich | KGS |
+| --- | --- | --- | --- |
+| Yozishda qo‘shimcha o‘qish | Bor | Yo‘q | Yo‘q |
+| Koordinatsiya | Yo‘q | Har yozuvda | Blok bo‘lib |
+| Kalitlarni taxmin qilish | Imkonsiz | **Oson** | Imkonsiz (aralashtirilgan bo‘lsa) |
+| Amalga oshirish murakkabligi | Eng oddiy | O‘rtacha | Yuqori |
+| Boshlash uchun | ✓ | | |
+| Katta masshtabda | | | ✓ |
+
+<Callout type="ogoh" title="Hisoblagich va xavfsizlik">
+Ketma-ket kalitlar (`aaa`, `aab`, `aac`) — bu **enumeration zaifligi**: kimdir barcha
+havolalarni sanab chiqib, hujjatlar, hisob-kitoblar, shaxsiy fayllarga havolalarni
+to‘plashi mumkin. Amalda bu ko‘p marta sodir bo‘lgan.
+
+Agar hisoblagich ishlatilsa, natija albatta aralashtirilishi kerak (masalan Feistel shifri
+yoki bijektiv permutatsiya bilan) — shunda kalitlar ketma-ket bo‘lmaydi, lekin
+to‘qnashuvsizlik saqlanadi.
+</Callout>
+
+<Check q="Sizga 'kalit 5 belgi bo'lsin, chiroyli ko'rinadi' deyishdi. Qanday javob berasiz?">
+Raqam bilan: base62 da 5 belgi = 916 million kalit. Oyiga 100M havola bilan bu **9 oyda
+tugaydi**. Undan oldin ham muammo boshlanadi: maydon 50% to‘lganda har ikkinchi tasodifiy
+kalit to‘qnashadi va yozish tezligi keskin tushadi.
+
+Taklif: 7 belgi (3.5 trillion — 100+ yil), lekin **birinchi kalitlarni qisqa berish**
+mumkin — masalan hisoblagich kichik bo‘lganda 5 belgili kalit, keyin avtomatik uzayadi.
+Ko‘pchilik tizimlar aynan shunday qiladi: kalit uzunligi sobit emas, o‘sib boradi.
+</Check>
+
+## 4. v0: eng sodda ishlaydigan yechim
+
+### 4.1 Ma’lumotlar modeli
+
+```sql
+CREATE TABLE links (
+    key         VARCHAR(10) PRIMARY KEY,   -- "K7xQm2"
+    target_url  TEXT        NOT NULL,      -- asl manzil
+    owner_id    BIGINT,                    -- kim yaratgan (NULL = anonim)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ,               -- NULL = cheksiz
+    is_active   BOOLEAN     NOT NULL DEFAULT true
+);
+
+CREATE INDEX idx_links_owner ON links (owner_id, created_at DESC);
+CREATE INDEX idx_links_expiry ON links (expires_at) WHERE expires_at IS NOT NULL;
+```
+
+Va butun ilova:
+
+```python
+@app.post("/api/shorten")
+def shorten(req):
+    for _ in range(5):                              # to'qnashuvda qayta urinish
+        key = random_base62(7)
+        try:
+            db.execute(
+                "INSERT INTO links (key, target_url, owner_id) VALUES (%s, %s, %s)",
+                (key, req.url, req.user_id))
+            return {"short": f"https://dars.uz/{key}"}
+        except UniqueViolation:
+            continue                                # kalit band, yangisini olamiz
+    raise ServiceUnavailable("kalit topilmadi")
+
+@app.get("/<key>")
+def redirect(key):
+    row = db.query_one("SELECT target_url FROM links WHERE key = %s AND is_active", (key,))
+    if not row:
+        return render("404.html"), 404
+    return Response(status=302, headers={"Location": row.target_url})
+```
+
+Bu kod **ishlaydi va to‘g‘ri**. Kichik loyihada u yillab xizmat qilishi mumkin. Endi uni
+raqamlar bilan buzamiz.
+
+### 4.2 Saqlash hisobi
+
+<Calc title="6 milliard havola qancha joy egallaydi" result="~3.7 TB ma'lumot + ~1.2 TB indeks. Bitta serverga sig'maydi, lekin 10 ta shardga bemalol">{`Bitta yozuv:
+  key           7 bayt + qo'shimcha    ~ 16 bayt
+  target_url    o'rtacha 400 bayt      ~ 410 bayt
+  owner_id                                 8 bayt
+  created_at, expires_at                  16 bayt
+  is_active + qator qo'shimchasi        ~ 30 bayt
+  ------------------------------------------------
+  Jami                                  ~ 480 bayt
+
+6e9 x 480 bayt = 2.88 TB
+Postgres qo'shimchalari va bo'shliq (~30%): ~3.7 TB
+
+Birlamchi kalit indeksi (B-tree):
+  6e9 x (7 bayt kalit + 6 bayt ko'rsatkich + qo'shimcha) ~ 1.2 TB`}</Calc>
+
+<Deep title="B-tree chuqurligi: bitta qidiruv nechta diskka murojaat qiladi">
+Bu — “baza sekin” degan gapni raqamga aylantiradigan hisob.
+
+```
+Sahifa hajmi                  8 KB
+Bitta yozuv indeksda        ~20 bayt
+Sahifadagi yozuvlar    8192 / 20 = ~400
+
+B-tree chuqurligi = log_400(6e9)
+  400^1 = 400
+  400^2 = 160 000
+  400^3 = 64 000 000
+  400^4 = 25 600 000 000   <- 6 milliard shu yerda
+  Chuqurlik = 4 daraja
+```
+
+Yuqori ikki daraja doim RAM da (ular kichik: ~2.5 MB). Ya’ni bitta qidiruv **1–2 ta disk
+o‘qishi**. NVMe da bu ~100 µs, ya’ni bitta redirect uchun baza ~0.2 ms. Yaxshi.
+
+Muammo boshqa joyda: sekundiga 19 300 redirect × 2 IO = **38 600 IOPS**. Bitta NVMe disk
+buni uddalaydi (500K IOPS gacha), lekin bitta Postgres instansiyasi ulanishlar, lock va CPU
+tufayli bunga yetmaydi. Aynan shuning uchun kesh birinchi qadam bo‘ladi — disk emas,
+**ma’lumotlar bazasining o‘zi** tor joyga aylanadi.
+</Deep>
+
+### 4.3 API dizayni va idempotentlik
+
+Yaratish API sining bitta nozik joyi bor: tarmoq uzilib qolsa, mijoz qayta yuboradi va
+**ikkita havola** paydo bo‘ladi.
+
+```http
+POST /api/v1/links
+Idempotency-Key: 7f3a9c1e-...        <- mijoz generatsiya qiladi
+Content-Type: application/json
+
+{"url": "https://example.com/...", "custom_alias": null, "expires_at": null}
+```
+
+Server kalitni saqlaydi va bir xil `Idempotency-Key` bilan kelgan takroriy so‘rovga
+**avvalgi javobni** qaytaradi — yangi havola yaratmaydi. Kalit muddati odatda 24 soat.
+
+Xato kodlari ham mahsulot qismi:
+
+| Kod | Qachon | Mijoz nima qilishi kerak |
+| --- | --- | --- |
+| `400` | URL noto‘g‘ri formatda | Tuzatib qayta yuborish |
+| `409` | Maxsus kalit band | Boshqa kalit taklif qilish |
+| `422` | URL zararli deb topildi | Foydalanuvchiga sababni ko‘rsatish |
+| `429` | Tezlik cheklovi | `Retry-After` bo‘yicha kutish |
+| `503` | Kalit topilmadi (maydon to‘lgan) | Qayta urinish, keyin alert |
+
+Redirect tomonida ham kodlar ma’noli bo‘lishi kerak: `404` — bunday kalit yo‘q, `410 Gone` —
+bor edi, o‘chirilgan (bu SEO va mijoz uchun farqli signal), `429` — skanerga qarshi.
+
+<Deep title="Ro'yxatni sahifalash: nega OFFSET yaramaydi">
+Foydalanuvchining 50 million havolasi bo‘lishi mumkin. `LIMIT 50 OFFSET 1000000` so‘rovi
+bazani million qatorni **o‘qib tashlab yuborishga** majbur qiladi — sahifa raqami oshgani
+sari so‘rov sekinlashadi.
+
+To‘g‘ri usul — **kursorli sahifalash**: oxirgi ko‘rilgan yozuvning tartiblash kalitini
+mijozga berib yuboriladi va keyingi sahifa shundan boshlanadi:
+
+```sql
+SELECT * FROM links
+WHERE owner_id = $1 AND (created_at, key) < ($2, $3)
+ORDER BY created_at DESC, key DESC
+LIMIT 50;
+```
+
+Bu so‘rov indeks bo‘yicha to‘g‘ridan-to‘g‘ri kerakli joyga sakraydi — sahifa raqamidan
+qat’i nazar bir xil tez. Qo‘shimcha yutuq: yangi yozuv qo‘shilganda sahifalar “siljib”
+ketmaydi, ya’ni foydalanuvchi bir xil yozuvni ikki marta ko‘rmaydi.
+</Deep>
+
+### 4.4 B-tree va LSM: qaysi biri bu yukka mos
+
+Bazani “Postgres yoki Cassandra” deb tanlash aslida ikki xil **saqlash strukturasi**
+orasidagi tanlov. Farqni bilish kerak, chunki u kechikish va disk yukini belgilaydi.
+
+| | B-tree (Postgres, MySQL) | LSM daraxti (Cassandra, RocksDB) |
+| --- | --- | --- |
+| Yozish | Sahifani joyida yangilaydi + WAL | Xotiraga yozadi, keyin ketma-ket disk |
+| Yozish amplifikatsiyasi | 2–5× (sahifa + WAL) | 10–30× (compaction) |
+| Yozish tezligi | O‘rtacha (tasodifiy IO) | Yuqori (ketma-ket IO) |
+| O‘qish | 1–2 IO (bashoratli) | 1–5 IO (darajalar bo‘yicha qidiruv) |
+| O‘qish yordami | Sahifa keshi | Bloom filtrlari har bir SSTable uchun |
+| Bo‘sh joy | Fragmentatsiya | Compaction paytida vaqtincha 2× |
+
+<Deep title="Bizning yukimiz uchun qaysi biri to'g'ri">
+Ikkita muhim xususiyatimiz bor:
+
+1. **O‘qish ustunlik qiladi** (100:1) va o‘qishlar — birlamchi kalit bo‘yicha **nuqta
+   qidiruvi**, diapazon skani emas
+2. **Qiymatlar deyarli o‘zgarmaydi**. Havola bir marta yaratiladi va keyin faqat o‘qiladi.
+   Ya’ni yangilash amplifikatsiyasi degan muammo bizda **umuman yo‘q**
+
+Shu ikki fakt tanlovni erkin qoldiradi:
+
+- **B-tree** — o‘qish kechikishi bashoratli (har doim 1–2 IO), operatsion tajriba ko‘p,
+  tranzaksiya va `UNIQUE` cheklovi tayyor. Maxsus kalitlar uchun bu oxirgi nuqta muhim
+- **LSM** — yozish arzon (bizga unchalik kerak emas, 200/s), lekin **compaction** operatsion
+  yuk qo‘shadi va p99 ni vaqti-vaqti bilan buzadi
+
+Xulosa: bu yuk uchun **B-tree tabiiyroq**, LSM esa yozish hajmi 100 barobar oshganda yoki
+gorizontal masshtablash boshqaruvi muhimroq bo‘lganda mantiqiy. Amalda tanlov ko‘pincha
+texnik emas — jamoada qaysi bazani operatsion qilishni biladi degan savolga tayanadi, va
+bu ham to‘g‘ri mezon.
+</Deep>
+
+### 4.5 Replikatsiya va “o‘zi yozganini o‘qish” muammosi
+
+O‘qish yukini ko‘tarish uchun replikalar qo‘shamiz. Replikatsiya asinxron — kechikish
+odatda 10–100 ms, yuk paytida sekundlarga chiqishi mumkin. Va shu yerda **haqiqiy hayotda
+juda ko‘p uchraydigan bug** paydo bo‘ladi:
+
+```
+1. Foydalanuvchi havola yaratdi        -> asosiy bazaga yozildi
+2. 200 ms dan keyin havolani bosdi     -> so'rov replikaga tushdi
+3. Replikada hali yozuv yo'q           -> 404
+```
+
+Foydalanuvchi uchun bu “sizning xizmatingiz buzuq” degani. Uch yechim bor:
+
+| Yechim | Qanday ishlaydi | Kamchiligi |
+| --- | --- | --- |
+| **Yaratishda keshga yozish** | Yozuv bazaga tushishi bilan keshga ham qo‘yiladi | Kesh tushsa muammo qaytadi |
+| **Yozgandan keyin asosiy bazadan o‘qish** | N soniya davomida shu foydalanuvchi asosiy bazaga yo‘naltiriladi | Asosiy bazaga qo‘shimcha yuk; sessiya holati kerak |
+| **Versiya belgisi (LSN)** | Mijozga yozuv pozitsiyasi beriladi, o‘qishda replika shu pozitsiyaga yetganini tekshiradi | Murakkab; barcha qatlamlar qo‘llab-quvvatlashi kerak |
+
+Bizning holatimizda **birinchisi** eng yaxshi: yaratish paytida yozuvni darhol keshga
+qo‘yamiz. Bu tabiiy, chunki yangi havola deyarli har doim darhol bosiladi — ya’ni u
+allaqachon “issiq” ma’lumot.
+
+<Check q="Nega 'yozgandan keyin asosiy bazadan o'qish' yechimi bu tizimda yomon ishlaydi?">
+Chunki havolani **yaratgan odam bosmaydi**. U havolani boshqa joyga qo‘yadi — xatga,
+postga, bannerga — va uni **butunlay boshqa odamlar**, boshqa qurilmalardan, boshqa
+mintaqalardan bosadi.
+
+“Sessiya bo‘yicha asosiy bazaga yo‘naltirish” faqat yaratuvchining o‘zi uchun ishlaydi,
+qolgan hammasi uchun emas. Shuning uchun to‘g‘ri yechim — yozuvni **global ko‘rinadigan
+joyga** (keshga) darhol qo‘yish, yoki replikatsiya kechikishini havola tarqalish
+vaqtidan kichik ushlab turish.
+</Check>
+
+## 5. Nima sindi: v0 ning oltita zaif nuqtasi
+
+### 5.1 O‘qish yuki bazani bo‘g‘adi
+
+19 300 redirect/s — har biri bitta `SELECT`. Bitta Postgres instansiyasi yaxshi holatda
+5 000–15 000 oddiy so‘rovni uddalaydi. Ya’ni cho‘qqida tizim **yiqiladi**, va yiqilish
+sekin emas: ulanishlar to‘lib, kutish vaqti oshib, timeout‘lar boshlanadi.
+
+### 5.2 Bitta havola butun tizimni yiqitishi mumkin
+
+Mashhur bloger bitta havolani ulashdi. U sekundiga 50 000 marta bosilyapti — bitta kalit,
+bitta baza qatori. Sharding yordam bermaydi (hammasi bitta shardda), replikatsiya qisman
+yordam beradi. Bu **hot key** muammosi.
+
+### 5.3 Statistika yozish o‘qishdan qimmatroq
+
+Har bosishda `UPDATE links SET clicks = clicks + 1` yozsak, bitta qatorga sekundiga
+50 000 marta yozish kerak bo‘ladi. Bu **qulf raqobati** (lock contention): tranzaksiyalar
+navbatga tizilib, redirect kechikishi sekundlarga chiqadi.
+
+<Callout type="xato" title="Eng ko'p uchraydigan boshlang'ich xato">
+Analitikani redirect yo‘lining ichida, sinxron yozish. Redirect 2 ms o‘rniga 40 ms bo‘ladi,
+analitika bazasi tushsa esa **redirect ham ishlamay qoladi** — ya’ni ikkinchi darajali
+xususiyat asosiy funksiyani o‘ldiradi. Analitika har doim asinxron va **yo‘qotishga ruxsat
+etilgan** bo‘lishi kerak.
+</Callout>
+
+### 5.4 Yaratish yo‘li koordinatsiyaga bog‘lanib qoldi
+
+Har bir yozuvda `INSERT` + to‘qnashuvda qayta urinish. Maydon to‘lib borgani sari qayta
+urinishlar ko‘payadi va yozish kechikishi o‘sadi.
+
+### 5.5 Geografiya hisobga olinmagan
+
+Server Frankfurtda, foydalanuvchi Toshkentda. Faqat tarmoq **150 ms** qo‘shadi — server
+5 ms ishlaganida. 2.2-bo‘limdagi byudjetga qarang: bu eng katta yo‘qotish.
+
+### 5.6 Yo‘q havolalar bazani urib turadi
+
+Bot va skanerlar mavjud bo‘lmagan kalitlarni so‘rab turadi (`/aaa`, `/aab`, …). Har biri
+keshda topilmaydi va **to‘g‘ri bazaga** tushadi. Bu — cache penetration hujumi va u
+oddiy skaner tomonidan tasodifan ham amalga oshiriladi.
+
+| Muammo | Belgisi | Qaysi qadamda hal qilinadi |
+| --- | --- | --- |
+| O‘qish yuki | Baza CPU 100%, timeout | 2-qadam: kesh |
+| Hot key | Bitta shard yonadi | 3-qadam: chekka kesh, 6-qadam |
+| Statistika yozuvi | Redirect sekinlashdi | 8-qadam: asinxron quvur |
+| Yozish koordinatsiyasi | Yozish kechikishi o‘syapti | 5-qadam: KGS |
+| Geografiya | p99 uzoq mintaqalarda yomon | 4-qadam: anycast va edge |
+| Yo‘q kalitlar | Keshsiz so‘rovlar oqimi | 7-qadam: Bloom filtri |
+
+<Check q="Nega sharding hot key muammosini hal qilmaydi?">
+Sharding ma’lumotni kalit bo‘yicha bo‘ladi: `shard = hash(kalit) % N`. Bitta kalit har doim
+**bitta** shardga tushadi. Agar shu kalit sekundiga 50 000 marta so‘ralsa, butun yuk o‘sha
+bitta shardga boradi — qolgan shardlar bo‘sh turadi.
+
+Hot key uchun boshqa vositalar kerak: (1) chekka/CDN keshi — so‘rov umuman origin‘ga
+yetib kelmaydi, (2) ilova serverlarida mahalliy kesh (bir necha soniyalik TTL bilan ham
+yetarli), (3) o‘qish replikalari, (4) hot kalitni bir necha shardga replikatsiya qilish.
+Amalda birinchi ikkitasi 99% holatni yopadi.
+</Check>
+
+## 6. Evolyutsiya: o‘n to‘rt qadam
+
+<Step n="1" title="To'g'ri saqlash tanlash" gain="Yozish va o'qish yo'llari bir-biriga xalaqit bermaydi" cost="Ikkita saqlash tizimi = ikkita operatsion yuk">
+
+Bizga kerak bo‘lgan operatsiya — birlamchi kalit bo‘yicha aniq qidiruv. Bu SQL bazasining
+eng kuchli tomoni emas:
+
+| Saqlash | Kalit bo‘yicha o‘qish | Nima uchun tanlanadi | Nima uchun tanlanmaydi |
+| --- | --- | --- | --- |
+| PostgreSQL | ~0.2 ms (issiq) | Tranzaksiya, ikkilamchi indekslar, oddiy operatsiya | Bitta tugun o‘qishda cheklangan |
+| DynamoDB / Cassandra | ~2–5 ms | Chiziqli masshtablanadi, boshqariladi | Murakkab so‘rov yo‘q, narx |
+| Redis (asosiy saqlash) | ~0.1 ms | Eng tez | RAM narxi: 3.7 TB uchun juda qimmat |
+| Edge KV (Workers KV va sh.k.) | ~5 ms, lekin **foydalanuvchiga yaqin** | Geografiya bepul keladi | Yozish sekin, izchillik bo‘shroq |
+
+Amaliy naqsh: **manba haqiqat SQL bazada** (yaratish, egalik, hisobot, tranzaksiya), **o‘qish
+yo‘li esa kesh va chekka KV** orqali. Ikkisi orasidagi izchillik “oxir-oqibat” (eventual)
+bo‘lishi mumkin — bir necha soniyalik kechikish redirect uchun sezilmaydi.
+</Step>
+
+<Step n="2" title="Kesh — o'qish yukining 95% ini yechish" gain="Bazaga yuk 19 300/s dan ~1000/s ga tushdi" cost="Izchillik kechikishi; invalidatsiya mantiqi; yangi nosozlik rejimlari">
+
+Havolalarga murojaat **Zipf taqsimoti** bo‘yicha: kichik qism havolalar trafikning katta
+qismini oladi.
+
+<Calc title="Kesh hajmi va urish darajasi" result="10 GB kesh bilan urish darajasi ~95%. Bazaga qolgan yuk 965/s — bitta instansiya bemalol uddalaydi">{`Faraz: eng faol 20 million havola trafikning 95% ini oladi
+
+Kesh yozuvi: kalit (7) + URL (400) + qo'shimcha (~100) = ~510 bayt
+  20e6 x 510 = 10.2 GB
+
+Bitta Redis tuguni (32 GB) bemalol sig'diradi.
+
+Bazaga qoladigan yuk:
+  19 300 x (1 - 0.95) = 965 so'rov / soniya`}</Calc>
+
+Kesh naqshi — **cache-aside**:
+
+```python
+def resolve(key):
+    url = cache.get(key)
+    if url is not None:
+        return None if url == NEGATIVE else url   # 404 ham keshlanadi
+    row = db.query_one("SELECT target_url FROM links WHERE key=%s AND is_active", (key,))
+    if row is None:
+        cache.set(key, NEGATIVE, ttl=60)          # qisqa TTL: yo'q kalitlar uchun
+        return None
+    cache.set(key, row.target_url, ttl=86400)
+    return row.target_url
+```
+
+Ikki nozik nuqta darhol ko‘rinadi:
+
+1. **Salbiy keshlash** (negative caching) — yo‘q kalitlar ham keshlanishi kerak, aks holda
+   skanerlar to‘g‘ri bazani uradi (5.6-bo‘lim). TTL qisqa: yangi yaratilgan havola tez
+   ko‘rinsin
+2. **TTL va invalidatsiya** — havola o‘chirilganda yoki manzili o‘zgarganda keshni ham
+   yangilash kerak. Aks holda o‘chirilgan havola yana bir kun ishlab turadi
+</Step>
+
+<Step n="3" title="Ikki qatlamli kesh — hot key uchun" gain="Bitta havola sekundiga million marta bosilsa ham tizim sezmaydi" cost="Bir necha soniyalik nomuvofiqlik: turli serverlar turli javob berishi mumkin">
+
+Redis ham chegarasiz emas: bitta kalit sekundiga 500 000 marta so‘ralsa, u bitta Redis
+tuguniga tushadi va tarmoq kartasi to‘yinadi.
+
+Yechim — ilova serverining **o‘z xotirasida** kichik kesh (L1):
+
+```
+So'rov -> L1 (jarayon xotirasi, 10 000 ta eng issiq kalit, TTL 5 s)
+       -> L2 (Redis, 20M kalit, TTL 24 soat)
+       -> Baza
+```
+
+<Calc title="L1 keshning ta'siri" result="Atigi 5 soniyalik L1 kesh Redis'ga yukni 5000 barobar kamaytiradi. Narxi: havola o'chirilsa, 5 soniyagacha ishlab turishi mumkin">{`50 ta ilova serveri, hot kalitga 500 000 so'rov/s
+
+L1 kesh TTL = 5 soniya bo'lsa:
+  Har bir server 5 soniyada bir marta Redis'ga boradi
+  50 server / 5 soniya = 10 so'rov / soniya Redis'ga
+
+Redis yuki: 500 000 -> 10`}</Calc>
+</Step>
+
+<Step n="4" title="Chekka (edge) redirect — geografiyani yechish" gain="p99 kechikish 200 ms dan 40 ms ga tushdi" cost="Ma'lumotni yuzlab nuqtaga tarqatish; yangilanish kechikishi">
+
+2.2-bo‘limdagi byudjetni eslang: server ishi 5 ms, tarmoq 150 ms. Demak eng katta yutuq —
+**foydalanuvchiga yaqinlashish**.
+
+<Versus
+  left={{
+    title: "Bitta mintaqa (Frankfurt)",
+    points: [
+      "Toshkentdan RTT ~120 ms",
+      "TLS qo'l siqish bilan ~250 ms",
+      "Oddiy va arzon",
+      "Mintaqa tushsa — hamma joyda ishlamaydi",
+    ],
+  }}
+  right={{
+    title: "Anycast + chekka KV",
+    points: [
+      "Eng yaqin nuqtagacha ~15 ms",
+      "TLS ham chekkada tugaydi",
+      "Redirect origin'ga umuman bormaydi",
+      "Yangilanish 10-60 soniyada tarqaladi",
+    ],
+  }}
+/>
+
+Chekkada redirect qilish uchun kerak bo‘lgan hamma narsa — kalit va URL. Bu juda kichik
+ma’lumot, shuning uchun uni yuzlab nuqtaga tarqatish arziydi. Analitika esa chekkadan
+asinxron ravishda markazga yuboriladi.
+
+<Deep title="Chekka keshda izchillik: nima bilan to'laymiz">
+Chekka nuqtalar ma’lumotni o‘nlab soniyada oladi. Amaliy oqibatlari:
+
+- **Yangi havola darhol ishlamasligi mumkin** — foydalanuvchi qisqartirdi, darhol bosdi,
+  404 oldi. Chora: yaratilgan mintaqada darhol yozish va boshqa nuqtalarda “topilmasa
+  origin‘dan so‘rash” (stale-if-error emas, miss-to-origin) siyosati
+- **O‘chirilgan havola bir muddat ishlab turishi mumkin** — zararli havolani o‘chirishda
+  bu jiddiy: majburiy invalidatsiya (purge) mexanizmi kerak
+- **Analitika kechikadi** — chekkadan hodisalar paketlab yuboriladi
+
+Bu — CAP teoremasining amaliy ko‘rinishi: redirect uchun **mavjudlik va tezlik**
+izchillikdan muhimroq, shuning uchun ataylab eventual consistency tanlanadi.
+</Deep>
+</Step>
+
+<Step n="5" title="Kalit generatsiya xizmati (KGS)" gain="Yozish yo'lida tekshirish ham, to'qnashuv ham yo'q" cost="Yangi xizmat, uning zaxirasi va monitoringi">
+
+3.3-bo‘limdagi hisob: kalitlarni blok-blok oldindan tarqatish markazga yukni 10 000 barobar
+kamaytiradi.
+
+```
+KGS bazasi:  [kalit, band_mi]  yoki oddiyroq — diapazon jadvali
+
+Ilova serveri ishga tushganda:
+  1. KGS dan 10 000 talik diapazon oladi        (bitta so'rov)
+  2. Xotirasida saqlaydi
+  3. Har yozuvda navbatdagisini oladi           (koordinatsiyasiz)
+  4. Tugagach yangi diapazon so'raydi
+```
+
+Muhim tafsilot: diapazon **ketma-ket** bo‘lsa, kalitlar taxmin qilinadigan bo‘lib qoladi
+(3.4-bo‘limdagi ogohlantirish). Shuning uchun diapazondagi sonlar bijektiv permutatsiya
+(masalan Feistel shifri) orqali aralashtiriladi: to‘qnashuv baribir bo‘lmaydi, lekin
+ketma-ketlik ko‘rinmaydi.
+</Step>
+
+<Step n="6" title="Sharding va izchil xeshlash" gain="Ma'lumot va yuk chiziqli masshtablanadi" cost="Qayta shardlash og'riqli; shardlararo so'rovlar murakkab">
+
+3.7 TB bitta tugunga sig‘maydi. Kalit bo‘yicha shardlaymiz:
+
+```
+shard = hash(kalit) mod N
+```
+
+Bu oddiy usulning muammosi: `N` o‘zgarganda **deyarli barcha kalitlar** joyini o‘zgartiradi.
+10 dan 11 shardga o‘tishda ma’lumotning ~91% i ko‘chishi kerak.
+
+<Deep title="Izchil xeshlash: nega ko'chish 1/N ga tushadi">
+Izchil xeshlashda shardlar ham, kalitlar ham bitta doiraga (hash halqasiga) joylashtiriladi.
+Kalit soat yo‘nalishi bo‘yicha o‘ziga eng yaqin shardga tegishli bo‘ladi.
+
+Yangi shard qo‘shilganda faqat **uning halqadagi qo‘shnisidan** kalitlar ko‘chadi — ya’ni
+o‘rtacha `1/N` qism. 10 dan 11 shardga o‘tishda 91% emas, ~9% ko‘chadi.
+
+Amalda har bir jismoniy shard halqada 100–200 ta **virtual tugun** sifatida ko‘rsatiladi —
+aks holda yuk notekis taqsimlanadi (ba’zi shardlar halqaning katta bo‘lagini oladi).
+
+Muqobil usul — **jadval asosida marshrutlash**: kalit maydoni 4096 ta mantiqiy bo‘lakka
+bo‘linadi, alohida jadval har bir bo‘lak qaysi shardda ekanini ko‘rsatadi. Ko‘chirish
+bo‘lak darajasida, nazorat ostida bajariladi. Ko‘p yirik tizimlar aynan shu usulni tanlaydi:
+u izchil xeshlashdan sodda va bashoratliroq.
+</Deep>
+</Step>
+
+<Step n="7" title="Bloom filtri — yo'q kalitlarni tez rad etish" gain="Mavjud bo'lmagan kalitlar bazaga umuman yetib bormaydi" cost="Xotira; noto'g'ri ijobiy javoblar; o'chirish qo'llab-quvvatlanmaydi">
+
+Salbiy keshlash (2-qadam) yordam beradi, lekin skaner **har safar yangi** kalit so‘raydi —
+kesh unga bo‘sh.
+
+Bloom filtri — ehtimollik strukturasi: “bu kalit **aniq yo‘q**” yoki “**bo‘lishi mumkin**”
+degan javob beradi. Birinchi javob 100% ishonchli, ya’ni yo‘q kalitlarni bazaga
+yubormasdan rad etish mumkin.
+
+<Calc title="Bloom filtri hajmi" result="6 milliard kalit uchun 7.2 GB (1% xato) yoki 3.6 GB (10% xato). Shard bo'yicha bo'linsa, har bir tugunga 720 MB — maqbul">{`Formula: bit_soni = -n x ln(p) / (ln2)^2
+
+n = 6e9 kalit
+p = 0.01 (1% noto'g'ri ijobiy):
+  bit/element = -ln(0.01) / 0.4805 = 9.59
+  jami = 6e9 x 9.59 = 5.75e10 bit = 7.2 GB
+
+p = 0.1 (10%):
+  bit/element = 2.303 / 0.4805 = 4.79
+  jami = 3.6 GB
+
+Xesh funksiyalar soni: k = (m/n) x ln2 = 9.59 x 0.693 = ~7`}</Calc>
+
+10% noto‘g‘ri ijobiy ham yetarli: skaner so‘rovlarining 90% i darhol rad etiladi, qolgan
+10% i bazaga boradi va u yerda topilmaydi. Yuk 10 barobar kamayadi, xotira esa ikki barobar
+kam ketadi.
+
+<Callout type="ogoh" title="Bloom filtridan o'chirib bo'lmaydi">
+Standart Bloom filtridan element olib tashlash mumkin emas — bir nechta element bir xil
+bitlarni baham ko‘radi. Havola o‘chirilganda filtr baribir “bo‘lishi mumkin” deydi
+(bu xavfsiz: baza tekshiradi). Agar o‘chirish kerak bo‘lsa, **Counting Bloom filter** yoki
+**Cuckoo filter** ishlatiladi — ular xotiradan ko‘proq yeydi.
+
+Amalda filtr davriy ravishda (masalan kunda bir marta) noldan qayta quriladi.
+</Callout>
+</Step>
+
+<Step n="8" title="Analitika quvuri — redirect yo'lidan chiqarish" gain="Redirect 2 ms da qoladi; statistika buzilsa ham havolalar ishlaydi" cost="Oxir-oqibat izchillik: statistika bir necha daqiqa kechikadi">
+
+5.3-bo‘limdagi muammo: har bosishda bazaga yozish redirect‘ni o‘ldiradi.
+
+<Arch
+  title="Bosish hodisasining yo'li"
+  layers={[
+    { name: "Redirect serveri", boxes: ["302 javobini darhol qaytaradi", "Hodisani mahalliy buferga qo'yadi"], note: "Foydalanuvchi kutmaydi. Bufer to'lsa — hodisa TASHLANADI (bu to'g'ri qaror)." },
+    { name: "Oqim", boxes: ["Kafka yoki shunga o'xshash navbat"], note: "Paketlab yuboriladi: 1000 ta hodisa yoki 1 soniya — qaysi biri oldin bo'lsa." },
+    { name: "Qayta ishlash", boxes: ["Real-time agregatsiya", "Xom hodisalarni arxivga yozish"], note: "Ikki yo'l: tezkor hisoblagichlar va batafsil tahlil uchun xom ma'lumot." },
+    { name: "Saqlash", boxes: ["Hisoblagichlar (Redis)", "OLAP baza", "Obyekt xotira (xom)"], note: "Har biri boshqa savolga javob beradi." },
+  ]}
+/>
+
+<Calc title="Analitika hajmi" result="Kuniga 66 GB xom hodisa. Yiliga 24 TB — xom holda saqlash qimmat, shuning uchun agregatsiya va namuna olish kerak">{`Bitta hodisa:
+  kalit(7) + vaqt(8) + IP(16) + User-Agent(~120) +
+  referrer(~60) + geo(~10) = ~220 bayt
+
+O'rtacha yuk: 3860 bosish/s
+  3860 x 220 = 849 KB/s = 73 GB / kun
+Cho'qqida: 19 300 x 220 = 4.2 MB/s`}</Calc>
+
+<Deep title="Noyob tashrif buyuruvchilarni qanday sanaymiz">
+“Bu havolani nechta **noyob** odam bosgan?” degan savol qiyin: aniq javob uchun barcha
+identifikatorlarni saqlash kerak. 10 million bosishli havola uchun bu 160 MB — bitta havola
+uchun.
+
+**HyperLogLog** buni ehtimollik bilan yechadi: 12 KB xotirada milliardlab elementni ~2%
+xato bilan sanaydi. 10 000 barobar tejash.
+
+```
+PFADD link:K7xQm2:visitors <foydalanuvchi_id>
+PFCOUNT link:K7xQm2:visitors   ->  1 043 219 (±2%)
+```
+
+Yana bir yutuq: HLL strukturalarini **birlashtirish** mumkin. Kunlik HLL larni qo‘shib,
+aniq noyob elementlarni qayta sanamasdan haftalik yoki oylik ko‘rsatkich olinadi. Oddiy
+hisoblagichlar bilan bu mumkin emas (kunlik summalar noyoblikni bermaydi).
+</Deep>
+</Step>
+
+<Step n="9" title="Maxsus kalitlar (custom alias)" gain="Mahsulotning eng ko'p so'raladigan xususiyati" cost="Poyga holati, band so'zlar, brend nizolari">
+
+`dars.uz/kafka` — foydalanuvchi o‘zi tanlagan kalit. Uchta muammo darhol paydo bo‘ladi:
+
+1. **Poyga holati**: ikki foydalanuvchi bir vaqtda bir xil kalitni so‘raydi. Yechim —
+   bazadagi unikal cheklov (`UNIQUE`), ilovada tekshirish emas. “Avval tekshirib, keyin
+   yozish” naqshi **har doim** poyga holatiga olib keladi
+2. **Band so‘zlar**: `api`, `login`, `admin`, `static`, `health` — bular marshrutlar bilan
+   to‘qnashadi. Qora ro‘yxat shart, va u marshrutlar bilan birga o‘sib borishi kerak
+3. **Kalit maydonlarining aralashishi**: generatsiya qilingan kalit maxsus kalit bilan
+   to‘qnashmasligi uchun ular alohida maydonda bo‘lishi mumkin (masalan generatsiya
+   qilinganlari doim 7 belgi, maxsuslari esa 3–6 yoki 8+)
+
+<Callout type="maslahat" title="Marshrutlash tartibi">
+`/health` va `/api/...` kabi tizim marshrutlari **kalit qidiruvidan oldin** tekshirilishi
+kerak. Aks holda kimdir `health` kalitini band qilib olsa, monitoring tizimingiz
+ishlamay qoladi. Eng xavfsizi — kalitlarni prefiksda ajratish (`/r/K7xQm2`), lekin bu
+havolani uzaytiradi va mahsulot jozibasini kamaytiradi. Ko‘p tizimlar risk evaziga qisqa
+variantni tanlaydi va qattiq qora ro‘yxat yuritadi.
+</Callout>
+</Step>
+
+<Step n="10" title="Muddat, o'chirish va tozalash" gain="Baza cheksiz o'smaydi; huquqiy talablar bajariladi" cost="Fon jarayonlari, tombstone'lar, keshni majburiy tozalash">
+
+Havola o‘chirilganda uch joyda yo‘qolishi kerak: bazada, keshda, chekkada. Eng qiyini —
+oxirgisi (4-qadamdagi izchillik masalasi).
+
+```
+DELETE /api/links/K7xQm2
+  1. Bazada is_active = false        (tombstone, qator o'chirilmaydi)
+  2. Keshdan o'chirish yoki NEGATIVE qilib belgilash
+  3. Chekka nuqtalarga purge signali
+  4. Bloom filtridan chiqarilmaydi (o'chirib bo'lmaydi - 7-qadam)
+```
+
+Nega qator butunlay o‘chirilmaydi: kalit **qayta ishlatilmasligi** kerak. Aks holda eski
+havolani bosgan odam butunlay boshqa saytga tushadi — bu ham chalkashlik, ham xavfsizlik
+muammosi. Tombstone kalitni abadiy band qilib turadi.
+
+Muddati o‘tgan havolalarni tozalash fon jarayoni orqali, kichik paketlarda bajariladi —
+bir vaqtda million qatorni o‘chirish bazani bloklaydi.
+</Step>
+
+<Step n="11" title="Suiiste'molga qarshi himoya" gain="Domen qora ro'yxatga tushmaydi" cost="Yaratish yo'liga kechikish; noto'g'ri bloklashlar">
+
+Bepul qisqartiruvchi — fishing va zararli dastur uchun mukammal vosita: haqiqiy manzil
+yashiriladi, domeningizning obro‘si esa hujumchiga ishlaydi.
+
+Agar domeningiz qora ro‘yxatga tushsa (Google Safe Browsing, brauzer filtrlari), **barcha
+havolalaringiz** — halol foydalanuvchilarniki ham — brauzerda ogohlantirish bilan ochiladi.
+Bu mahsulot uchun halokat.
+
+| Chora | Qachon ishlaydi | Narxi |
+| --- | --- | --- |
+| Yaratishda URL ni skanerlash | Ma’lum zararli manzillar | Yaratishga 100–300 ms |
+| Davriy qayta skanerlash | Manzil keyin zararli bo‘lsa | Fon yuki |
+| Domenlar qora ro‘yxati | Ma’lum yomon domenlar | Yangilab turish kerak |
+| Oraliq ogohlantirish sahifasi | Shubhali havolalar | Redirect tezligi yo‘qoladi |
+| Yaratish uchun ro‘yxatdan o‘tish | Anonim suiiste’molni kamaytiradi | Konversiya tushadi |
+| Tezlik cheklovi (IP, akkaunt) | Ommaviy yaratish | Halol foydalanuvchiga ham ta’sir |
+
+<Deep title="Tezlik cheklovi algoritmlari: qaysi birini tanlash">
+
+**Sobit oyna (fixed window)** — eng oddiy: `INCR key:user:minute`, muddat 60 s. Muammosi
+chegarada:
+
+```
+Limit: daqiqasiga 100 ta
+
+12:00:59 da 100 ta so'rov  (birinchi oyna)
+12:01:00 da 100 ta so'rov  (ikkinchi oyna)
+-> 2 soniyada 200 ta so'rov o'tdi, limit esa 100 edi
+```
+
+**Siljituvchi oyna jurnali (sliding window log)** — har bir so‘rov vaqtini saqlaymiz, eski
+yozuvlarni tashlaymiz. Aniq, lekin xotira: 100 000 foydalanuvchi × 100 ta vaqt belgisi =
+80 MB, va har so‘rovda ro‘yxatni tozalash kerak.
+
+**Siljituvchi oyna hisoblagichi** — oldingi va joriy oynani og‘irlik bilan qo‘shamiz:
+
+```
+joriy oynaning 30% i o'tgan bo'lsa:
+  taxminiy = oldingi_oyna x 0.7 + joriy_oyna
+```
+
+Aniq emas, lekin xotirasi ikkita hisoblagich va chegara muammosini yechadi. Amalda eng ko‘p
+ishlatiladigan variant.
+
+**Token bucket** — chelakka doimiy tezlikda token quyiladi, har so‘rov bittasini oladi.
+Portlashlarga (burst) ruxsat beradi, lekin o‘rtacha tezlikni ushlaydi — API uchun eng
+qulay xatti-harakat.
+
+**Taqsimlangan muhitdagi tuzoq:** “o‘qish → tekshirish → yozish” ketma-ketligi poyga
+holatiga olib keladi. Bir nechta server bir vaqtda tekshirsa, limit ikki-uch barobar oshib
+ketadi. Yechim — Redis‘da **Lua skript** yoki atomik `INCR` + `EXPIRE`: tekshirish va
+yangilash bitta bo‘linmas amalda bo‘lishi shart.
+</Deep>
+</Step>
+
+<Step n="12" title="Ko'p mintaqali yozish" gain="Bitta mintaqa tushsa ham yaratish ishlaydi" cost="Konflikt: bir xil kalit ikki mintaqada band bo'lishi mumkin">
+
+O‘qish yo‘li allaqachon global (4-qadam). Yozish esa odatda bitta mintaqada qoladi — bu
+oddiy va xavfsiz. Ko‘p mintaqada yozish kerak bo‘lsa, kalit to‘qnashuvi muammosi paydo
+bo‘ladi.
+
+Eng oddiy va ishonchli yechim — **kalit maydonini mintaqalar orasida oldindan bo‘lish**:
+
+```
+Mintaqa A: kalitning birinchi belgisi [a-h] dan
+Mintaqa B: [i-p] dan
+Mintaqa C: [q-z, A-Z, 0-9] dan
+```
+
+Endi ikki mintaqa hech qachon bir xil kalitni bera olmaydi va koordinatsiya umuman kerak
+emas. Bu — taqsimlangan tizimlardagi umumiy naqsh: **konfliktni yechish o‘rniga, uni
+imkonsiz qilish**.
+</Step>
+
+<Step n="13" title="Metama'lumot: oldindan ko'rish va QR" gain="Havola ijtimoiy tarmoqda chiroyli ko'rinadi" cost="Tashqi sahifani o'qish - sekin va xavfli">
+
+Ijtimoiy tarmoqlar havolani ochganda `og:title`, `og:image` teglarini qidiradi. Qisqa
+havola bo‘lsa, ular **sizning** serveringizdan so‘raydi.
+
+Ikki variant: har so‘rovda maqsad sahifani o‘qish (sekin, ishonchsiz, SSRF xavfi) yoki
+metama’lumotni **yaratish paytida bir marta** olib, saqlab qo‘yish. Ikkinchisi to‘g‘ri.
+
+<Callout type="ogoh" title="SSRF xavfi">
+Foydalanuvchi bergan URL ni serverdan o‘qish — klassik **SSRF** (Server-Side Request
+Forgery) zaifligi. Kimdir `http://169.254.169.254/...` (bulut metama’lumot xizmati) yoki
+ichki tarmoq manzilini bersa, serveringiz maxfiy ma’lumotni o‘qib berishi mumkin.
+
+Himoya: DNS yechimidan keyin IP ni tekshirish (xususiy diapazonlarni rad etish), redirect
+zanjirini ham har qadamda tekshirish, alohida tarmoq segmentidan so‘rov yuborish, javob
+hajmi va vaqtini cheklash.
+</Callout>
+
+<Deep title="Maxsus domenlar: TLS sertifikatlarini masshtabda boshqarish">
+
+Mijozlar o‘z domenlarini xohlaydi: `go.brand.uz` CNAME orqali sizning tizimingizga ishora
+qiladi. Mahsulot uchun kuchli xususiyat, lekin ortida jiddiy infratuzilma bor.
+
+Har bir maxsus domen uchun **TLS sertifikati** kerak. 100 000 mijoz domeni bo‘lsa:
+
+```
+Sertifikat muddati: 90 kun
+Yangilash 60-kunda boshlanadi
+Kunlik yangilash: 100 000 / 60 = ~1670 sertifikat / kun
+```
+
+Jarayon to‘liq avtomat bo‘lishi shart va unda bir nechta tuzoq bor:
+
+- **ACME tezlik cheklovlari** — sertifikat markazlari haftalik limit qo‘yadi; yangilashlarni
+  vaqt bo‘ylab tekis taqsimlash kerak, aks holda limitga urilib qolasiz
+- **Domen tasdiqlash** — mijoz DNS yozuvini noto‘g‘ri qo‘ysa, tasdiqlash muvaffaqiyatsiz
+  bo‘ladi. Buni **oldindan** aniqlab xabar berish kerak, sertifikat tugagandan keyin emas
+- **SNI va sertifikat saqlash** — chekka nuqtalar minglab sertifikatni xotirada ushlashi va
+  so‘rov kelganda to‘g‘risini tanlashi kerak
+- **Nosozlik oqibati og‘ir** — sertifikat yangilanmasa, mijozning **barcha havolalari**
+  brauzerda “xavfli sayt” ogohlantirishi bilan ochiladi
+
+Shuning uchun sertifikat quvuri alohida monitoring, alert va qayta urinish mantiqiga ega
+bo‘lishi kerak — bu mahsulotning eng jim, lekin eng xavfli qismlaridan biri.
+</Deep>
+</Step>
+
+<Step n="14" title="Kalit maydonini kengaytirish va migratsiya" gain="Tizim o'n yillar yashaydi" cost="Oldindan o'ylanmasa, keyin juda qimmat">
+
+Kalit uzunligi sobit bo‘lmasligi kerak. To‘g‘ri yondashuv: **uzunlik ma’lumotdan
+o‘qiladi**, kodga qotirilmaydi.
+
+```
+Yechish: kalit uzunligiga qarab emas, aynan kalit bo'yicha qidiriladi
+  -> 5, 6, 7, 8 belgili kalitlar bir vaqtda yashaydi
+
+Generatsiya: joriy uzunlik konfiguratsiyada
+  -> maydon 20% to'lganda uzunlik bir belgiga oshiriladi
+```
+
+Shu tarzda eski havolalar abadiy ishlaydi (bu majburiy shart), yangi kalitlar esa
+kerakli maydonda generatsiya qilinadi.
+
+<Deep title="Bitta bazadan shardlangan bazaga o'tish: xavfsiz migratsiya">
+
+Bu operatsiya ishlab turgan tizimda bajariladi va xatoga joy yo‘q — havola yo‘qolsa, u chop
+etilgan hamma joyda o‘ladi.
+
+```
+1-bosqich: IKKI TOMONLAMA YOZISH
+   Yangi yozuvlar eski VA yangi bazaga yoziladi
+   O'qish hali eskidan. Yangi bazaning to'g'riligi kuzatib boriladi
+
+2-bosqich: TO'LDIRISH (backfill)
+   6 milliard qator paketlab ko'chiriladi
+   50 000 qator/s tezlikda: 6e9 / 5e4 = 120 000 s = ~33 soat
+   Asosiy bazaga ta'sir qilmasligi uchun replikadan o'qiladi
+
+3-bosqich: TEKSHIRISH
+   Tasodifiy namuna solishtiriladi (masalan 1 million qator)
+   Diapazonlar bo'yicha nazorat summalari
+   Farq topilsa - sabab aniqlanmaguncha davom etilmaydi
+
+4-bosqich: O'QISHNI BOSQICHMA-BOSQICH KO'CHIRISH
+   1% -> 10% -> 50% -> 100%
+   Har bosqichda 404 darajasi va kechikish kuzatiladi
+
+5-bosqich: ESKI BAZANI O'CHIRISH
+   Kamida bir necha hafta kutiladi - orqaga qaytish imkoni saqlanadi
+```
+
+Eng ko‘p qilinadigan xato — 3-bosqichni tashlab ketish. Ikki tomonlama yozishdagi mayda
+xatolar (masalan tranzaksiya rollback bo‘lganda faqat bitta bazaga yozilib qolishi)
+sezilmay to‘planadi va faqat o‘qish ko‘chirilgandan keyin 404 lar shaklida chiqadi —
+o‘shanda sababni topish ancha qiyin.
+</Deep>
+</Step>
+
+<Check q="Kesh urish darajasi 95% dan 80% ga tushdi. Nima bo'lgan bo'lishi mumkin va bu bazaga qanday ta'sir qiladi?">
+**Ta’sir:** bazaga yuk `19 300 × 0.05 = 965` dan `19 300 × 0.20 = 3860` ga chiqadi —
+**4 barobar**. Bu ko‘pincha bazani to‘yinish nuqtasiga olib boradi.
+
+**Sabablari** (ehtimollik bo‘yicha):
+1. Kesh tugunlaridan biri tushgan yoki qayta ishga tushgan — sovuq kesh
+2. TTL noto‘g‘ri qisqartirilgan (masalan 24 soatdan 1 soatga)
+3. Kesh xotirasi to‘lib, evicton boshlangan — havolalar soni o‘sgan bo‘lishi mumkin
+4. Trafik naqshi o‘zgargan: ommaviy skanerlash yoki bot hujumi (salbiy keshlash yo‘q bo‘lsa)
+5. Deploy paytida kesh tozalangan
+
+Diagnostika: kesh xotirasi va eviction soni, TTL taqsimoti, topilmagan kalitlarning
+ulushi (skanerlarni ko‘rsatadi), kesh tugunlari holati.
+</Check>
+
+## 7. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Mijoz", boxes: ["Brauzer", "Mobil ilova", "QR skaner"] },
+    { name: "Chekka (anycast, 100+ nuqta)", boxes: ["TLS terminatsiya", "Chekka KV: kalit -> URL", "302 javob"], note: "Redirect'larning 90% i shu yerda tugaydi va origin'ga umuman bormaydi." },
+    { name: "Origin — o'qish yo'li", boxes: ["L1 kesh (jarayon)", "L2 kesh (Redis)", "Bloom filtri"], note: "Chekkada topilmagan va yangi kalitlar shu yerga tushadi." },
+    { name: "Origin — yozish yo'li", boxes: ["API: yaratish, tahrirlash", "KGS (kalit diapazonlari)", "URL skanerlash"], note: "Yuk kichik (200/s), lekin izchillik talabi yuqori." },
+    { name: "Saqlash", boxes: ["Shardlangan SQL (manba haqiqat)", "O'qish replikalari"], note: "3.7 TB, 10-16 shard, har birida replika." },
+    { name: "Analitika", boxes: ["Hodisalar navbati", "Oqim agregatsiyasi", "OLAP + xom arxiv"], note: "Redirect yo'lidan butunlay ajratilgan." },
+  ]}
+/>
+
+### 7.1 Ikki yo‘lning qiyosi
+
+<Versus
+  left={{
+    title: "O'qish yo'li (19 300/s)",
+    points: [
+      "Chekkada tugaydi, origin'ga kamdan-kam boradi",
+      "Eventual consistency maqbul",
+      "Kesh urishi 95%+ bo'lishi shart",
+      "Mavjudlik 99.99% — eng muhim talab",
+    ],
+  }}
+  right={{
+    title: "Yozish yo'li (200/s)",
+    points: [
+      "Bitta mintaqada, oddiy va tranzaksion",
+      "Kuchli izchillik: kalit takrorlanmasligi kerak",
+      "Kechikish 100-300 ms maqbul (skanerlash bilan)",
+      "Mavjudlik 99.9% yetarli",
+    ],
+  }}
+/>
+
+Bu ajratish — darsning asosiy g‘oyasi. Ikki yo‘lning **talablari butunlay boshqacha**,
+shuning uchun ular boshqacha loyihalanadi. Ularni bitta “xizmat” deb qarash — birinchi
+arxitektura xatosi.
+
+### 7.2 Mahsulot qatlami: havola faqat redirect emas
+
+Ishlab chiqarishdagi qisqartiruvchi bir nechta qo‘shimcha talabni ko‘taradi va ularning
+har biri arxitekturaga tegadi:
+
+**UTM va marketing parametrlari.** Havola yaratilganda maqsad URL ga `utm_source`,
+`utm_campaign` kabi parametrlar qo‘shiladi. Muhim tafsilot: bu parametrlarni **saqlash
+paytida** qo‘shish kerak, redirect paytida emas — aks holda har bir bosishda satr
+manipulyatsiyasi bajariladi va kesh kaliti murakkablashadi.
+
+**Mobil ilova havolalari.** Foydalanuvchi telefonda havolani ochsa, brauzer emas, ilova
+ochilishi kerak. Bu Universal Links (iOS) va App Links (Android) orqali ishlaydi va
+domendan maxsus fayl talab qiladi (`/.well-known/apple-app-site-association`). Ya’ni
+sizning domeningiz endi faqat redirect emas, statik fayl ham xizmat qiladi — va u
+**kalit qidiruvidan oldin** tekshirilishi kerak.
+
+**QR kodlar.** Qisqa havolaning QR kodi kichikroq va ishonchliroq skanerlanadi:
+
+<Calc title="Kalit uzunligi QR kodga qanday ta'sir qiladi" result="Har qo'shimcha belgi QR kodning zichligini oshiradi. Chop etilgan materialda bu skanerlash masofasiga to'g'ridan-to'g'ri ta'sir qiladi">{`QR kod versiyasi belgilar soniga qarab tanlanadi
+(o'rtacha xato tuzatish darajasi, alfanumerik rejim):
+
+  "dars.uz/K7xQm2"                20 belgi -> Versiya 1  (21x21 modul)
+  "dars.uz/K7xQm2b"               21 belgi -> Versiya 2  (25x25)
+  "my-shortener.io/K7xQm2?utm..." 45 belgi -> Versiya 3+ (29x29+)
+
+Bir xil jismoniy o'lchamda:
+  21x21 -> modul kattaroq -> uzoqdan va past sifatli kamera bilan ham o'qiladi
+  29x29 -> modul kichik   -> yaqinroq turish va yaxshi fokus kerak`}</Calc>
+
+**Havola guruhlari va boshqaruv paneli.** Kampaniya bo‘yicha guruhlash, birgalikda
+statistika, ommaviy import (CSV orqali 100 000 havola) — bularning har biri yozish yo‘liga
+yuk qo‘shadi. Ommaviy import alohida navbat orqali, tezligi cheklangan holda bajarilishi
+kerak; aks holda bitta mijoz KGS diapazonlarini tugatib, boshqalarning yaratishini
+to‘xtatib qo‘yadi.
+
+## 8. Ishonchlilik: nima buziladi
+
+### 8.1 Cache stampede (thundering herd)
+
+Hot kalitning TTL i tugadi. Shu lahzada 50 000 ta so‘rov keshda topmaydi va **bir vaqtda**
+bazaga yuguradi.
+
+<Calc title="Bitta TTL tugashining narxi" result="Bitta kalitning muddati tugashi bazaga 50 000 bir vaqtli so'rov yuboradi — bu deyarli har doim yiqilish demak">{`Hot kalit: 50 000 so'rov / soniya
+Bazadan o'qish vaqti: 5 ms
+
+TTL tugagan lahzada:
+  5 ms ichida keladigan so'rovlar: 50 000 x 0.005 = 250 ta
+  ...lekin ular ham javob kutadi, shuning uchun
+  navbat o'sib boradi va baza ulanishlari tugaydi
+
+Himoyasiz tizimda: baza ulanish hovuzi (100-500) bir soniyada tugaydi`}</Calc>
+
+Uchta himoya, birgalikda ishlatiladi:
+
+1. **Single-flight** — bitta kalit uchun faqat bitta so‘rov bazaga boradi, qolganlari
+   uning natijasini kutadi
+2. **Ehtimolli erta yangilash** — TTL tugashiga yaqin har bir so‘rov kichik ehtimollik
+   bilan keshni yangilaydi. Natijada yangilash bitta lahzada emas, vaqt bo‘ylab tarqaladi
+3. **Stale-while-revalidate** — eskirgan qiymat qaytariladi, yangilash fonda ketadi.
+   Redirect uchun bu mukammal: bir necha soniya eski manzil hech kimga zarar qilmaydi
+
+```python
+def resolve_with_swr(key):
+    entry = cache.get(key)
+    if entry and not entry.expired:
+        return entry.url
+    if entry and entry.stale_ok:
+        refresh_in_background(key)     # foydalanuvchi kutmaydi
+        return entry.url
+    with single_flight(key):           # faqat bitta so'rov bazaga boradi
+        return load_from_db(key)
+```
+
+### 8.2 Nosozliklar taksonomiyasi
+
+| Nosozlik | Belgisi | Sabab | Chora |
+| --- | --- | --- | --- |
+| Kesh tuguni tushdi | Bazaga yuk 20× oshdi | Apparat, OOM | Kesh replikasi, bazaga rate limit, degradation |
+| Cache stampede | Baza ulanishlari tugadi | TTL bir vaqtda tugadi | Single-flight, SWR, TTL ga tasodifiy qo‘shimcha |
+| Hot key | Bitta Redis tuguni 100% | Viral havola | L1 kesh, chekka kesh |
+| Baza shardi tushdi | Kalitlarning 1/N qismi ishlamaydi | Apparat, failover | Replikaga o‘tish, kesh eski qiymatni beradi |
+| Chekka eskirdi | O‘chirilgan havola ishlayapti | Purge yetib bormadi | Majburiy invalidatsiya, qisqa TTL kritik havolalarga |
+| Domen qora ro‘yxatda | Barcha havolalarda ogohlantirish | Fishing suiiste’moli | Skanerlash, tez o‘chirish, obro‘ni tiklash jarayoni |
+| Analitika navbati to‘ldi | Statistika kechikyapti | Cho‘qqi yoki iste’molchi sekin | Hodisalarni tashlash (redirect ishlashda davom etadi) |
+| Kalit maydoni tugadi | Yozish xatolari o‘syapti | Uzunlik oshirilmagan | Uzunlikni oshirish (14-qadam) |
+
+### 8.3 Degradatsiya tartibi
+
+<Timeline
+  rows={[
+    { when: "1-bosqich", what: "Analitikani tashlash", why: "Hodisalar buferi to'lsa, ular yo'qoladi. Redirect ishlayveradi — bu to'g'ri ustuvorlik." },
+    { when: "2-bosqich", what: "Eskirgan keshdan xizmat qilish", why: "Baza javob bermasa, TTL o'tgan qiymat baribir to'g'ri bo'lish ehtimoli 99.9%." },
+    { when: "3-bosqich", what: "Yaratishni to'xtatish", why: "Yozish yo'li o'chadi, o'qish ishlaydi. Havolalar — asosiy funksiya." },
+    { when: "4-bosqich", what: "Faqat chekka keshdan ishlash", why: "Origin butunlay tushsa ham, chekkadagi havolalar ishlab turadi." },
+  ]}
+/>
+
+Bu tartibning mantig‘i bitta: **chop etilgan havola ishlashi kerak**. U bannerda, vizitkada,
+kitobda bo‘lishi mumkin. Yangi havola yaratilmasligi — noqulaylik; eski havola
+ishlamasligi — halokat.
+
+### 8.4 Bu tizimni qanday sinash kerak
+
+Testlar odatdagi CRUD ilovasidan farq qiladi, chunki eng qimmat xatolar **poyga holatlari
+va yuk ostidagi xatti-harakatda**.
+
+| Test turi | Nimani tekshiradi | Qanday |
+| --- | --- | --- |
+| Birlik | Kalit generatsiyasining taqsimoti | 1M kalit yaratib, belgilar taqsimotini va takrorlanishini tekshirish |
+| Birlik | To‘qnashuvda qayta urinish | Bazani majburan `UNIQUE` xatosi qaytarishga majburlash |
+| Integratsiya | Maxsus kalit poygasi | Ikki parallel so‘rov, bittasi muvaffaqiyatli bo‘lishi shart |
+| Integratsiya | Kesh invalidatsiyasi | O‘chirilgan havola keshdan ham yo‘qolganini tekshirish |
+| Yuk | Cho‘qqidagi p99 | Kesh issiq va sovuq holatda alohida |
+| Yuk | Cache stampede | Bitta hot kalitga TTL tugash lahzasida ommaviy so‘rov |
+| Xaos | Kesh tuguni tushishi | Bazaga yuk oshadi, tizim yiqilmasligi kerak |
+| Xaos | Shard failover | Kalitlarning `1/N` qismi keshdan xizmat olishda davom etadimi |
+| Sintetik | Doimiy nazorat | Bir necha mintaqadan har 30 soniyada test havolasini ochish |
+
+<Callout type="maslahat" title="Sintetik monitoring — eng arzon sug'urta">
+Har bir mintaqada bitta “kanareyka” havola bo‘lsin va u har 30 soniyada tashqaridan
+ochilib tekshirilsin: javob kodi 302 mi, `Location` to‘g‘rimi, kechikish qancha.
+
+Bu oddiy tekshiruv metrikalar ko‘rsatmaydigan muammolarni topadi: DNS nosozligi, TLS
+sertifikati muddati, chekka konfiguratsiyasi xatosi, butun mintaqaning uzilishi. Ichki
+metrikalar bunday holatlarda “hammasi joyida” deb ko‘rsatishi mumkin, chunki so‘rov sizga
+umuman yetib kelmayapti.
+</Callout>
+
+## 9. Xavfsizlik
+
+### 9.1 Ochiq redirect (open redirect)
+
+Sizning domeningiz istalgan manzilga yo‘naltiradi. Bu **mahsulotning maqsadi**, lekin ayni
+paytda klassik zaiflik:
+
+```
+Fishing xati:
+  "Bankingizdan xabar: hisobingizni tasdiqlang -> dars.uz/K7xQm2"
+
+Foydalanuvchi ishonchli domenni ko'radi, lekin soxta saytga tushadi.
+```
+
+Bundan tashqari, ba’zi saytlar ishonch qarorlarini domen bo‘yicha qabul qiladi (masalan
+`Referer` tekshiruvi yoki OAuth `redirect_uri` oq ro‘yxati). Sizning domeningiz ularning
+himoyasini chetlab o‘tish vositasiga aylanishi mumkin.
+
+Choralar: yaratishda skanerlash, shubhali havolalarga oraliq ogohlantirish sahifasi,
+shikoyat mexanizmi va tez o‘chirish, hamda `rel="noopener noreferrer"` va `Referrer-Policy`
+sarlavhalari.
+
+### 9.2 Kalitlarni sanab chiqish (enumeration)
+
+Ketma-ket yoki qisqa kalitlar bo‘lsa, hujumchi `/aaa`, `/aab`, `/aac` deb sanab chiqib,
+odamlarning shaxsiy havolalarini (hujjatlar, hisob-kitoblar, buyurtma sahifalari)
+to‘playdi. Bu **nazariy emas** — real hodisalarda milliondan ortiq shaxsiy hujjat shu yo‘l
+bilan topilgan.
+
+Choralar: yetarli uzun va tasodifiy kalitlar (3.4-bo‘lim), IP bo‘yicha tezlik cheklovi,
+404 javoblarga sun’iy kechikish, va eng muhimi — foydalanuvchilarga “qisqa havola maxfiy
+emas” ekanini aniq aytish.
+
+### 9.3 Maxfiylik
+
+| Xavf | Tafsilot | Chora |
+| --- | --- | --- |
+| URL da maxfiy ma’lumot | Token, sessiya, ism URL da bo‘lishi mumkin | URL ni loglarda maskalash, saqlash muddati |
+| Referrer sizishi | Maqsad sayt qaysi qisqa havoladan kelganini ko‘radi | `Referrer-Policy: no-referrer` |
+| IP va qurilma yozuvlari | Analitika shaxsiy ma’lumot to‘playdi | Anonimlashtirish, saqlash muddati, huquqiy asos |
+| Havola ommaviyligi | Qisqa havola — amalda ochiq | Foydalanuvchini ogohlantirish; parol bilan himoya opsiyasi |
+
+### 9.4 SSRF va metama’lumot
+
+13-qadamdagi ogohlantirish shu yerga ham tegishli: foydalanuvchi bergan URL ni server
+o‘qiganda ichki tarmoqqa kirish yo‘li ochiladi. Tekshiruv **DNS yechimidan keyin**, IP
+darajasida bo‘lishi kerak — domen nomi bo‘yicha tekshirish yetarli emas, chunki hujumchi
+o‘z domenini ichki IP ga yo‘naltirishi mumkin (DNS rebinding).
+
+## 10. Iqtisod
+
+<Calc title="Oyiga 10 milliard redirect qancha turadi" result="Milliard redirect uchun ~$400. Bitta redirect 0.00004 tsent — ChatGPT javobidan (0.21 tsent) taxminan 5000 barobar arzon">{`Oylik hajm: 3860/s x 2.59e6 s = ~10 000 000 000 redirect
+
+Hisoblash (chekka + origin):
+  Chekkada 90% (so'rov narxi ~$0.30 / 1M): 9e9 x 0.3/1e6 = $2700
+  Origin: 12 ta server x $150 = $1800
+Saqlash:
+  3.7 TB x 3 replika x $0.10/GB = $1110
+Kesh:
+  2 x 32 GB Redis = $400
+Trafik (egress):
+  10e9 x ~1 KB = 10 TB x $0.08/GB = $800
+Analitika:
+  Qayta ishlash va saqlash (siqilgan) = ~$600
+=====================================
+Jami: ~$7400 / oy
+Bitta redirect: $0.00000074`}</Calc>
+
+Ikkita xulosa:
+
+1. **Eng katta xarajat — chekka so‘rovlari va trafik**, saqlash emas. Ya’ni
+   optimallashtirish javob hajmini kamaytirishdan (bo‘sh tana, minimal sarlavhalar) va
+   brauzer keshidan (301 masalasi) boshlanadi
+2. **Bitta havola juda arzon**, lekin bepul emas. Bepul tarifda cheksiz havola berish —
+   suiiste’molchilar uchun taklifnoma. Shuning uchun deyarli barcha qisqartiruvchilar
+   yaratishni cheklaydi, o‘qishni esa cheklamaydi
+
+## 11. Sig‘im rejalashtirish
+
+<Calc title="Necha server, necha shard" result="Cho'qqida 4 ta origin serveri yetarli, lekin mintaqaviy zaxira va yuklamani 60% da ushlash uchun 12 ta olinadi">{`Redirect cho'qqisi: 19 300 / soniya
+Chekka 90% ni yutadi -> origin'ga 1930 / soniya
+
+Bitta origin serveri (kesh urishi bilan): ~10 000 redirect/s
+  Kerak: 1930 / 10 000 = 0.2 server
+
+Lekin:
+  - kesh sovuq bo'lgan holat uchun zaxira      x3
+  - 3 mintaqa uchun                            x3
+  - yuklama 60% dan oshmasin                   /0.6
+  => ~12 server
+
+Shardlar:
+  3.7 TB / 300 GB (qulay shard hajmi) = 13 -> 16 shard (2 ning darajasi)
+  Har birida 2 ta replika = 48 instansiya`}</Calc>
+
+<Deep title="Nega shard soni 2 ning darajasi qilib olinadi">
+16, 32, 64 kabi sonlar tanlanadi, chunki **shardni ikkiga bo‘lish** eng oddiy o‘sish
+operatsiyasi: bitta shard ikkitaga bo‘linganda faqat o‘sha shardning ma’lumoti ko‘chadi va
+`hash mod 2N` formulasi eski taqsimotni buzmaydi (kalitlarning yarmi joyida qoladi).
+
+Muqobil yondashuv — **mantiqiy shardlar**: boshidanoq 1024 ta mantiqiy shard yaratiladi va
+ular jismoniy tugunlarga xaritalanadi. O‘sish — xaritani o‘zgartirish, ma’lumot esa
+mantiqiy shard butunligicha ko‘chadi. Bu usul yiriklashuvda ancha qulay, chunki qayta
+shardlash formulani emas, jadvalni o‘zgartiradi.
+</Deep>
+
+## 12. Kuzatuv va sifat
+
+Har bir redirect uchun yozilishi kerak:
+
+```
+kalit, javob_kodi (302 | 404 | 410 | 429)
+manba (chekka | L1 | L2 | baza)
+kechikish_ms, mintaqa, chekka_nuqtasi
+bot_mi (User-Agent tahlili)
+```
+
+Panellarda:
+
+| Metrika | Nega muhim | Ogohlantirish chegarasi |
+| --- | --- | --- |
+| Redirect p50 / p95 / p99 | Asosiy foydalanuvchi tajribasi | p99 > 100 ms |
+| Kesh urish darajasi (L1, L2, chekka) | Bazaga yukni belgilaydi | 90% dan past |
+| 404 ulushi | Skaner hujumi yoki buzuq havolalar | 5% dan yuqori |
+| Yaratish kechikishi | Skanerlash sekinlashganini ko‘rsatadi | p95 > 500 ms |
+| Kalit maydoni bandligi | Uzunlikni oshirish vaqti | 15% dan yuqori |
+| Analitika navbati kechikishi | Statistika qanchalik eskirgan | 5 daqiqadan ko‘p |
+| Tashlangan hodisalar | Degradatsiya ishlayaptimi | Har qanday o‘sish |
+
+### 12.1 Bot trafigi: statistikaning eng katta yolg‘oni
+
+Havola ijtimoiy tarmoqqa qo‘yilganda uni **odamlardan oldin robotlar** ochadi: xabar
+oldindan ko‘rish (unfurl) botlari, xavfsizlik skanerlari, arxivlovchilar, raqobatchilarning
+kuzatuv vositalari.
+
+<Calc title="Bot ulushi statistikani qanchalik buzadi" result="Filtrsiz hisoblagich haqiqiy odamlar sonidan ikki barobar katta ko'rsatishi mumkin — mijozga berilgan hisobot esa shu songa asoslanadi">{`Havola messenjer va ijtimoiy tarmoqqa qo'yildi:
+
+  Unfurl botlari (5 ta platforma x 2-3 marta)   ~ 12 ta ochish
+  Xavfsizlik skanerlari                          ~ 5 ta
+  Arxiv va indekslash botlari                    ~ 3 ta
+  ---------------------------------------------------------
+  Odam bosmasidan oldin                          ~ 20 ta "bosish"
+
+Havola 20 ta odam tomonidan bosilsa:
+  Xom hisoblagich: 40
+  Haqiqiy odam:    20
+  Xato:            100%`}</Calc>
+
+Botlarni ajratishning uch usuli, ishonchliligi bo‘yicha:
+
+1. **User-Agent ro‘yxati** — oson, lekin eskiradi va soxtalashtirilishi mumkin
+2. **Xulq-atvor** — bot havolani qo‘yilgan lahzada, bir necha millisoniya ichida ochadi va
+   keyin hech qachon qaytmaydi; odam esa tasodifiy vaqtda keladi
+3. **IP obro‘si** — ma’lum bulut provayderlari diapazonlari va bot tarmoqlari
+
+<Callout type="ogoh" title="Xom ma'lumotni saqlab qoling">
+Filtrlangan hisoblagichni saqlash bilan cheklanmang — **xom hodisalarni ham** saqlang.
+Filtr qoidalari doim o‘zgaradi va yangilanganda tarixni qayta hisoblash imkoni bo‘lishi
+kerak. Aks holda “o‘tgan oyda statistikamiz nega ikki barobar tushdi?” degan savolga javob
+bera olmaysiz — javob “filtr yaxshilandi” bo‘ladi, lekin buni isbotlab bo‘lmaydi.
+</Callout>
+
+## 13. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Analitikani redirect ichida sinxron yozish", pro: "Kod sodda, statistika aniq", con: "Redirect 20 barobar sekinlashadi; analitika tushsa havolalar ham ishlamaydi" },
+    { choice: "Kalitni URL hash'idan olish", pro: "Deduplikatsiya bepul", con: "Ikki foydalanuvchi bitta havolani baham ko'radi; biri ikkinchisinikini o'chira oladi" },
+    { choice: "Ketma-ket kalitlar (aralashtirilmagan)", pro: "To'qnashuv yo'q, oddiy", con: "Enumeration: barcha shaxsiy havolalarni sanab chiqish mumkin" },
+    { choice: "301 redirect (analitika kerak bo'lganda)", pro: "Serverga yuk 5 barobar kam", con: "Analitikaning 80% i yo'qoladi; manzilni hech qachon o'zgartirib bo'lmaydi" },
+    { choice: "'Avval tekshir, keyin yoz' (maxsus kalitlar uchun)", pro: "Ko'rinishidan mantiqiy", con: "Poyga holati: ikki foydalanuvchi bir kalitni oladi. UNIQUE cheklov shart" },
+    { choice: "Yo'q kalitlarni keshlamaslik", pro: "Kesh 'toza' bo'ladi", con: "Skanerlar to'g'ri bazani uradi — cache penetration" },
+    { choice: "O'chirilgan kalitni qayta ishlatish", pro: "Kalit maydoni tejaladi", con: "Eski havola boshqa saytga olib boradi — chalkashlik va xavfsizlik muammosi" },
+    { choice: "Bir xil TTL hamma kalitlarga", pro: "Sozlash oson", con: "Ommaviy TTL tugashi — stampede. Tasodifiy qo'shimcha (jitter) kerak" },
+    { choice: "Foydalanuvchi URL'ini tekshirmasdan o'qish (unfurl)", pro: "Chiroyli oldindan ko'rish", con: "SSRF: ichki tarmoq va bulut metama'lumotiga kirish" },
+  ]}
+/>
+
+## 14. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "7 belgili kalit", pro: "100+ yilga yetadi, to'qnashuv arzon", con: "6 belgidan uzunroq — mahsulot jozibasi biroz kam" },
+    { choice: "Tasodifiy kalit", pro: "Koordinatsiyasiz, taxmin qilinmaydi", con: "Yozishda qo'shimcha tekshiruv" },
+    { choice: "KGS (oldindan generatsiya)", pro: "Yozish yo'li eng tez", con: "Yangi xizmat, restart'da kalitlar yo'qoladi" },
+    { choice: "Chekka redirect", pro: "Kechikish 5 barobar kam, origin himoyalangan", con: "O'chirish va yangilash kechikadi" },
+    { choice: "Salbiy keshlash", pro: "Skanerlardan himoya", con: "Yangi havola bir muddat 404 berishi mumkin" },
+    { choice: "Stale-while-revalidate", pro: "Stampede yo'q, kechikish barqaror", con: "Bir necha soniya eskirgan manzil" },
+    { choice: "HyperLogLog (noyob sanash)", pro: "10 000 barobar kam xotira, birlashtiriladi", con: "~2% xato; aniq son kerak bo'lsa yaramaydi" },
+    { choice: "Bloom filtri", pro: "Yo'q kalitlar bazaga bormaydi", con: "Xotira; o'chirish yo'q; noto'g'ri ijobiy javoblar" },
+    { choice: "Ko'p mintaqali yozish", pro: "Mintaqa tushsa ham yaratish ishlaydi", con: "Kalit maydonini bo'lish kerak; operatsion murakkablik" },
+  ]}
+/>
+
+## 15. Intervyu savollari
+
+### 15.1 Asoslar
+
+<QA q="Kalit uzunligini qanday tanlaysiz? Hisobingizni ko'rsating.">
+Uch qadamdan iborat hisob:
+
+1. **Umr davomidagi havolalar soni**: oyiga 100M × 12 × 5 yil = 6 milliard
+2. **Maydon hajmi**: base62 da `62^n`. 6 belgi = 5.68×10¹⁰, 7 belgi = 3.52×10¹²
+3. **Bandlik foizi va to‘qnashuv**: 7 belgida 6e9/3.52e12 = 0.17% band, ya’ni har 587
+   yozuvdan bittasi to‘qnashadi — qayta urinish arzon. 6 belgida 10.6% band, har 9.5
+   yozuvdan biri to‘qnashadi — bu allaqachon sezilarli
+
+Javob: **7 belgi**. Qo‘shimcha: uzunlik kodga qotirilmasin, konfiguratsiyadan o‘qilsin va
+maydon 15–20% to‘lganda oshirilsin.
+</QA>
+
+<QA q="301 va 302 orasidan qaysi birini tanlaysiz va nega?">
+Deyarli har doim **302** (yoki metod saqlansin desangiz 307).
+
+301 ni brauzer oylab keshlaydi. Bu ikki narsani anglatadi: (a) takroriy bosishlar serverga
+umuman yetib kelmaydi — analitikaning ~80% i yo‘qoladi, (b) havola manzilini keyin
+**hech qachon** o‘zgartirib bo‘lmaydi, chunki foydalanuvchining brauzeri eski manzilga
+ketaveradi.
+
+Tijorat qisqartiruvchilari uchun analitika va tahrirlash imkoni — mahsulotning o‘zi,
+shuning uchun 302 tanlanadi. 301 faqat manzil o‘zgarmasligi kafolatlangan va analitika
+kerak bo‘lmagan holatda (masalan domen migratsiyasi) mantiqiy.
+</QA>
+
+<QA q="Nega o'qish va yozish yo'llarini alohida loyihalash kerak?">
+Chunki ularning talablari qarama-qarshi. O‘qish: 19 300/s, eventual consistency maqbul,
+mavjudlik 99.99%, foydalanuvchiga yaqin bo‘lishi shart. Yozish: 200/s, kuchli izchillik
+shart (kalit takrorlanmasin), 100–300 ms kechikish maqbul, bitta mintaqada bo‘lishi
+mumkin.
+
+Agar ularni bitta xizmat deb qarasak, o‘qish yo‘liga tranzaksiya va izchillik yuki tushadi
+(sekin va qimmat), yoki yozish yo‘li kesh mantiqini oladi (murakkab va xato manbai).
+Ajratganda har biri o‘z talablariga optimallashtiriladi va bir-birining nosozligidan
+himoyalanadi.
+</QA>
+
+<QA q="Ma'lumotlar bazasi sifatida nimani tanlaysiz?">
+Operatsiya — birlamchi kalit bo‘yicha aniq qidiruv, ya’ni deyarli har qanday saqlash mos
+keladi. Tanlov boshqa mezonlarga tayanadi:
+
+**PostgreSQL** — boshlash uchun eng to‘g‘ri: tranzaksiya (maxsus kalitlar uchun `UNIQUE`
+cheklovi juda muhim), ikkilamchi indekslar (foydalanuvchining havolalari ro‘yxati),
+operatsion soddalik. 3.7 TB shardlanadi.
+
+**DynamoDB / Cassandra** — chiziqli masshtablanish va boshqariluvchanlik kerak bo‘lsa.
+Lekin shartli yozish (kalit bandligini tekshirish) qimmatroq va murakkabroq.
+
+Amaliy javob: **manba haqiqat SQL da, o‘qish yo‘li esa kesh va chekka KV da**. Ikkisi
+orasidagi izchillik eventual bo‘lishi mumkin.
+</QA>
+
+### 15.2 Kesh va masshtab
+
+<QA q="Kesh hajmini qanday hisoblaysiz va qanday urish darajasini kutasiz?">
+Murojaat Zipf taqsimoti bo‘yicha: kichik qism havolalar trafikning katta qismini oladi.
+Eng faol ~20 million havola trafikning ~95% ini beradi.
+
+Kesh yozuvi ~510 bayt (kalit + URL + qo‘shimcha), 20M × 510 = **10.2 GB** — bitta 32 GB
+tugunga bemalol sig‘adi. Kutilayotgan urish darajasi ~95%, ya’ni bazaga qoladigan yuk
+19 300 × 0.05 = 965/s.
+
+Muhim tafsilot: bu hisobni **o‘lchash bilan tekshirish** kerak. Trafik naqshi kutilganidan
+tekisroq bo‘lsa (uzun dum), urish darajasi past bo‘ladi va kesh hajmini oshirish kerak.
+</QA>
+
+<QA q="Cache stampede nima va uni qanday oldini olasiz?">
+Hot kalitning TTL i tugagan lahzada barcha so‘rovlar bir vaqtda bazaga yuguradi. 50 000
+rps li kalitda bu bazaning ulanish hovuzini bir soniyada tugatadi.
+
+Uch himoya birga: (1) **single-flight** — bitta kalit uchun bitta so‘rov bazaga boradi,
+qolganlari natijani kutadi; (2) **stale-while-revalidate** — eskirgan qiymat qaytariladi,
+yangilash fonda; (3) **TTL ga jitter** — muddatlar bir lahzada tugamasin.
+
+Redirect uchun SWR ayniqsa mos: bir necha soniya eskirgan manzil amalda hech qanday zarar
+qilmaydi, lekin kechikish barqaror qoladi.
+</QA>
+
+<QA q="Bitta havola viral bo'lib, sekundiga 500 000 marta bosilyapti. Nima qilasiz?">
+Sharding yordam bermaydi — bitta kalit bitta shardda (va bitta Redis tugunida). Kerak
+bo‘ladigan narsa — **yuqoriroq qatlamlarda keshlash**:
+
+1. **Chekka kesh** — so‘rov origin‘ga umuman yetib kelmaydi. Bu 99% holatni yopadi
+2. **L1 kesh** (ilova jarayonining xotirasida, TTL 5 soniya) — 50 ta server bo‘lsa,
+   Redis‘ga yuk 500 000 dan 10 ga tushadi
+3. **O‘qish replikalari** — agar baza baribir kerak bo‘lsa
+
+Narxi: havola o‘chirilsa, 5 soniyagacha ishlab turishi mumkin. Bu maqbul kelishuv;
+kritik holatlar uchun majburiy invalidatsiya signali qo‘shiladi.
+</QA>
+
+<QA q="Bloom filtri qanday muammoni yechadi? Uning cheklovlari nima?">
+Skanerlar mavjud bo‘lmagan kalitlarni so‘raydi. Ular keshda topilmaydi (har safar yangi
+kalit) va to‘g‘ri bazaga tushadi — cache penetration.
+
+Bloom filtri “aniq yo‘q” yoki “bo‘lishi mumkin” javobini beradi. Birinchisi 100% ishonchli,
+demak yo‘q kalitlarni bazaga yubormasdan rad etish mumkin. 6 milliard kalit uchun 1% xato
+bilan 7.2 GB, 10% xato bilan 3.6 GB.
+
+Cheklovlari: element **o‘chirib bo‘lmaydi** (davriy qayta qurish yoki Counting/Cuckoo
+filter kerak), noto‘g‘ri ijobiy javoblar bor (lekin ular xavfsiz — baza tekshiradi), va
+filtr shardlar bo‘yicha bo‘linishi kerak.
+</QA>
+
+<QA q="Sharding kalitini qanday tanlaysiz? Qayta shardlashni qanday qilasiz?">
+Shard kaliti — qisqa kalitning o‘zi (`hash(kalit) mod N`), chunki barcha o‘qishlar aynan
+shu bo‘yicha keladi. Foydalanuvchi ID si bo‘yicha shardlash xato bo‘lardi: redirect paytida
+biz kimning havolasi ekanini bilmaymiz.
+
+Qayta shardlash uchun `mod N` yomon: N o‘zgarganda 91% ma’lumot ko‘chadi. Ikki yaxshi
+variant: **izchil xeshlash** (virtual tugunlar bilan, ko‘chish ~1/N) yoki **mantiqiy
+shardlar** (1024 ta bo‘lak jismoniy tugunlarga xaritalanadi, o‘sish — xaritani
+o‘zgartirish). Ikkinchisi bashoratliroq va yirik tizimlarda ko‘proq uchraydi.
+</QA>
+
+### 15.3 Ma’lumot va analitika
+
+<QA q="Sekundiga 19 000 bosishni qanday hisoblaysiz? Bazaga UPDATE yozib bo'lmaydi.">
+To‘g‘ri — bitta qatorga sekundiga o‘n minglab `UPDATE` qulf raqobatiga olib keladi va
+redirect kechikishini sekundlarga chiqaradi.
+
+Yo‘l: redirect serveri hodisani **mahalliy buferga** qo‘yadi va darhol 302 qaytaradi.
+Bufer paketlab (1000 ta hodisa yoki 1 soniya) navbatga (Kafka) yuboriladi. Iste’molchi
+oqim agregatsiyasini qiladi (kalit bo‘yicha vaqt oynasida yig‘adi) va hisoblagichlarni
+paketlab yangilaydi. Xom hodisalar parallel ravishda arxivga yoziladi.
+
+Muhim qaror: bufer to‘lsa, hodisalar **tashlanadi**. Statistikaning 0.1% i yo‘qolgani —
+redirect sekinlashuvidan ko‘ra yaxshiroq.
+</QA>
+
+<QA q="Noyob tashrif buyuruvchilarni qanday sanaysiz?">
+Aniq sanash uchun barcha identifikatorlarni saqlash kerak — 10M bosishli havola uchun
+160 MB, va bu faqat bitta havola.
+
+**HyperLogLog** 12 KB da milliardlab elementni ~2% xato bilan sanaydi. Qo‘shimcha yutuq:
+HLL strukturalarini birlashtirish mumkin, ya’ni kunlik ko‘rsatkichlardan haftalik va
+oylikni qayta sanamasdan olish mumkin (oddiy hisoblagichlar bilan bu ishlamaydi —
+kunlik summalar noyoblikni bermaydi).
+
+2% xato marketing hisobotlari uchun maqbul. Agar aniq son shart bo‘lsa (masalan billing),
+alohida aniq hisob yuritiladi va u qimmatroq bo‘ladi.
+</QA>
+
+<QA q="Analitika bazasi tushdi. Redirect'lar ishlashi kerakmi?">
+Albatta ha, va bu **arxitektura talabi** sifatida yozilishi kerak. Analitika — ikkinchi
+darajali xususiyat; havolalarning ishlashi — asosiy funksiya.
+
+Amalda bu shuni anglatadi: redirect yo‘li analitika navbatiga **asinxron** yozadi, navbat
+javob bermasa yoki bufer to‘lsa — hodisa tashlanadi, xato loglanadi, redirect esa odatdagidek
+davom etadi. Hech qanday `await`, hech qanday retry redirect yo‘lida bo‘lmasligi kerak.
+</QA>
+
+### 15.4 Xavfsizlik
+
+<QA q="Ochiq redirect nima uchun muammo, agar bu mahsulotning maqsadi bo'lsa ham?">
+Chunki sizning domeningiz **ishonch signali** bo‘lib xizmat qiladi. Fishing xatida
+`dars.uz/K7xQm2` ko‘rgan odam ishonchli domenni ko‘radi va soxta bank sahifasiga tushadi.
+
+Bundan tashqari, ba’zi tizimlar ishonchni domen bo‘yicha beradi (OAuth `redirect_uri`
+oq ro‘yxati, `Referer` tekshiruvi) — sizning domeningiz ularning himoyasini chetlab
+o‘tish vositasiga aylanadi.
+
+Oqibat sizga ham qaytadi: domen qora ro‘yxatga tushsa, **barcha** havolalaringiz
+brauzerda ogohlantirish bilan ochiladi. Shuning uchun skanerlash, shikoyat mexanizmi va
+tez o‘chirish — mahsulotning majburiy qismi.
+</QA>
+
+<QA q="Kalitlarni sanab chiqishdan qanday himoyalanasiz?">
+Birinchi navbatda **kalitlar tasodifiy bo‘lishi** kerak. Ketma-ket kalitlar (hisoblagichdan)
+ishlatilsa, ular bijektiv permutatsiya (masalan Feistel shifri) bilan aralashtiriladi —
+to‘qnashuvsizlik saqlanadi, lekin ketma-ketlik ko‘rinmaydi.
+
+Qo‘shimcha qatlamlar: IP bo‘yicha tezlik cheklovi, 404 javoblarga sun’iy kechikish,
+anomaliya aniqlash (bitta manbadan ko‘p 404).
+
+Va eng muhimi — **kutilmani to‘g‘ri qo‘yish**: qisqa havola maxfiylik vositasi emas.
+Maxfiy hujjatga havola qisqartirilsa, u himoyalangan deb hisoblanmasligi kerak. Bu
+foydalanuvchiga aniq aytilishi kerak.
+</QA>
+
+<QA q="Foydalanuvchi bergan URL ni oldindan ko'rish uchun o'qiyapsiz. Qanday xavf bor?">
+**SSRF** — foydalanuvchi ichki manzilni berishi mumkin: `http://169.254.169.254/...`
+(bulut metama’lumot xizmati, u yerdan vaqtinchalik hisob ma’lumotlari olinishi mumkin)
+yoki ichki tarmoqdagi xizmat.
+
+Himoya: DNS yechimidan **keyin** IP ni tekshirish (xususiy va maxsus diapazonlarni rad
+etish) — domen nomi bo‘yicha tekshirish yetarli emas, chunki hujumchi o‘z domenini ichki
+IP ga yo‘naltirishi mumkin (DNS rebinding). Qo‘shimcha: redirect zanjirining har bir
+qadamini tekshirish, alohida tarmoq segmentidan so‘rov yuborish, javob hajmi va
+timeout cheklovi.
+</QA>
+
+### 15.5 Amaliy stsenariylar
+
+<QA q="Redirect p99 500 ms ga chiqdi. Diagnostika tartibingiz?">
+1. **Qaysi qatlamdan kelyapti** — chekka, L1, L2 yoki baza? Har bir manba uchun alohida
+   kechikish metrikasi bo‘lishi kerak. Agar bazaga tushayotganlar ko‘paygan bo‘lsa —
+   kesh muammosi
+2. **Kesh urish darajasi** — tushganmi? Sabablari: tugun qayta ishga tushgan, TTL
+   o‘zgargan, eviction boshlangan, skaner hujumi
+3. **Geografiya** — muammo hamma mintaqadami yoki bittasidami? Bitta mintaqada bo‘lsa —
+   chekka nuqtasi yoki tarmoq
+4. **404 ulushi** — oshgan bo‘lsa, skanerlar bazani uryapti (Bloom filtri yoki salbiy
+   keshlash ishlamayapti)
+5. **Baza** — shard failover, sekin so‘rovlar, ulanish hovuzi to‘lganmi
+
+p50 ham yomonmi yoki faqat p99 mi — birinchisi tizimli muammo (sig‘im, konfiguratsiya),
+ikkinchisi dum (hot key, stampede, ayrim sekin so‘rovlar).
+</QA>
+
+<QA q="Mijoz 'havolalar ro'yxatini CSV ga eksport qilish' so'radi. 50 million havolasi bor.">
+To‘g‘ridan-to‘g‘ri `SELECT` bilan qilib bo‘lmaydi: so‘rov daqiqalar davom etadi, xotirani
+to‘ldiradi va bazaga ta’sir qiladi.
+
+To‘g‘ri yechim: **asinxron eksport vazifasi**. Foydalanuvchi so‘raydi → vazifa navbatga
+tushadi → fon ishchisi ma’lumotni **kursor bilan paketlab** (masalan 10 000 tadan)
+o‘qiydi, obyekt xotiraga siqilgan holda yozadi → tayyor bo‘lgach foydalanuvchiga
+vaqtinchalik havola yuboriladi.
+
+Muhim tafsilotlar: o‘qish **replikadan** (asosiy bazaga tegmaslik), progress ko‘rsatkichi,
+vazifaning takroriy ishga tushishiga qarshi idempotentlik, va fayl uchun amal qilish
+muddati.
+</QA>
+
+<QA q="Kalit maydonining 20% i band bo'ldi. Nima qilasiz?">
+Bu — uzunlikni oshirish signali (14-qadam). Rejalashtirilgan harakat:
+
+1. Konfiguratsiyada generatsiya uzunligini 7 dan 8 ga oshirish
+2. **Eski kalitlar tegilmaydi** — yechish uzunlikka qarab emas, aynan kalit bo‘yicha
+   ishlaydi, shuning uchun 7 va 8 belgili kalitlar birga yashaydi
+3. Kesh va Bloom filtri o‘zgarishsiz ishlaydi
+4. Chekka konfiguratsiyasi yangilanadi (agar u uzunlikka tayangan bo‘lsa — bu allaqachon
+   dizayn xatosi)
+
+Agar tizim uzunlikni kodga qotirgan bo‘lsa (validatsiya `len(key) == 7`), bu migratsiya
+og‘riqli bo‘ladi — shuning uchun uzunlik boshidanoq konfiguratsiyadan o‘qilishi kerak.
+</QA>
+
+<QA q="Bitta shard yiqildi. Foydalanuvchi nima ko'radi?">
+Kalitlarning `1/N` qismi (16 shardda ~6%) bazadan o‘qilmaydi. Lekin:
+
+- **Keshda bo‘lgan havolalar ishlayveradi** — bu trafikning ~95% i
+- **Chekkadagi havolalar ham ishlayveradi** — ko‘pchilik so‘rovlar origin‘ga bormaydi
+- Faqat keshda yo‘q va o‘sha shardga tegishli havolalar 500 xatosi beradi
+
+Chora tartibi: replikaga avtomatik failover (soniyalar), kesh TTL ini vaqtincha uzaytirish
+(eskirgan qiymat yo‘qdan yaxshi), yaratishni shu shard uchun to‘xtatish.
+
+Bu — kesh nafaqat tezlik, balki **mavjudlik** vositasi ekanining yaxshi misoli.
+</QA>
+
+<QA q="Nima uchun bu masala intervyularda shunchalik ko'p so'raladi?">
+Chunki u kichik ko‘rinadi, lekin ichida katta tizimning barcha naqshlari bor: kalit
+maydoni va ehtimollik hisobi, o‘qish/yozish yo‘llarining ajratilishi, ko‘p qatlamli
+keshlash va uning nosozliklari, sharding va qayta shardlash, hot key, asinxron quvurlar,
+CAP kelishuvlari, xavfsizlik (enumeration, ochiq redirect, SSRF) va aniq iqtisodiy hisob.
+
+Yaxshi javob “hash qilamiz va bazaga yozamiz” emas. Yaxshi javob **raqamdan boshlanadi**:
+qancha havola, qancha o‘qish, qancha yozish — va har bir qaror shu raqamlardan kelib chiqadi.
+</QA>
+
+## 16. Amaliyot
+
+<Task title="1-daraja: kalit maydoni kalkulyatori">
+
+Skript yozing, u quyidagilarni kirish sifatida oladi: alifbo hajmi, kalit uzunligi, oyiga
+yangi havolalar soni, xizmat umri (yil).
+
+Chiqishda: maydon hajmi, umr oxiridagi bandlik foizi, bitta yozuv uchun to‘qnashuv
+ehtimoli, kutilayotgan qayta urinishlar soni, va maydonning 20% i qachon to‘lishi.
+
+**Tekshiruv mezoni:** darsdagi raqamlarni takrorlang (7 belgi → 0.17% bandlik, 1/587
+to‘qnashuv). Keyin grafik chizing: kalit uzunligi 5 dan 10 gacha bo‘lganda umr necha yil?
+Qaysi nuqtada uzunlikni oshirish foyda bermay qoladi?
+</Task>
+
+<Task title="2-daraja: ishlaydigan qisqartiruvchi">
+
+To‘liq ishlaydigan xizmat yozing:
+
+1. `POST /api/shorten` — URL validatsiyasi, tasodifiy kalit, `UNIQUE` cheklovi bilan
+   to‘qnashuvni ushlash va qayta urinish
+2. `GET /:key` — 302 redirect, topilmasa 404
+3. Maxsus kalit (`custom_alias`) qo‘llab-quvvatlash + band so‘zlar ro‘yxati
+4. Muddat (`expires_at`) va o‘chirish
+5. Bosishlarni **asinxron** sanash (navbat yoki hech bo‘lmasa fon vazifasi)
+
+**Tekshiruv mezoni:** yuk testi o‘tkazing (`k6`, `wrk` yoki `ab`). Kesh qo‘shishdan
+oldingi va keyingi RPS ni o‘lchang. Ikki jarayondan bir vaqtda bir xil maxsus kalitni
+so‘rang — faqat bittasi muvaffaqiyatli bo‘lishini isbotlang.
+</Task>
+
+<Task title="3-daraja: kesh, stampede va hot key">
+
+2-darajaga qo‘shing:
+
+1. **Cache-aside** + salbiy keshlash (404 lar uchun qisqa TTL)
+2. **Cache stampede simulyatsiyasi**: bitta hot kalitga 5000 parallel so‘rov yuboring,
+   TTL tugagan lahzada bazaga nechta so‘rov ketganini sanang
+3. **Single-flight** qo‘shing va o‘sha sonni qayta o‘lchang
+4. **Stale-while-revalidate** qo‘shing va p99 kechikishni solishtiring
+5. **L1 kesh** (jarayon xotirasi, TTL 5 s) qo‘shing va Redis‘ga ketgan so‘rovlar sonini
+   o‘lchang
+
+**Tekshiruv mezoni:** bitta jadval — himoyasiz, single-flight bilan, SWR bilan, L1 bilan.
+Har bir qatorda: bazaga so‘rovlar soni, p50 va p99 kechikish. Qaysi qadam eng katta
+yutuq berdi?
+</Task>
+
+<Task title="4-daraja: to'liq tizim modeli">
+
+Elektron jadval yoki skript yozing, u tizimning sig‘imi va xarajatini modellashtiradi.
+Kirish: yangi havolalar soni, o‘qish/yozish nisbati, cho‘qqi koeffitsienti, kesh urish
+darajasi, chekkada tugaydigan so‘rovlar ulushi, URL o‘rtacha uzunligi, saqlash va trafik
+narxlari.
+
+Chiqish: kerakli server soni, shardlar soni, kesh hajmi, oylik xarajat va bitta redirect
+narxi.
+
+**Tekshiruv mezoni:** darsdagi hisoblarni takrorlang (~$7400/oy, redirect $0.00000074).
+Keyin sezgirlik tahlili: kesh urish darajasi 95% dan 80% ga tushsa xarajat necha foizga
+oshadi? Chekkada tugaydigan ulush 90% dan 50% ga tushsa-chi? Qaysi parametr eng ko‘p
+ta’sir qiladi — va bu sizning optimallashtirish ustuvorligingizni qanday o‘zgartiradi?
+</Task>
+
+## 17. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Base62 | `a-z`, `A-Z`, `0-9` — URL uchun xavfsiz 62 belgili alifbo |
+| Kalit maydoni | Mumkin bo‘lgan barcha kalitlar to‘plami: `62^n` |
+| Tug‘ilgan kun paradoksi | To‘qnashuv ehtimoli intuitsiyadan ancha tez o‘sishi |
+| KGS | Key Generation Service — kalitlarni oldindan yaratuvchi xizmat |
+| Feistel shifri | Ketma-ket sonlarni to‘qnashuvsiz aralashtiruvchi bijektiv o‘girish |
+| 301 / 302 / 307 / 308 | Redirect kodlari; keshlanishi va metod saqlanishi bilan farq qiladi |
+| Cache-aside | Ilova keshni o‘zi boshqaradigan naqsh |
+| Salbiy keshlash | Topilmagan kalitlarni ham keshlash (skanerlardan himoya) |
+| Cache stampede | TTL tugagan lahzada barcha so‘rovlarning bazaga yugurishi |
+| Single-flight | Bir xil kalit uchun faqat bitta bazaga so‘rov yuborish |
+| Stale-while-revalidate | Eskirgan qiymatni qaytarib, yangilashni fonda qilish |
+| Hot key | Nomutanosib ko‘p so‘raladigan bitta kalit |
+| Cache penetration | Mavjud bo‘lmagan kalitlar orqali keshni chetlab o‘tish |
+| Bloom filtri | “Aniq yo‘q / bo‘lishi mumkin” javobini beruvchi ehtimollik strukturasi |
+| HyperLogLog | Noyob elementlarni kam xotirada taxminiy sanash |
+| Izchil xeshlash | Shard qo‘shilganda ma’lumotning faqat `1/N` qismi ko‘chishi |
+| Mantiqiy shard | Jismoniy tugunlarga xaritalanadigan sobit sonli bo‘lak |
+| Tombstone | O‘chirilgan yozuvning kalitni band qilib turuvchi belgisi |
+| Anycast | Bir xil IP ni ko‘p joyda e’lon qilib, eng yaqiniga yo‘naltirish |
+| Chekka KV | Foydalanuvchiga yaqin nuqtalardagi kalit-qiymat saqlash |
+| Enumeration | Kalitlarni ketma-ket sanab, begona havolalarni topish hujumi |
+| Ochiq redirect | Domenning istalgan manzilga yo‘naltirishi va undan suiiste’mol |
+| SSRF | Serverni ichki tarmoqqa so‘rov yuborishga majburlash zaifligi |
+| DNS rebinding | Domenni tekshiruvdan keyin ichki IP ga yo‘naltirish hiylasi |
+| Degradatsiya tartibi | Sig‘im yetmaganda nimadan voz kechish ketma-ketligi |
+
+## 18. Manbalar
+
+| Manba | Nima beradi |
+| --- | --- |
+| RFC 9110 (HTTP semantikasi) | 301/302/307/308 ning aniq ta’rifi va keshlanishi |
+| *Consistent Hashing and Random Trees* | Izchil xeshlashning asl maqolasi |
+| *Space/Time Trade-offs in Hash Coding with Allowable Errors* (Bloom, 1970) | Bloom filtri |
+| *HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm* | Noyob sanash |
+| *Optimal Probabilistic Cache Stampede Prevention* | Ehtimolli erta yangilash |
+| Instagram Engineering: Sharding & IDs | Mantiqiy shardlar va ID generatsiyasi amaliyoti |
+| Twitter Snowflake | Taqsimlangan ID: vaqt + tugun + ketma-ketlik |
+| OWASP: Unvalidated Redirects and Forwards | Ochiq redirect zaifligi |
+| OWASP: Server-Side Request Forgery Prevention | Unfurl va metama’lumot xavfsizligi |
+
+<Callout type="maslahat" title="Keyingi qadam">
+Bu darsda ko‘rgan naqshlar — o‘qish va yozish yo‘llarining ajratilishi, ko‘p qatlamli
+kesh, hot key, izchil xeshlash, asinxron quvur, degradatsiya tartibi — keyingi darslarda
+qaytadan uchraydi. **Redis darsida** bu naqshlarning har biri alohida vosita sifatida
+chuqurroq ochiladi; **Twitter tasmasi darsida** esa hot key muammosi butunlay boshqa
+masshtabda qaytadi: bir emas, o‘n millionlab obunachisi bor akkaunt.
+</Callout>
