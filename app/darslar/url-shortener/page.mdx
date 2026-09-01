@@ -394,6 +394,44 @@ mumkin — masalan hisoblagich kichik bo‘lganda 5 belgili kalit, keyin avtomat
 Ko‘pchilik tizimlar aynan shunday qiladi: kalit uzunligi sobit emas, o‘sib boradi.
 </Check>
 
+### 3.5 Inson omili: chalkash belgilar va nomaqbul so‘zlar
+
+Matematik jihatdan mukammal kalit maydoni amalda ikkita insoniy muammoga uriladi.
+
+**Chalkash belgilar.** Havolani odam qo‘lda ko‘chirsa yoki telefonda o‘qib aytsa,
+`0` va `O`, `l`, `I` va `1` farqlanmaydi. Chop etilgan materialda yoki telefon orqali
+aytilgan havolada bu — to‘g‘ridan-to‘g‘ri yo‘qotilgan tashrif.
+
+<Calc title="Chalkash belgilarni olib tashlash nimaga turadi" result="Maydon 38% qisqaradi, lekin 7 belgida hali ham 2.2 trillion — ya'ni bu deyarli bepul yaxshilanish">{`Base62 dan 4 ta belgini olib tashlaymiz: 0, O, l, I
+  -> Base58
+
+62^7 = 3 521 614 606 208
+58^7 = 2 207 984 167 552
+
+Yo'qotish: (3.52e12 - 2.21e12) / 3.52e12 = 37.3%
+
+Bir xil sig'imga yetish uchun:
+  58^7 = 2.2e12  (6 milliard havolaga yetarlidan ortiq)
+  Demak uzunlikni oshirish SHART EMAS`}</Calc>
+
+**Nomaqbul so‘zlar.** Tasodifiy generatsiya ertami-kechmi haqoratli yoki nomaqbul
+ketma-ketlik chiqaradi. Havola brend materialida chop etilsa, bu jiddiy muammo.
+
+```
+Generatsiya -> qora ro'yxat bo'yicha tekshirish -> mos kelsa, yangisini olish
+```
+
+Qora ro‘yxat maydonning juda kichik qismini (odatda 0.001% dan kam) olib tashlaydi, ya’ni
+sig‘imga ta’siri yo‘q. Lekin tekshiruv **kalitning qismlarini** ham qamrashi kerak —
+7 belgili kalit ichida 4 belgili nomaqbul so‘z bo‘lishi mumkin.
+
+<Callout type="maslahat" title="Bu qaror keyin o'zgartirilmaydi">
+Alifboni keyinroq o‘zgartirib bo‘lmaydi: eski kalitlar `0` va `O` bilan allaqachon
+tarqalgan. Shuning uchun alifbo, uzunlik va qora ro‘yxat — **birinchi kundanoq**
+to‘g‘ri qo‘yilishi kerak bo‘lgan qarorlar. Ularni keyin tuzatish migratsiya emas,
+imkonsizlik.
+</Callout>
+
 ## 4. v0: eng sodda ishlaydigan yechim
 
 ### 4.1 Ma’lumotlar modeli
@@ -719,6 +757,36 @@ Ikki nozik nuqta darhol ko‘rinadi:
    ko‘rinsin
 2. **TTL va invalidatsiya** — havola o‘chirilganda yoki manzili o‘zgarganda keshni ham
    yangilash kerak. Aks holda o‘chirilgan havola yana bir kun ishlab turadi
+
+<Deep title="Siqib chiqarish siyosati: nega LRU bu yerda xavfli">
+
+Kesh to‘lganda nimani chiqarib tashlaymiz? Tanlov urish darajasiga bevosita ta’sir qiladi.
+
+| Siyosat | Qanday ishlaydi | Bu yukda |
+| --- | --- | --- |
+| **LRU** | Eng uzoq vaqt ishlatilmaganini chiqaradi | Skanerlashga chidamsiz |
+| **LFU** | Eng kam ishlatilganini chiqaradi | Eski mashhur havolalar qotib qoladi |
+| **W-TinyLFU** | Chastotani ixcham sanab, LRU bilan birlashtiradi | Eng yaxshi tanlov |
+
+**Skanerlash muammosi** aynan shu yerda ko‘rinadi. Bot sekundiga minglab yangi kalitni
+so‘raydi. LRU da har bir yangi kalit keshga kiradi va **eng issiq havolalarni siqib
+chiqaradi**:
+
+```
+Kesh: 20M yozuv, LRU
+Skaner: 5000 yangi kalit / soniya
+
+1 soatda: 18 million yangi (foydasiz) yozuv keshga kirdi
+  -> issiq havolalarning katta qismi chiqarib yuborildi
+  -> urish darajasi 95% dan 60% ga tushdi
+  -> bazaga yuk 4-8 barobar oshdi
+```
+
+Uch himoya: (1) **salbiy yozuvlarni alohida, kichik hajmli keshda** saqlash, (2)
+**W-TinyLFU** — yangi element keshga kirish uchun avval chastota bo‘yicha “imtihondan”
+o‘tishi kerak, bir martalik so‘rovlar keshni buzmaydi, (3) Bloom filtri (7-qadam) —
+yo‘q kalitlar keshgacha ham yetib bormaydi.
+</Deep>
 </Step>
 
 <Step n="3" title="Ikki qatlamli kesh — hot key uchun" gain="Bitta havola sekundiga million marta bosilsa ham tizim sezmaydi" cost="Bir necha soniyalik nomuvofiqlik: turli serverlar turli javob berishi mumkin">
@@ -785,6 +853,37 @@ Chekka nuqtalar ma’lumotni o‘nlab soniyada oladi. Amaliy oqibatlari:
 
 Bu — CAP teoremasining amaliy ko‘rinishi: redirect uchun **mavjudlik va tezlik**
 izchillikdan muhimroq, shuning uchun ataylab eventual consistency tanlanadi.
+</Deep>
+
+<Deep title="CDN keshi va chekka KV: bir xil emas">
+
+Ikki xil yondashuvni chalkashtirmaslik kerak.
+
+**CDN javob keshi** — chekka nuqta sizning origin‘ingizdan kelgan **javobni** keshlaydi:
+
+```http
+HTTP/1.1 302 Found
+Location: https://example.com/...
+Cache-Control: public, s-maxage=300, stale-if-error=86400
+```
+
+`s-maxage` — faqat CDN uchun (brauzer uchun emas), ya’ni chekka 5 daqiqa keshlaydi, lekin
+brauzer keshlamaydi va analitika saqlanadi. `stale-if-error` esa origin tushganda eskirgan
+javobni berishga ruxsat beradi — bepul mavjudlik.
+
+**Chekka KV** — ma’lumotning o‘zi (kalit → URL) chekkaga **replikatsiya** qilinadi va
+redirect butunlay o‘sha yerda hisoblanadi. Origin umuman ishtirok etmaydi.
+
+| | CDN javob keshi | Chekka KV |
+| --- | --- | --- |
+| Birinchi so‘rov | Origin‘ga boradi (sekin) | Chekkada hal bo‘ladi |
+| Invalidatsiya | Purge API, tez | Replikatsiya kechikishi |
+| Analitika | Chekkadan yig‘iladi | Chekkadan yig‘iladi |
+| Origin tushsa | `stale-if-error` bilan ishlaydi | Butunlay ishlaydi |
+| Murakkablik | Past | Yuqori |
+
+Amaliy yo‘l: **ikkalasi ham**. Chekka KV asosiy yo‘l, CDN keshi esa KV da topilmagan va
+origin‘ga ketgan so‘rovlar uchun qo‘shimcha qatlam.
 </Deep>
 </Step>
 
@@ -1287,7 +1386,58 @@ Bu tartibning mantig‘i bitta: **chop etilgan havola ishlashi kerak**. U banner
 kitobda bo‘lishi mumkin. Yangi havola yaratilmasligi — noqulaylik; eski havola
 ishlamasligi — halokat.
 
-### 8.4 Bu tizimni qanday sinash kerak
+### 8.4 Ulanish hovuzi: Little qonuni amalda
+
+“Baza sekin” degan shikoyatning yarmi aslida noto‘g‘ri sozlangan ulanish hovuzi. Kerakli
+hajm intuitsiya bilan emas, formula bilan topiladi:
+
+```
+Ulanishlar soni = throughput x kechikish
+```
+
+<Calc title="Ulanish hovuzining to'g'ri hajmi" result="Bazaga 965 rps yuborish uchun atigi ~5 ta ulanish yetarli. 500 ta ulanish qo'yish tizimni tezlashtirmaydi — u yiqiladigan holatni yashiradi va portlashini kuchaytiradi">{`Kesh urishidan keyin bazaga: 965 so'rov/s
+Bitta so'rov: 5 ms = 0.005 s
+
+Kerakli ulanishlar = 965 x 0.005 = 4.8 -> 5 ta
+
+Zaxira bilan (cho'qqi va sekin so'rovlar uchun): 10-20 ta
+
+Agar 500 ta ulanish qo'ysak:
+  Har biri bazada xotira va kontekst almashinuvi talab qiladi
+  Baza yadrolari soni: 16
+  500 ta parallel so'rov 16 yadroda navbatga tizilib,
+  har birining kechikishi 5 ms dan 150 ms ga chiqadi`}</Calc>
+
+<Deep title="Nega katta hovuz tizimni sekinlashtiradi">
+Ulanishlar soni bazadagi yadrolar sonidan ancha katta bo‘lsa, so‘rovlar parallel
+bajarilmaydi — ular **navbatga tizilib**, kontekst almashinuvi, qulf raqobati va xotira
+bosimini oshiradi. Natijada throughput o‘smaydi, kechikish esa o‘sadi.
+
+Bundan ham muhimi: katta hovuz **orqa bosimni yo‘q qiladi**. Kichik hovuzda ilova
+darhol “ulanish yo‘q” xatosini oladi va uni to‘g‘ri boshqarishi mumkin (429 qaytarish,
+keshdan eski qiymat berish). Katta hovuzda esa u 30 soniya kutadi, mijoz timeout bo‘lib
+qayta yuboradi — va 10.2-bo‘limdagi retry storm boshlanadi.
+
+Amaliy qoida: hovuz hajmi baza yadrolari sonining 2–4 barobaridan oshmasin, va ulanishni
+kutish uchun **qisqa timeout** (100–500 ms) qo‘yilsin. Tez xato — yaxshi xato.
+</Deep>
+
+<Check q="Baza sekinlashdi. Jamoadagi kimdir 'ulanish hovuzini 100 dan 500 ga oshiraylik' deyapti. Javobingiz?">
+Deyarli har doim bu **noto‘g‘ri qaror**. Little qonuni bo‘yicha kerakli hovuz hajmi =
+throughput × kechikish. Agar hovuz allaqachon to‘lib turgan bo‘lsa, demak yo throughput
+kutilganidan yuqori (sabab: kesh urishi tushgan), yo kechikish oshgan (sabab: sekin
+so‘rovlar, qulf, disk).
+
+Hovuzni kattalashtirish **sababni yashiradi va oqibatni yomonlashtiradi**: bazadagi
+yadrolardan ancha ko‘p parallel so‘rov navbatga tizilib, har birining kechikishi oshadi,
+va orqa bosim yo‘qolgani uchun mijozlar timeout bo‘lib retry storm boshlaydi.
+
+To‘g‘ri tartib: (1) kesh urish darajasini tekshirish, (2) sekin so‘rovlarni topish,
+(3) statement timeout qo‘yish, (4) kerak bo‘lsa o‘qish replikasi qo‘shish. Hovuz hajmi —
+oxirgi va eng kam ta’sirli tutqich.
+</Check>
+
+### 8.5 Bu tizimni qanday sinash kerak
 
 Testlar odatdagi CRUD ilovasidan farq qiladi, chunki eng qimmat xatolar **poyga holatlari
 va yuk ostidagi xatti-harakatda**.
@@ -1420,6 +1570,24 @@ mantiqiy shard butunligicha ko‘chadi. Bu usul yiriklashuvda ancha qulay, chunk
 shardlash formulani emas, jadvalni o‘zgartiradi.
 </Deep>
 
+### 11.1 Ko‘p ijarachilik: shovqinli qo‘shni muammosi
+
+Bitta mijoz 100 000 havolani CSV orqali import qilyapti, ikkinchisining kampaniyasi viral
+bo‘ldi. Ikkalasi ham bir xil shardlarda, bir xil keshda, bir xil KGS diapazonlarida.
+
+| Resurs | Shovqinli qo‘shni qanday zarar qiladi | Chora |
+| --- | --- | --- |
+| KGS diapazonlari | Ommaviy import kalitlarni tez yeydi | Mijoz bo‘yicha yaratish kvotasi |
+| Kesh xotirasi | Bitta mijozning havolalari keshni to‘ldiradi | Mijoz bo‘yicha kesh ulushi yoki W-TinyLFU |
+| Shard yuki | Viral havola bitta shardni bo‘g‘adi | Chekka kesh (yuk shardgacha yetmaydi) |
+| Analitika navbati | Bitta mijoz hodisalari navbatni to‘ldiradi | Mijoz bo‘yicha partition va kvota |
+| Baza ulanishlari | Uzun so‘rov hovuzni band qiladi | Alohida hovuz, statement timeout |
+
+Umumiy tamoyil: **har bir umumiy resurs uchun kvota bo‘lishi kerak**, va kvota buzilganda
+tizim butunlay to‘xtamasligi, faqat **o‘sha mijozni** sekinlashtirishi kerak. Bu — adolatli
+rejalashtirish (fair scheduling) masalasi va u ChatGPT darsidagi navbat prioritetlari bilan
+bir xil sinfdan.
+
 ## 12. Kuzatuv va sifat
 
 Har bir redirect uchun yozilishi kerak:
@@ -1443,7 +1611,37 @@ Panellarda:
 | Analitika navbati kechikishi | Statistika qanchalik eskirgan | 5 daqiqadan ko‘p |
 | Tashlangan hodisalar | Degradatsiya ishlayaptimi | Har qanday o‘sish |
 
-### 12.1 Bot trafigi: statistikaning eng katta yolg‘oni
+### 12.1 SLO va xato byudjeti
+
+“99.99% mavjudlik” degan gap byudjetga aylantirilmasa, ma’nosiz shior bo‘lib qoladi.
+
+<Calc title="Xato byudjeti" result="Oyiga 4.3 daqiqa — bu bitta deploy'ning noto'g'ri ketishiga ham yetmaydi. Shuning uchun 99.99% arxitektura talabi: bosqichma-bosqich deploy, avtomatik rollback, ko'p mintaqa">{`Oydagi daqiqalar: 30 x 24 x 60 = 43 200
+
+99.9%   -> 0.1%  x 43 200 = 43.2 daqiqa / oy
+99.95%  -> 0.05% x 43 200 = 21.6 daqiqa
+99.99%  -> 0.01% x 43 200 = 4.32 daqiqa
+99.999% -> 0.001% x 43 200 = 26 soniya
+
+Redirect uchun 99.99% tanlasak:
+  Oyiga 4.32 daqiqa "byudjet"
+  Bitta 5 daqiqalik uzilish - butun oylik byudjet tugadi`}</Calc>
+
+Xato byudjeti amaliy vosita: u **sarflanadi**. Byudjet qolgan bo‘lsa — yangi xususiyatlarni
+chiqarish mumkin; tugagan bo‘lsa — jamoa barqarorlikka o‘tadi. Bu muhandislik va mahsulot
+o‘rtasidagi bahsni raqamga aylantiradi.
+
+**Sarflash tezligi bo‘yicha ogohlantirish** (burn rate) oddiy chegaradan yaxshiroq
+ishlaydi:
+
+```
+Agar oxirgi 1 soatda byudjetning 2% i sarflansa   -> tez ogohlantirish (sahifa)
+Agar oxirgi 6 soatda byudjetning 5% i sarflansa   -> sekin ogohlantirish (tiket)
+```
+
+Birinchisi jiddiy uzilishni darhol ushlaydi, ikkinchisi sekin oqib turgan muammoni —
+va ikkalasi ham “xato darajasi 0.1% dan oshdi” degan shovqinli alertdan foydaliroq.
+
+### 12.2 Bot trafigi: statistikaning eng katta yolg‘oni
 
 Havola ijtimoiy tarmoqqa qo‘yilganda uni **odamlardan oldin robotlar** ochadi: xabar
 oldindan ko‘rish (unfurl) botlari, xavfsizlik skanerlari, arxivlovchilar, raqobatchilarning
@@ -1475,6 +1673,24 @@ Filtr qoidalari doim o‘zgaradi va yangilanganda tarixni qayta hisoblash imkoni
 kerak. Aks holda “o‘tgan oyda statistikamiz nega ikki barobar tushdi?” degan savolga javob
 bera olmaysiz — javob “filtr yaxshilandi” bo‘ladi, lekin buni isbotlab bo‘lmaydi.
 </Callout>
+
+<Check q="Skaner sekundiga 5000 ta yangi kalit so'rayapti. Kesh urish darajasi nega tushadi va uch xil chorani qanday tartiblaysiz?">
+LRU keshda har bir yangi (foydasiz) kalit keshga kiradi va eng issiq havolalardan birini
+siqib chiqaradi. Bir soatda 18 million foydasiz yozuv 20 millionlik keshning katta qismini
+egallaydi — urish darajasi 95% dan 60% ga tushadi va bazaga yuk 4–8 barobar oshadi.
+
+Choralar, samaradorligi bo‘yicha:
+
+1. **Bloom filtri** — yo‘q kalitlar keshgacha ham yetib bormaydi. Eng kuchli chora, lekin
+   7.2 GB xotira va davriy qayta qurish talab qiladi
+2. **Salbiy keshni ajratish** — 404 lar alohida, hajmi cheklangan keshda saqlanadi va
+   asosiy keshni buzmaydi. Arzon va tez amalga oshiriladi
+3. **W-TinyLFU** — yangi element keshga kirish uchun chastota imtihonidan o‘tadi;
+   bir martalik so‘rovlar keshni buza olmaydi
+4. **Tezlik cheklovi** — manbani sekinlashtiradi, lekin taqsimlangan skanerni to‘xtatmaydi
+
+Amalda 2 + 4 darhol qilinadi, 1 va 3 esa keyingi bosqichda.
+</Check>
 
 ## 13. Antinaqshlar
 

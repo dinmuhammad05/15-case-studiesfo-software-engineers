@@ -69,6 +69,29 @@ iqtisodi). Qolgan darslar ham shu me’yorga qarab yoziladi — batafsili
 4. `theme.css` va `<Nom>Shell.tsx` ni mahsulot UI‘siga moslang.
 5. Statusni `tayyor` ga o‘zgartiring, PR oching.
 
+## Offline rejim va ilova sifatida o‘rnatish (PWA)
+
+Sayt **progressive web app**: internetsiz ishlaydi va telefon yoki kompyuterga ilova
+sifatida o‘rnatiladi.
+
+- `scripts/build-pwa.mjs` har bir `npm run build` dan keyin `out/` ichiga
+  `manifest.webmanifest` va `sw.js` yozadi. Service worker versiyasi fayllar mazmunidan
+  hisoblanadi, ya’ni kontent o‘zgarsa foydalanuvchi yangilanishni ko‘radi
+- **App shell** (JS, CSS, ikonkalar, bosh sahifa) o‘rnatishda darhol keshlanadi
+- **Dars sahifalari** ochilganda keshlanadi, yoki o‘ng pastdagi tugma orqali
+  “Barcha darslarni yuklab olish” bilan oldindan saqlanadi
+- Sahifalar uchun *network-first* (yangi kontent ustuvor), statik resurslar uchun
+  *cache-first* strategiyasi
+- Yangi versiya chiqqanda “Yangilanish bor” tugmasi chiqadi; bosilganda eski keshlar
+  tozalanadi
+
+Ikonkalar `public/` da commit qilingan. `icon.svg` o‘zgarsa qayta yaratish:
+
+```bash
+npx --yes playwright@latest install chromium
+node scripts/make-icons.mjs
+```
+
 ## Deploy
 
 Repo sozlamalarida **Settings → Pages → Source: GitHub Actions** tanlangan bo‘lishi shart.
