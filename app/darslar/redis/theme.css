@@ -1,0 +1,33 @@
+/* Redis skini — terminal muhiti (rasmiy brend materiali emas) */
+[data-skin="redis"] {
+  --skin-bg: #0d1117;
+  --skin-surface: #161b22;
+  --skin-surface-2: #1c2128;
+  --skin-border: #2a3138;
+  --skin-text: #e6edf3;
+  --skin-muted: #8b949e;
+  --skin-accent: #ff5c47;
+  --skin-accent-text: #140603;
+  --skin-radius: 6px;
+  --skin-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --skin-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Terminal muhitida sarlavhalar va kod monoshriftda */
+[data-skin="redis"] .lesson-prose h2,
+[data-skin="redis"] .lesson-prose h3 {
+  font-family: var(--skin-mono);
+  letter-spacing: -0.01em;
+}
+[data-skin="redis"] .lesson-prose h2::before {
+  content: "$ ";
+  color: var(--skin-accent);
+}
+[data-skin="redis"] .lesson-prose pre {
+  background: #010409;
+  border-color: #21262d;
+}
+
+body:has([data-skin="redis"]) {
+  background: #0d1117;
+}

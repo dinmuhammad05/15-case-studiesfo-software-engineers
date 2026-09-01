@@ -42,7 +42,7 @@ export function Callout({
       </span>
       <div className="min-w-0 text-sm leading-relaxed">
         {title ? <div className="mb-1 font-semibold">{title}</div> : null}
-        <div className="text-[var(--skin-muted)] [&_a]:text-[var(--skin-accent)] [&_a]:underline [&_code]:font-[family-name:var(--skin-mono)]">
+        <div className="text-[var(--skin-muted)] [&>*+*]:mt-3 [&_a]:text-[var(--skin-accent)] [&_a]:underline [&_code]:font-[family-name:var(--skin-mono)]">
           {children}
         </div>
       </div>
@@ -70,7 +70,7 @@ export function Step({
         {n}
       </span>
       <h3 className="mt-0 mb-2 text-lg font-semibold">{title}</h3>
-      <div className="text-sm leading-relaxed text-[var(--skin-muted)]">{children}</div>
+      <div className="text-sm leading-relaxed text-[var(--skin-muted)] [&>*+*]:mt-3.5">{children}</div>
       {(gain || cost) && (
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {gain ? (
@@ -197,7 +197,7 @@ export function QA({ q, children }: { q: string; children: ReactNode }) {
         </span>
         {q}
       </summary>
-      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed text-[var(--skin-muted)]">
+      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed text-[var(--skin-muted)] [&>*+*]:mt-3.5">
         {children}
       </div>
     </details>
@@ -211,7 +211,7 @@ export function Task({ title, children }: { title: string; children: ReactNode }
         Amaliyot
       </div>
       <h3 className="mt-0 mb-2 text-base font-semibold">{title}</h3>
-      <div className="text-sm leading-relaxed text-[var(--skin-muted)]">{children}</div>
+      <div className="text-sm leading-relaxed text-[var(--skin-muted)] [&>*+*]:mt-3.5">{children}</div>
     </section>
   );
 }
@@ -260,7 +260,7 @@ export function Deep({ title, children }: { title: string; children: ReactNode }
         </span>
         <span className="text-[var(--skin-muted)]">Chuqurroq:</span> {title}
       </summary>
-      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed">
+      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed [&>*+*]:mt-3.5">
         {children}
       </div>
     </details>
@@ -277,7 +277,7 @@ export function Check({ q, children }: { q: string; children: ReactNode }) {
         </span>
         <span className="text-sm font-medium">{q}</span>
       </summary>
-      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed text-[var(--skin-muted)]">
+      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed text-[var(--skin-muted)] [&>*+*]:mt-3.5">
         {children}
       </div>
     </details>
