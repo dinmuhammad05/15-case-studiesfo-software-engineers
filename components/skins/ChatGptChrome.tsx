@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { lessons } from "@/lib/lessons";
+import { ReadingProgress } from "@/components/lesson/Progress";
 
 /**
  * ChatGPT skinining interaktiv qismi.
@@ -78,7 +79,8 @@ export function ChatGptChrome({ slug, children }: { slug: string; children: Reac
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Yuqori panel */}
-        <div className="sticky top-0 z-30 flex select-none items-center gap-1 border-b border-[var(--skin-border)] bg-[var(--skin-bg)]/85 px-2 py-2 backdrop-blur sm:px-3">
+        <div className="sticky top-0 z-30 flex select-none items-center  gap-1 relative border-b border-[var(--skin-border)] bg-[var(--skin-bg)]/85 px-2 py-2 backdrop-blur sm:px-3">
+          <ReadingProgress />
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}

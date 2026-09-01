@@ -53,6 +53,14 @@ bir xil kontent 17 xil UI ichida ham tabiiy ko‘rinadi.
 > qo‘shilmaydi. Skinlar — o‘xshash palitra, tartib va o‘zimiz chizgan soddalashtirilgan
 > belgilar. Har bir dars sahifasi pastida shu haqda izoh chiqadi.
 
+## Dars chuqurligi
+
+Namuna dars — `app/darslar/chatgpt/page.mdx`: 12 000+ so‘z, 21 bo‘lim, 19 ta hisob-kitob
+bloki, 25 ta intervyu savoli, 4 daraja amaliyot. Har bir muhandislik qarori raqamdan kelib
+chiqadi (roofline, KV cache byudjeti, navbat nazariyasi, sig‘im rejalashtirish, birlik
+iqtisodi). Qolgan darslar ham shu me’yorga qarab yoziladi — batafsili
+`docs/DARS-SHABLONI.md` da.
+
 ## Yangi dars qo‘shish
 
 1. `lib/lessons.ts` ga yozuv qo‘shing (order, slug, title, summary, accent, level, topics).

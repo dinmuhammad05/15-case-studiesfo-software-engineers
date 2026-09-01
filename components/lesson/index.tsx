@@ -215,3 +215,136 @@ export function Task({ title, children }: { title: string; children: ReactNode }
     </section>
   );
 }
+
+/* ============================================================
+   Chuqur darslar uchun qo'shimcha bloklar
+   ============================================================ */
+
+/** Hisob-kitob bloki: farazlar -> arifmetika -> natija. */
+export function Calc({
+  title,
+  children,
+  result,
+}: {
+  title: string;
+  children: ReactNode;
+  result?: string;
+}) {
+  return (
+    <figure className="my-6 overflow-hidden rounded-[var(--skin-radius)] border border-[var(--skin-border)] bg-[var(--skin-surface)]">
+      <figcaption className="border-b border-[var(--skin-border)] px-4 py-2.5 text-xs font-semibold tracking-wide text-[var(--skin-muted)] uppercase">
+        Hisob · {title}
+      </figcaption>
+      <div className="overflow-x-auto px-4 py-3 font-[family-name:var(--skin-mono)] text-[13px] leading-relaxed whitespace-pre">
+        {children}
+      </div>
+      {result ? (
+        <div className="border-t border-[var(--skin-border)] bg-[var(--skin-surface-2)] px-4 py-3 text-sm">
+          <strong className="text-[var(--skin-accent)]">Natija:</strong> {result}
+        </div>
+      ) : null}
+    </figure>
+  );
+}
+
+/**
+ * Chuqur qism — matematik yoki past darajadagi tafsilot.
+ * Yopiq holatda: birinchi o'qishda tashlab ketsa bo'ladi.
+ */
+export function Deep({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="group my-6 rounded-[var(--skin-radius)] border border-[var(--skin-border)] bg-[var(--skin-surface-2)] px-4 py-3">
+      <summary className="cursor-pointer list-none text-sm font-medium marker:content-none">
+        <span className="mr-2 inline-block text-[var(--skin-accent)] transition-transform group-open:rotate-90">
+          ▸
+        </span>
+        <span className="text-[var(--skin-muted)]">Chuqurroq:</span> {title}
+      </summary>
+      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+/** Bo'lim oxiridagi o'z-o'zini tekshirish savoli. */
+export function Check({ q, children }: { q: string; children: ReactNode }) {
+  return (
+    <details className="group my-6 rounded-[var(--skin-radius)] border-l-[3px] border-[var(--skin-accent)] bg-[var(--skin-surface)] px-4 py-3">
+      <summary className="cursor-pointer list-none marker:content-none">
+        <span className="mb-1 block text-[11px] font-semibold tracking-wide text-[var(--skin-accent)] uppercase">
+          Nazorat savoli · javobni ko‘rish
+        </span>
+        <span className="text-sm font-medium">{q}</span>
+      </summary>
+      <div className="mt-3 border-t border-[var(--skin-border)] pt-3 text-sm leading-relaxed text-[var(--skin-muted)]">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+/** Ikki yondashuvni yonma-yon solishtirish. */
+export function Versus({
+  left,
+  right,
+}: {
+  left: { title: string; points: string[] };
+  right: { title: string; points: string[] };
+}) {
+  return (
+    <div className="my-6 grid gap-3 sm:grid-cols-2">
+      {[left, right].map((side, i) => (
+        <div
+          key={side.title}
+          className="rounded-[var(--skin-radius)] border border-[var(--skin-border)] bg-[var(--skin-surface)] p-4"
+        >
+          <div
+            className={`mb-2 text-sm font-semibold ${i === 0 ? "text-[var(--skin-accent)]" : ""}`}
+          >
+            {side.title}
+          </div>
+          <ul className="space-y-1.5 text-sm text-[var(--skin-muted)]">
+            {side.points.map((p) => (
+              <li key={p} className="flex gap-2">
+                <span aria-hidden className="opacity-50">
+                  —
+                </span>
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Xronologiya: texnologiyaning rivojlanish bosqichlari. */
+export function Timeline({
+  rows,
+}: {
+  rows: { when: string; what: string; why: string }[];
+}) {
+  return (
+    <div className="my-6 space-y-0">
+      {rows.map((r, i) => (
+        <div key={r.when + r.what} className="flex gap-4">
+          <div className="flex flex-col items-center">
+            <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--skin-accent)]" />
+            {i < rows.length - 1 ? (
+              <span className="w-px flex-1 bg-[var(--skin-border)]" />
+            ) : null}
+          </div>
+          <div className="pb-5">
+            <div className="font-[family-name:var(--skin-mono)] text-xs text-[var(--skin-accent)]">
+              {r.when}
+            </div>
+            <div className="mt-0.5 text-sm font-medium">{r.what}</div>
+            <div className="mt-1 text-sm text-[var(--skin-muted)]">{r.why}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

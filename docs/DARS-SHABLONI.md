@@ -29,6 +29,9 @@ integratsiyalar, tashqi tizimlar.
 
 **7. Bugungi arxitektura** — `<Arch>` bilan qatlamli diagramma + yon tizimlar haqida abzas.
 
+**7.5 Antinaqshlar** — shu domenda eng ko‘p uchraydigan xatolar, `<TradeOffs>` jadvalida:
+xato qaror, uning ko‘rinishdagi foydasi va haqiqiy narxi.
+
 **8. Ishonchlilik** — nosozlik stsenariylari: retry storm, hot spot, uzilish, graceful
 degradation, versiya chiqarish. Bu bo‘lim ishlab chiqarish tajribasini ko‘rsatadi.
 
@@ -46,17 +49,37 @@ degan `<Callout>`.
 **13. Intervyu savollari** — 12–16 ta `<QA>`. Savol chinakam intervyu darajasida; javob
 3–6 gap, mexanizmni tushuntiradigan, yodlanadigan emas.
 
-**14. Amaliyot** — uchta daraja (`<Task>`): oson, asosiy, murakkab. Har birida **tekshiruv
-mezoni**: “ishladi” emas, o‘lchangan natija.
+**14. Amaliyot** — 3–4 daraja (`<Task>`): oson, asosiy, murakkab, sig‘im modeli. Har birida
+**tekshiruv mezoni**: “ishladi” emas, o‘lchangan natija — grafik, foiz, taqqoslash.
 
 **15. Lug‘at** — 15–20 ta atama jadvali.
 
 **16. Manbalar** — asosiy maqolalar va hujjatlar.
 
-## Hajm mezoni
+## Hajm va chuqurlik mezoni
 
-Tayyor dars ≈ 5000+ so‘z, 15+ bo‘lim, 8+ jadval, 10+ kod bloki. Undan kam bo‘lsa,
-ehtimol “nima sindi” yoki “iqtisod” bo‘limlari yuzaki qolgan.
+Namuna dars (ChatGPT) ko‘rsatkichlari — quyi chegara emas, **me’yor**:
+
+| Ko‘rsatkich | Maqsad |
+| --- | --- |
+| So‘z | 10 000+ |
+| `##` bo‘limlar | 18+ |
+| `<Calc>` hisob bloklari | 15+ |
+| Jadvallar | 15+ |
+| Kod bloklari | 20+ |
+| `<QA>` intervyu savollari | 20+ |
+| `<Deep>` chuqur bloklari | 8+ |
+| `<Check>` nazorat savollari | 6+ |
+| `<Task>` amaliyot darajalari | 3–4 |
+
+**Eng muhim mezon — hisob-kitob.** Har bir muhandislik qarori raqamdan kelib chiqishi kerak:
+“batching kerak” emas, balki “arifmetik intensivlik 1, ridge point 295, demak GPU ning
+0.3% i ishlatilyapti”. O‘quvchi har bir `<Calc>` blokini kalkulyatorda takrorlay olsin.
+
+Uch qatlamli tuzilma:
+1. **Asosiy matn** — hamma uchun, hisob natijalari bilan
+2. **`<Deep>`** — matematika va past daraja; birinchi o‘qishda tashlansa mantiq uzilmaydi
+3. **`<Check>`** — bo‘lim oxirida o‘z-o‘zini tekshirish
 
 ## Uslub qoidalari
 
