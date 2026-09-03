@@ -1,0 +1,43 @@
+DARS MATNLARI UCHUN LITSENZIYA
+LICENSE FOR LESSON CONTENT
+
+Copyright (c) 2026 dinmuhammad05
+
+Ushbu litsenziya quyidagilarga tegishli:
+This license applies to:
+
+  - app/darslar/**/page.mdx   (barcha dars matnlari / all lesson texts)
+  - docs/**                   (uslubiy hujjatlar / methodology docs)
+  - public/og*.png            (ulashish uchun rasmlar / share images)
+
+Litsenziya: Creative Commons Attribution-NonCommercial 4.0 International
+            (CC BY-NC 4.0)
+
+To'liq matn / Full text:
+  https://creativecommons.org/licenses/by-nc/4.0/legalcode
+  https://creativecommons.org/licenses/by-nc/4.0/deed.uz
+
+
+QISQACHA (bu huquqiy matn emas, faqat tushuntirish):
+
+RUXSAT ETILADI:
+  - Nusxa ko'chirish va tarqatish, istalgan formatda
+  - O'zgartirish, qayta ishlash, o'z materialingizga asos qilish
+  - Darsda, universitetda, o'quv kursida foydalanish
+
+SHARTLAR:
+  - Muallifni ko'rsatish: dinmuhammad05 va manba havolasi
+    https://github.com/dinmuhammad05/15-case-studiesfo-software-engineers
+  - Tijorat maqsadida foydalanish mumkin emas (sotish, pullik kursga
+    kiritish, reklama daromadi olish uchun qayta nashr qilish)
+
+Tijorat maqsadida foydalanish uchun muallif bilan bog'laning: @dinMuhammad05
+
+
+SUMMARY (not legal text):
+
+You are free to share and adapt this material for any NON-COMMERCIAL purpose,
+as long as you give appropriate credit to dinmuhammad05 and link back to the
+source repository. For commercial use, contact the author: @dinMuhammad05
+
+The SOURCE CODE of the project is licensed separately under MIT — see LICENSE.

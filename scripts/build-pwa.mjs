@@ -175,6 +175,30 @@ self.addEventListener("fetch", (event) => {
 
 await writeFile(join(OUT, "sw.js"), sw);
 
+// --- SEO: sitemap va robots ---
+const SITE = "https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers";
+const pages = files
+  .filter((f) => f.endsWith("index.html"))
+  .map((f) => `${SITE}/${f.replace(/index\.html$/, "")}`.replace(/([^:])\/\/+/g, "$1/"))
+  .filter((u) => !u.includes("/404/"));
+
+await writeFile(
+  join(OUT, "sitemap.xml"),
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    pages
+      .map(
+        (u) =>
+          `  <url><loc>${u}</loc><changefreq>weekly</changefreq><priority>${u === SITE + "/" ? "1.0" : "0.8"}</priority></url>`,
+      )
+      .join("\n") +
+    `\n</urlset>\n`,
+);
+
+await writeFile(
+  join(OUT, "robots.txt"),
+  `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`,
+);
+
 const bytes = (await Promise.all(precache.map((f) => stat(join(OUT, f))))).reduce(
   (a, s) => a + s.size,
   0,

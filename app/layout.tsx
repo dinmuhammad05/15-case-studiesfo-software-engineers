@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { PwaManager } from "@/components/pwa/PwaManager";
+import { site } from "@/lib/site";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -11,12 +12,40 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(site.url),
   title: {
-    default: "System Design darsligi — 17 ta case study",
-    template: "%s · System Design darsligi",
+    default: `${site.name} — 17 ta case study`,
+    template: `%s · ${site.name}`,
   },
-  description:
-    "ChatGPT, YouTube, Kafka, S3 va boshqa tizimlar noldan hozirgi arxitekturasigacha — o‘zbek tilida.",
+  description: site.description,
+  keywords: [
+    "system design",
+    "tizim dizayni",
+    "o'zbek tilida",
+    "intervyu",
+    "ChatGPT",
+    "Redis",
+    "Kafka",
+    "arxitektura",
+    "dasturlash",
+  ],
+  authors: [{ name: site.author.handle, url: site.author.github }],
+  creator: site.author.handle,
+  openGraph: {
+    type: "website",
+    locale: "uz_UZ",
+    url: site.url,
+    siteName: site.name,
+    title: `${site.name} — 17 ta case study`,
+    description: site.description,
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: site.name }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${site.name} — 17 ta case study`,
+    description: site.description,
+    images: ["/og.png"],
+  },
   manifest: `${BASE}/manifest.webmanifest`,
   appleWebApp: {
     capable: true,
