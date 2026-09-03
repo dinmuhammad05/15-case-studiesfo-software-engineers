@@ -14,8 +14,8 @@ va har bir qaror hisob-kitob bilan asoslanadi.
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-offline%20ishlaydi-5A0FC8)
+![Matn: CC BY--NC 4.0](https://img.shields.io/badge/darslar-CC%20BY--NC%204.0-orange)
 ![Kod: MIT](https://img.shields.io/badge/kod-MIT-green)
-![Matn: CC BY--NC 4.0](https://img.shields.io/badge/matn-CC%20BY--NC%204.0-lightgrey)
 
 </div>
 
@@ -156,12 +156,33 @@ yoki PR yuboring. Ayniqsa qadrlanadi:
 - Til va uslub tuzatishlari
 - Yangi darslar (avval issue orqali kelishib olamiz)
 
-## Litsenziya
+PR yuborsangiz, hissangiz shu litsenziyalar ostida qo‘shilishiga rozilik bildirgan
+bo‘lasiz.
+
+## Foydalanish shartlari
+
+Darslik **bepul** va o‘qish uchun ochiq. Lekin uni pul ishlash vositasiga aylantirish
+mumkin emas.
+
+**Mumkin:**
+
+- O‘qish, o‘rganish, do‘stlarga ulashish
+- Universitet yoki bepul o‘quv kursida foydalanish
+- Nom va manba ko‘rsatgan holda parchalarni keltirish, tarjima qilish
+
+**Mumkin emas:**
+
+- Dars matnlarini pullik kursga qo‘shish yoki sotish
+- Reklama daromadi olish uchun o‘z saytingizda qayta nashr qilish
+- Muallif nomini olib tashlab, o‘zingiznikidek ko‘rsatish
 
 | Nima | Litsenziya |
 | --- | --- |
-| Manba kodi | [MIT](LICENSE) |
-| Dars matnlari va rasmlar | [CC BY-NC 4.0](LICENSE-CONTENT) — nom ko‘rsatilsa, notijorat maqsadda erkin |
+| Dars matnlari, rasmlar, uslubiy hujjatlar | [CC BY-NC 4.0](LICENSE-CONTENT) — nom ko‘rsatilsa, **notijorat** maqsadda erkin |
+| Manba kodi (sayt karkasi) | [MIT](LICENSE) |
+
+Tijorat maqsadida foydalanish uchun muallif bilan bog‘laning:
+[@dinMuhammad05](https://t.me/dinMuhammad05)
 
 ## Muallif
 

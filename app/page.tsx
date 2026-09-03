@@ -2,7 +2,7 @@ import Link from "next/link";
 import { lessons, readyLessons } from "@/lib/lessons";
 import { LessonCard } from "@/components/LessonCard";
 import { SiteFooter } from "@/components/SiteFooter";
-import { site } from "@/lib/site";
+import { SiteHeader } from "@/components/SiteHeader";
 
 export default function HomePage() {
   const ready = readyLessons();
@@ -10,7 +10,9 @@ export default function HomePage() {
   const progress = Math.round((ready.length / lessons.length) * 100);
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+    <>
+      <SiteHeader />
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
       <header className="max-w-3xl">
         <div className="flex flex-wrap items-center gap-2 font-[family-name:var(--skin-mono)] text-sm">
           <span className="text-[var(--skin-accent)]">{lessons.length} ta case study</span>
@@ -21,14 +23,7 @@ export default function HomePage() {
           <span aria-hidden className="text-[var(--skin-muted)]">
             ·
           </span>
-          <a
-            href={site.repo}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--skin-muted)] underline underline-offset-2 hover:text-[var(--skin-text)]"
-          >
-            ochiq manba
-          </a>
+          <span className="text-[var(--skin-muted)]">bepul</span>
         </div>
 
         <h1 className="mt-5 text-4xl font-bold tracking-tight sm:text-6xl">
@@ -119,7 +114,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      <SiteFooter />
-    </div>
+        <SiteFooter />
+      </div>
+    </>
   );
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { lessons, readyLessons } from "@/lib/lessons";
 import { LessonCard } from "@/components/LessonCard";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = { title: "Kurs rejasi" };
 
@@ -10,7 +11,9 @@ export default function LessonsPage() {
   const ready = readyLessons();
   const totalMinutes = lessons.reduce((a, l) => a + l.minutes, 0);
   return (
-    <div className="mx-auto max-w-6xl px-5 py-16">
+    <>
+      <SiteHeader />
+      <div className="mx-auto max-w-6xl px-5 py-12">
       <Link href="/" className="text-sm text-[var(--skin-muted)] hover:text-[var(--skin-text)]">
         ← Bosh sahifa
       </Link>
@@ -31,7 +34,8 @@ export default function LessonsPage() {
           <LessonCard key={l.slug} lesson={l} />
         ))}
       </div>
-      <SiteFooter />
-    </div>
+        <SiteFooter />
+      </div>
+    </>
   );
 }

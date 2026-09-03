@@ -42,14 +42,6 @@ export function SiteFooter() {
             >
               Telegram {site.author.telegram}
             </a>
-            <a
-              href={site.repo}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full border border-[var(--skin-border)] px-3.5 py-1.5 text-sm hover:bg-[var(--skin-surface)]"
-            >
-              Repozitoriy
-            </a>
           </div>
         </div>
 
@@ -60,14 +52,14 @@ export function SiteFooter() {
           </div>
           <ul className="space-y-2 text-sm text-[var(--skin-muted)]">
             <li>
-              Ochiq manba. Xato topsangiz yoki dars taklif qilmoqchi bo‘lsangiz —{" "}
+              Darslik bepul. Xato topsangiz yoki mavzu taklif qilmoqchi bo‘lsangiz —{" "}
               <a
-                href={`${site.repo}/issues`}
+                href={site.author.telegramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--skin-accent)] underline underline-offset-2"
               >
-                issue oching
+                Telegram orqali yozing
               </a>
               .
             </li>
@@ -76,7 +68,7 @@ export function SiteFooter() {
               olish mumkin.
             </li>
             <li>
-              Kod — {site.license.code}, dars matnlari —{" "}
+              Dars matnlari{" "}
               <a
                 href={site.license.contentUrl}
                 target="_blank"
@@ -84,8 +76,9 @@ export function SiteFooter() {
                 className="text-[var(--skin-accent)] underline underline-offset-2"
               >
                 {site.license.content}
-              </a>
-              .
+              </a>{" "}
+              litsenziyasi ostida: nom ko‘rsatilsa erkin foydalanish mumkin,{" "}
+              <strong className="text-[var(--skin-text)]">tijorat maqsadida emas</strong>.
             </li>
           </ul>
         </div>
