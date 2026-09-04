@@ -1,9 +1,8 @@
 name: Deploy to GitHub Pages
 
-# Repozitoriy private bo'lgani uchun GitHub Pages bepul tarifda ishlamaydi.
-# Shu sabab avtomatik deploy o'chirilgan — kerak bo'lganda qo'lda ishga tushiriladi
-# (Actions -> Deploy to GitHub Pages -> Run workflow).
 on:
+  push:
+    branches: [main, "claude/**"]
   workflow_dispatch:
 
 permissions:
