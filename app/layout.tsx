@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { PwaManager } from "@/components/pwa/PwaManager";
 import { site } from "@/lib/site";
+import { ContentGuard, Watermark } from "@/components/lesson/ContentGuard";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -52,6 +53,9 @@ export const metadata: Metadata = {
     title: "SD darslik",
     statusBarStyle: "black-translucent",
   },
+  robots: site.protection.noindex
+    ? { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } }
+    : undefined,
   icons: {
     icon: [
       { url: `${BASE}/icon-192.png`, sizes: "192x192", type: "image/png" },
@@ -66,6 +70,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="uz">
       <body>
         {children}
+        <Watermark />
+        <ContentGuard />
         <PwaManager />
       </body>
     </html>

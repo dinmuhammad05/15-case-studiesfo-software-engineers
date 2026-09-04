@@ -17,6 +17,26 @@ export const site = {
     telegram: "@dinMuhammad05",
     telegramUrl: "https://t.me/dinMuhammad05",
   },
+  /**
+   * Kontentni himoyalash sozlamalari.
+   *
+   * DIQQAT: bularning hech biri jiddiy nusxa ko'chirishni to'xtata olmaydi.
+   * Ular faqat tasodifiy nusxalashni qiyinlashtiradi va tarqalgan nusxada
+   * manbani ko'rsatadi. Haqiqiy himoya faqat server tomonda autentifikatsiya
+   * bilan bo'ladi — docs/HIMOYA.md ga qarang.
+   */
+  protection: {
+    /** Qidiruv tizimlariga indekslashni taqiqlash */
+    noindex: true,
+    /** "Barcha darslarni yuklab olish" tugmasi (offline nusxa) */
+    offlineDownload: false,
+    /** Nusxa ko'chirish va o'ng tugmani cheklash */
+    copyGuard: true,
+    /** Chop etishni (Ctrl+P, PDF ga saqlash) to'sish */
+    blockPrint: true,
+    /** Sahifa ustida ko'rinmas suv belgisi */
+    watermark: true,
+  },
   license: {
     code: "MIT",
     content: "CC BY-NC 4.0",

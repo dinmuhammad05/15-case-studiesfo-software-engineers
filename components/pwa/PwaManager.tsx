@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { lessons } from "@/lib/lessons";
+import { site } from "@/lib/site";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -124,12 +125,14 @@ export function PwaManager() {
           <p className="mb-3 text-xs text-[var(--skin-muted)]">
             {offline
               ? "Tarmoq yo‘q. Yuklab olingan darslar ishlayapti."
-              : saved
-                ? "Darslar qurilmangizga saqlangan — internetsiz o‘qish mumkin."
-                : "Darslarni saqlab qo‘ysangiz, internetsiz ham o‘qiy olasiz."}
+              : site.protection.offlineDownload
+                ? saved
+                  ? "Darslar qurilmangizga saqlangan — internetsiz o‘qish mumkin."
+                  : "Darslarni saqlab qo‘ysangiz, internetsiz ham o‘qiy olasiz."
+                : "Ochilgan sahifalar vaqtincha saqlanadi, lekin darslarni qurilmaga yuklab olish o‘chirilgan."}
           </p>
 
-          {progress ? (
+          {!site.protection.offlineDownload ? null : progress ? (
             <div className="mb-2">
               <div className="h-1.5 overflow-hidden rounded-full bg-[var(--skin-surface-2)]">
                 <div

@@ -175,13 +175,18 @@ self.addEventListener("fetch", (event) => {
 
 await writeFile(join(OUT, "sw.js"), sw);
 
-// --- SEO: sitemap va robots ---
+// --- SEO: kontent himoyalangan bo'lsa indekslash taqiqlanadi ---
+const NOINDEX = /noindex:\s*true/.test(await readFile("lib/site.ts", "utf8"));
 const SITE = "https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers";
 const pages = files
   .filter((f) => f.endsWith("index.html"))
   .map((f) => `${SITE}/${f.replace(/index\.html$/, "")}`.replace(/([^:])\/\/+/g, "$1/"))
   .filter((u) => !u.includes("/404/"));
 
+if (NOINDEX) {
+  await writeFile(join(OUT, "robots.txt"), `User-agent: *\nDisallow: /\n`);
+  console.log("robots.txt: indekslash TAQIQLANDI (site.ts -> protection.noindex)");
+} else {
 await writeFile(
   join(OUT, "sitemap.xml"),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
@@ -198,6 +203,7 @@ await writeFile(
   join(OUT, "robots.txt"),
   `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`,
 );
+}
 
 const bytes = (await Promise.all(precache.map((f) => stat(join(OUT, f))))).reduce(
   (a, s) => a + s.size,
