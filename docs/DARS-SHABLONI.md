@@ -81,6 +81,74 @@ Uch qatlamli tuzilma:
 2. **`<Deep>`** — matematika va past daraja; birinchi o‘qishda tashlansa mantiq uzilmaydi
 3. **`<Check>`** — bo‘lim oxirida o‘z-o‘zini tekshirish
 
+## Jadval qoidasi (eng ko‘p buziladigan qoida)
+
+Darslarning oxirgi uchdan biri — iqtisod, sig‘im, kuzatuv, antinaqshlar, trade-off‘lar —
+jadvalga aylanib ketishga moyil. Bu ma’lumotnoma bo‘ladi, darslik emas.
+
+**Qoida: har bir jadvaldan keyin kamida bitta abzas bo‘lishi shart.** Abzas ikkita
+savolga javob beradi:
+
+1. Bu jadval nimani ko‘rsatadi — qaysi naqsh, qaysi qarama-qarshilik?
+2. Undan qanday **qaror** chiqadi — o‘quvchi ertaga nima qiladi?
+
+```
+YOMON:
+  | Katta batch | GPU to'liq ishlaydi | TPOT sekinlashadi |
+  (va keyingi bo'limga o'tiladi)
+
+YAXSHI:
+  | Katta batch | GPU to'liq ishlaydi | TPOT sekinlashadi |
+
+  Diqqat qiling: birinchi ikki qator xarajat haqida, oxirgi ikkitasi kechikish
+  haqida — va ular bir-biriga qarama-qarshi. Shuning uchun bitta konfiguratsiya
+  bilan ikkalasini yopib bo'lmaydi: interaktiv chat va batch API alohida
+  sozlanadi. Agar sizda bitta profil bo'lsa, siz allaqachon birini qurbon
+  qilgansiz — faqat buni bilmaysiz.
+```
+
+Bir xil qoida `<TradeOffs>` va `<Versus>` bloklariga ham tegishli.
+
+## Oxirgi uchdan bir uchun minimal hajm
+
+| Bo‘lim | Minimal so‘z | Nima bo‘lishi shart |
+| --- | --- | --- |
+| Iqtisod | 400 | Hisob bloki + undan chiqadigan 3–4 ta mahsulot qarori |
+| Sig‘im rejalashtirish | 400 | Hisob bloki + “qachon keyingi bosqichga o‘tish kerak” signallari |
+| Kuzatuv | 400 | Metrikalar jadvali + har biri uchun “nima ko‘rsatadi va chegara qayerda” |
+| Antinaqshlar | 400 | Har bir antinaqsh uchun **nima uchun jozibali** ko‘rinishini tushuntirish |
+| Trade-off‘lar | 300 | Jadval + “qaysi metrikani optimallashtiryapsiz” degan yakuniy abzas |
+
+## Amaliyot topshiriqlari uchun boshlang‘ich kod
+
+Topshiriqning matni yetarli emas — o‘quvchi bo‘sh fayldan boshlashni yoqtirmaydi.
+Har bir darsning 2-daraja (asosiy) topshirig‘i uchun `docs/amaliyot/<slug>/` da
+skelet bo‘lishi kerak:
+
+```
+docs/amaliyot/chatgpt/
+  README.md          topshiriq va tekshiruv mezoni
+  scheduler.py       TODO izohlari bilan skelet
+  bench.py           yuk testi va metrikalar (tayyor)
+```
+
+Skeletda **o‘lchov qismi tayyor** bo‘lsin, mantiq qismi TODO bo‘lsin — shunda o‘quvchi
+asosiy g‘oyaga e’tibor beradi, grafik chizishga emas.
+
+## Raqamlarning manbasi
+
+Har bir darsning oxirida, “Manbalar” bo‘limidan oldin qisqa jadval:
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| H100 xotira tarmog‘i | 3.35 TB/s | NVIDIA H100 datasheet |
+| Base62 maydoni (7 belgi) | 3.52×10¹² | 62⁷, hisoblab chiqilgan |
+| Redis dictEntry hajmi | 24 bayt | Redis manba kodi, `dict.h` |
+
+Farazlar (foydalanuvchi soni, yozish tezligi) uchun manba shart emas — ular
+“illyustratsiya uchun taxminiy” deb belgilanadi. Lekin **apparat va format
+raqamlari** tekshirilishi mumkin bo‘lishi kerak.
+
 ## Uslub qoidalari
 
 - O‘zbek tilida, texnik atamalar asl holida (KV cache, throughput) + qavsda izoh
