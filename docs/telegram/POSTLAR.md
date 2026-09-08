@@ -43,8 +43,9 @@ Hozir 4 ta dars tayyor:
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
 03 — Redis: 12 ta asosiy stsenariy (11 100 so'z)
 04 — Twitter tasmasi qanday ishlaydi (10 200 so'z)
+05 — Reddit qanday ishlaydi (14 000 so'z)
 
-Yana 13 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, WhatsApp,
+Yana 12 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, WhatsApp,
 fond birjasi va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
@@ -64,8 +65,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-4 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi), 13 tasi
-rejada. Internetsiz ham o'qish mumkin.
+5 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit),
+12 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -165,6 +166,31 @@ https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/twi
 
 ---
 
+### 3.5 — Reddit
+
+```
+Reddit'da 12.5 soat oldingi 1000 ovozli post, hozirgi 100 ovozli post bilan
+TENG turadi.
+
+Bu tasodif emas. Formulasi shunday:
+
+    hot = log10(ovozlar) + vaqt / 45000
+
+log10 degani: dastlabki 10 ovoz keyingi 100 ovoz bilan bir xil ta'sir beradi.
+45000 soniya degani: har 12.5 soatda post +1 ball oladi — ya'ni 10 barobar
+ko'p ovozga teng.
+
+Ikkalasini birlashtirsangiz — "yangi va yaxshi" ni "eski va mashhur" dan
+ustun qo'yadigan tizim chiqadi.
+
+Yangi dars — Reddit qanday ishlaydi (14 000 so'z):
+hot formulasi, Wilson intervali, 500 000 kommentariyali daraxt, ovoz navbati,
+sharding va soxta ovozlarga qarshi himoya. Hammasi hisob-kitob bilan.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/reddit/
+```
+
+---
 ## 4. SO'ROVNOMA (poll) — engagement uchun
 
 Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:

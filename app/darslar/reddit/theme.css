@@ -1,0 +1,25 @@
+/* Reddit skini — post va kommentariya oqimi (rasmiy brend materiali emas) */
+[data-skin="reddit"] {
+  --skin-bg: #0b1416;
+  --skin-surface: #131f23;
+  --skin-surface-2: #1a282d;
+  --skin-border: #2a3c42;
+  --skin-text: #d7dadc;
+  --skin-muted: #8ba2ad;
+  --skin-accent: #ff4500;
+  --skin-accent-text: #ffffff;
+  --skin-radius: 16px;
+  --skin-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --skin-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+
+/* Kommentariya oqimidagi kabi chap chegara */
+[data-skin="reddit"] .lesson-prose h2 {
+  border-left: 3px solid var(--skin-accent);
+  padding-left: 0.75rem;
+  margin-left: -0.9rem;
+}
+
+body:has([data-skin="reddit"]) {
+  background: #0b1416;
+}

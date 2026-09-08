@@ -1,0 +1,2152 @@
+## Bu darsda nima o‘rganasiz
+
+Reddit tashqaridan oddiy: postlar bor, ularga ovoz beriladi, eng yaxshisi yuqorida
+turadi. Lekin “eng yaxshisi” degan so‘z ichida butun bir matematika yashiringan — va
+u aynan **formulada** yozilgan, ML modelida emas.
+
+Bu dars ikkita savol atrofida quriladi:
+
+1. **Reytingni qanday hisoblaymiz?** Ovozlar soni yetarli emas — 5 yil oldingi
+   10 000 ovozli post bugungi 50 ovozlidan yuqori turmasligi kerak
+2. **Reytingni qachon hisoblaymiz?** Har so‘rovda hisoblash imkonsiz; har ovozda
+   qayta tartiblash ham qimmat
+
+Twitter darsida savol “ishni qachon bajarish” edi. Bu yerda u aniqroq shaklga kiradi:
+**tartiblangan ro‘yxatni qachon yangilash**.
+
+| Savol | Javob shu darsda | Bo‘lim |
+| --- | --- | --- |
+| “Hot” formulasi qanday ishlaydi? | Logarifm va vaqt qo‘shiluvchisi | 3.2 |
+| Nega 12.5 soat = 10 barobar ovoz? | 45000 soniyaning ma’nosi | 3.3 |
+| 1 ta ijobiy ovoz 100/10 dan yaxshimi? | Wilson intervali | 3.5 |
+| Ovoz berilganda nima sodir bo‘ladi? | Yozish yo‘li va ro‘yxatlar | 6-bo‘lim, 3-qadam |
+| 500 000 kommentariyani qanday ko‘rsatasiz? | Daraxt va yuklash strategiyasi | 7 |
+| Ovozni qanday soxtalashtiradilar? | Manipulyatsiya va qarshi choralar | 10 |
+
+<Callout type="maslahat" title="Qanday o'qish kerak">
+Dars uch qatlamda: **asosiy matn** hamma uchun, `Chuqurroq` bloklari matematika va
+past daraja uchun, **nazorat savollari** bo‘lim oxirida. 3-bo‘lim (formulalar) darsning
+yuragi — uni tashlab ketmang, qolgani shunga tayanadi.
+</Callout>
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+1. Foydalanuvchi post joylaydi (matn, havola, rasm)
+2. Postga ijobiy yoki salbiy ovoz beriladi
+3. Postlar **tartiblangan ro‘yxatda** ko‘rsatiladi: hot, new, top, controversial
+4. Postga kommentariya yoziladi; kommentariyaga javob yoziladi (ichma-ich)
+5. Kommentariyalar ham ovoz oladi va tartiblanadi
+6. Hamma narsa **jamoa (subreddit)** ichida bo‘ladi
+
+### 1.2 Nofunksional talablar
+
+| Talab | Ko‘rsatkich | Nega aynan shunday |
+| --- | --- | --- |
+| Ro‘yxat yuklanishi | p99 ≤ 200 ms | Foydalanuvchi kuniga o‘nlab marta ochadi |
+| Ovoz javobi | ≤ 100 ms | Bosgach darhol ko‘rinishi kerak (optimistik UI) |
+| Reyting yangilanishi | ≤ 30 soniya | Aniq real vaqt shart emas |
+| Kommentariya ko‘rinishi | ≤ 5 soniya | Suhbat jonli tuyulishi kerak |
+| Mavjudlik (o‘qish) | 99.95% | O‘qish yozishdan muhimroq |
+| Izchillik | Oxir-oqibat | Ovoz soni bir necha soniya eskirgani sezilmaydi |
+
+<Callout type="ogoh" title="Eng muhim nofunksional talab">
+Ovozlar soni **aniq bo‘lishi shart emas**. Bu g‘alati tuyuladi, lekin u butun
+arxitekturani osonlashtiradi: hisoblagichlarni asinxron yangilash, keshlash va hatto
+ataylab “bulg‘ash” (10-bo‘lim) mumkin bo‘ladi.
+
+Agar ovoz soni bank hisobidek aniq bo‘lishi talab qilinsa, tizim bir necha barobar
+qimmatlashardi — va hech kim buni sezmasdi.
+</Callout>
+
+### 1.3 Konvert orqasidagi hisob
+
+<Calc title="Yuk taqsimoti" result="O'qish yozishdan 100 barobar ko'p, ovozlar postlardan 100 barobar ko'p. Ikkala nisbat ham arxitekturaga ta'sir qiladi">{`Farazlar (taxminiy, illyustratsiya uchun):
+  Kunlik faol foydalanuvchi       100 000 000
+  Kuniga post                       2 000 000
+  Kuniga kommentariya              20 000 000
+  Kuniga ovoz                     200 000 000
+  Foydalanuvchi kuniga ro'yxat ochadi     ~30 marta
+
+Yozish:
+  Post:          2e6 / 86400 =     23 / soniya
+  Kommentariya: 20e6 / 86400 =    231 / soniya
+  Ovoz:        200e6 / 86400 =  2 315 / soniya
+
+O'qish:
+  100e6 x 30 / 86400 = 34 722 ro'yxat / soniya
+  Cho'qqida (x3):    ~104 000 / soniya`}</Calc>
+
+Ikkita nisbat darhol ko‘zga tashlanadi:
+
+**O‘qish / yozish = 100:1.** Twitter darsidagi bilan bir xil — demak xulosa ham bir xil:
+ishni o‘qish paytiga qoldirmaslik kerak, ro‘yxatlar **oldindan tayyorlanadi**.
+
+**Ovoz / post = 100:1.** Bu esa yangi muammo: har bir ovoz reytingni o‘zgartiradi, ya’ni
+sekundiga 2315 marta tartiblangan ro‘yxatni yangilash kerak bo‘lishi mumkin. 6-bo‘limda
+buni qanday yengillashtirish mumkinligini ko‘ramiz.
+
+## 2. Nol nuqta: ma’lumot modeli
+
+```sql
+CREATE TABLE posts (
+    id          BIGINT PRIMARY KEY,       -- vaqt bo'yicha tartiblanadigan
+    subreddit_id BIGINT NOT NULL,
+    author_id   BIGINT NOT NULL,
+    title       TEXT NOT NULL,
+    body        TEXT,
+    created_at  TIMESTAMPTZ NOT NULL,
+    ups         INT NOT NULL DEFAULT 0,   -- denormallashtirilgan
+    downs       INT NOT NULL DEFAULT 0,
+    comment_count INT NOT NULL DEFAULT 0,
+    deleted     BOOLEAN NOT NULL DEFAULT false
+);
+
+CREATE TABLE votes (
+    user_id     BIGINT NOT NULL,
+    thing_id    BIGINT NOT NULL,          -- post yoki kommentariya
+    direction   SMALLINT NOT NULL,        -- +1, -1
+    created_at  TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (user_id, thing_id)       -- bir odam bir marta ovoz beradi
+);
+
+CREATE TABLE comments (
+    id          BIGINT PRIMARY KEY,
+    post_id     BIGINT NOT NULL,          -- ildiz post
+    parent_id   BIGINT,                   -- NULL bo'lsa — birinchi daraja
+    author_id   BIGINT NOT NULL,
+    body        TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL,
+    ups         INT NOT NULL DEFAULT 0,
+    downs       INT NOT NULL DEFAULT 0
+);
+```
+
+Uchta qaror darhol e’tiborni tortadi:
+
+**`votes` jadvalida birlamchi kalit `(user_id, thing_id)`.** Bu “bir odam — bir ovoz”
+qoidasini **baza darajasida** ta’minlaydi. Ilovada tekshirish poyga holatiga olib keladi
+(2-darsdagi maxsus kalitlar bilan bir xil muammo).
+
+**`ups` va `downs` postda saqlanadi.** Bu denormalizatsiya: har safar `votes` dan
+`COUNT(*)` qilish imkonsiz bo‘lardi. Narxi — izchillikni qo‘lda ta’minlash.
+
+**`comments.post_id` va `parent_id` alohida.** `post_id` bo‘lmasa, butun suhbatni
+olish uchun rekursiv so‘rov kerak bo‘lardi; u bilan esa bitta so‘rovda hammasi olinadi
+va daraxt ilovada quriladi (7-bo‘lim).
+
+<Check q="Nega `votes` jadvalida `direction` ustuni bor, yozuvni o'chirish o'rniga?">
+Foydalanuvchi ovozini o‘zgartirishi mumkin: ijobiydan salbiyga, yoki umuman bekor
+qilishi. Uch holat bor va ularni ajratish kerak:
+
+```
++1  ijobiy ovoz
+-1  salbiy ovoz
+ 0  ovoz bekor qilingan (yoki yozuv o'chiriladi)
+```
+
+Yozuvni o‘chirish ham ishlaydi, lekin `direction` saqlansa ikkita foyda bor:
+**tarix** (manipulyatsiyani aniqlash uchun, 10-bo‘lim) va **idempotentlik** — bir xil
+ovoz ikki marta kelsa, hisoblagichga ikki marta ta’sir qilmasligi kerak.
+
+Eng muhimi: hisoblagichni yangilash uchun **oldingi holatni bilish** shart. Foydalanuvchi
+`+1` dan `-1` ga o‘tsa, `ups` bittaga kamayadi va `downs` bittaga oshadi — ya’ni
+o‘zgarish ikki birlik. Bu mantiq eski yozuvsiz ishlamaydi.
+</Check>
+
+## 3. Reyting matematikasi: darsning yuragi
+
+### 3.1 Nega oddiy hisoblagich yetarli emas
+
+Postlarni `ups - downs` bo‘yicha tartiblasak, uchta muammo chiqadi:
+
+| Muammo | Misol | Oqibat |
+| --- | --- | --- |
+| Eski postlar abadiy yuqorida | 5 yil oldingi post, 50 000 ovoz | Yangi hech narsa ko‘rinmaydi |
+| Katta sonlar hukmron | 10 000 va 10 100 ovoz | 100 ovozlik farq sezilmaydi, lekin 0 va 100 juda muhim |
+| Vaqt umuman hisobga olinmaydi | Bir soatlik 100 ovoz vs bir yillik 100 ovoz | Ikkalasi teng ko‘rinadi |
+
+Kerak bo‘lgan narsa: **ovozlar soni ham, postning yoshi ham** hisobga olinadigan bitta
+son. Va u shunday bo‘lsinki, yangi postlar eskilarini asta-sekin **surib chiqarsin**.
+
+### 3.2 “Hot” formulasi
+
+Reddit‘ning tarixiy “hot” formulasi ochiq va uni to‘liq tushunish mumkin:
+
+```
+t = post yaratilgan vaqt (belgilangan boshlanish nuqtasidan soniyalarda)
+x = ups - downs
+y = sign(x)                      -- +1, 0 yoki -1
+z = max(|x|, 1)
+
+hot = log10(z) + (y * t) / 45000
+```
+
+Ikki qismdan iborat: **ovozlar qismi** (`log10(z)`) va **vaqt qismi** (`t / 45000`).
+
+<Calc title="Formulaning ikki qismi qanday raqobatlashadi" result="Har 12.5 soat postga +1 ball beradi. Va +1 ball logarifmda 10 barobar ko'p ovoz demak. Butun formulaning ma'nosi shu bitta jumlada">{`OVOZLAR QISMI: log10(z)
+
+  10 ovoz      -> log10(10)    = 1
+  100 ovoz     -> log10(100)   = 2
+  1 000 ovoz   -> log10(1000)  = 3
+  10 000 ovoz  -> log10(10000) = 4
+
+  Ya'ni har 10 barobar ko'p ovoz = +1 ball
+
+VAQT QISMI: t / 45000
+
+  45 000 soniya = 12.5 soat
+  Har 12.5 soat = +1 ball
+
+XULOSA:
+  12.5 soat yangi bo'lish = 10 barobar ko'p ovozga TENG`}</Calc>
+
+Bu jadval formulaning butun mohiyatini ochadi. Uni konkret misolda ko‘ramiz:
+
+<Calc title="Qaysi post yuqorida turadi" result="12.5 soat yangi bo'lgan 100 ovozli post, 1000 ovozli eski post bilan TENG turadi. Front sahifa shu sabab har kuni yangilanadi">{`Post A: 1000 ovoz, vaqt = t
+Post B: ? ovoz,    vaqt = t + 45000  (12.5 soat keyin joylangan)
+
+A ning bali:  log10(1000) + t/45000 = 3 + t/45000
+
+B teng bo'lishi uchun:
+  log10(z_B) + (t + 45000)/45000 = 3 + t/45000
+  log10(z_B) + t/45000 + 1       = 3 + t/45000
+  log10(z_B)                     = 2
+  z_B                            = 100 ovoz`}</Calc>
+
+<Deep title="Nega logarifm, chiziqli emas">
+Agar formula `x + t/45000` bo‘lsa (logarifmsiz), 10 000 ovozli post 45 000 000 soniya —
+ya’ni **17 oy** davomida birinchi o‘rinda turardi. Front sahifa qotib qolardi.
+
+Logarifm ikkita ish qiladi:
+
+1. **Katta sonlarning ta’sirini siqadi.** 10 000 dan 11 000 ga o‘tish balga atigi
+   0.04 qo‘shadi. Ya’ni allaqachon mashhur post yanada mashhur bo‘lishidan foyda kam
+2. **Kichik sonlarning ta’sirini kuchaytiradi.** 1 dan 10 ga o‘tish +1 ball beradi —
+   yangi postga birinchi 10 ta ovoz eng qimmatlisi
+
+Ikkinchi xususiyat mahsulot uchun juda muhim: **yangi postga imkon beradi**. Agar
+formula chiziqli bo‘lsa, hech bir yangi post eskilarini quvib yeta olmasdi.
+
+Bu naqsh keng tarqalgan: har qanday “mashhurlik” ko‘rsatkichi logarifmik shkalada
+o‘lchanadi, chunki odam idroki ham logarifmik — 10 va 20 ovoz orasidagi farq, 1000 va
+1010 orasidagidan ancha katta tuyuladi.
+</Deep>
+
+### 3.3 Salbiy ballar va `sign(x)`
+
+Formuladagi `y = sign(x)` ko‘pchilikni chalkashtiradi. U shu uchun kerak: agar post
+**salbiy** ballga ega bo‘lsa, vaqt qo‘shiluvchisi ham **manfiy** bo‘ladi.
+
+```
+Ijobiy post (x = +100):  hot = 2 + t/45000    -> vaqt YORDAM beradi
+Neytral post (x = 0):    hot = 0 + 0          -> vaqt umuman ta'sir qilmaydi
+Salbiy post (x = -100):  hot = 2 - t/45000    -> vaqt ZARAR qiladi
+```
+
+Natijasi qiziq: **yangi salbiy post eski salbiy postdan pastroq turadi**. Ya’ni yomon
+qabul qilingan yangi kontent tezda pastga tushadi va u yerda qoladi.
+
+<Callout type="ogoh" title="Bu formulaning ma'lum kamchiligi">
+Vaqt qismi **postning yoshiga** bog‘liq, ovozlar kelgan vaqtga emas. Ya’ni post bir
+yildan keyin birdan ommalashsa ham, uning vaqt bali o‘sha eski qiymatda qoladi va u
+hech qachon yuqoriga chiqa olmaydi.
+
+Bu ataylab qilingan: “eskini qayta ko‘tarish” hujum vositasiga aylanishi mumkin
+(bir yil oldingi postga bot bilan ovoz berib, uni front sahifaga chiqarish).
+
+Zamonaviy tizimlar bu formulani asos qilib, ustiga qo‘shimcha signallar qo‘yadi —
+lekin asosiy g‘oya (logarifm + vaqt) o‘zgarmagan.
+</Callout>
+
+### 3.4 Boshqa tartiblash usullari
+
+| Tartib | Formula / mantiq | Nima uchun kerak |
+| --- | --- | --- |
+| **hot** | `log10(z) + sign*t/45000` | Standart: yangilik va sifat muvozanati |
+| **new** | `created_at DESC` | Hech narsa o‘tkazib yubormaslik uchun |
+| **top** | `ups - downs`, vaqt oynasi bilan | “Bu haftaning eng yaxshisi” |
+| **rising** | Ovoz tezligi (ovoz/vaqt) | Endi ommalashayotganini ushlash |
+| **controversial** | Ijobiy va salbiy ovozlar **balansi** | Bahsli mavzular |
+
+`controversial` formulasi qiziq: u ovozlar **ko‘p** va **teng taqsimlangan** bo‘lganda
+yuqori bal beradi.
+
+```
+magnitude = ups + downs
+balance = min(ups, downs) / max(ups, downs)
+controversy = magnitude ^ balance
+```
+
+500/500 taqsimotda `balance = 1` va bal `1000` bo‘ladi; 990/10 da esa `balance ≈ 0.01`
+va bal deyarli 1 ga tushadi. Ya’ni formula “ko‘p odam qarama-qarshi fikrda” degan
+holatni topadi.
+
+Har bir tartib **alohida ro‘yxat** demak — va bu 6-bo‘limdagi asosiy xarajat manbai.
+
+### 3.5 Kommentariyalar uchun boshqa formula: Wilson intervali
+
+Kommentariyalarda vaqt unchalik muhim emas (ular baribir bitta post ichida), lekin
+boshqa muammo bor: **kam ovozli kommentariyalar**.
+
+<Calc title="Oddiy nisbat nega ishlamaydi" result="Oddiy nisbat 1 ovozli kommentariyani 110 ovozlidan yuqori qo'yadi. Wilson intervali esa 'bu ma'lumot yetarli emas' deb to'g'ri javob beradi">{`A kommentariyasi: 1 ijobiy, 0 salbiy
+B kommentariyasi: 100 ijobiy, 10 salbiy
+
+ODDIY NISBAT (ups / jami):
+  A: 1/1   = 1.00   <- birinchi o'rin
+  B: 100/110 = 0.909
+  Natija NOTO'G'RI: bitta tasodifiy ovoz g'olib chiqdi
+
+ODDIY FARQ (ups - downs):
+  A: 1
+  B: 90            <- endi B yutadi
+  Lekin: 1000/900 farqi 100 bo'ladi va u 100/0 dan yuqori turadi
+  Bu ham NOTO'G'RI`}</Calc>
+
+Wilson intervali savolni boshqacha qo‘yadi: “**mavjud ma’lumotga asoslanib**, bu
+kommentariyaning haqiqiy ijobiylik ulushi kamida qancha bo‘lishi mumkin?”
+
+```
+p = ups / n              -- kuzatilgan ulush
+n = ups + downs          -- jami ovoz
+z = 1.96                 -- 95% ishonch darajasi
+
+           p + z²/2n − z·√( (p(1−p) + z²/4n) / n )
+score = ────────────────────────────────────────────
+                        1 + z²/n
+```
+
+<Calc title="Wilson bali qanday javob beradi" result="Wilson 1 ovozli kommentariyaga past bal beradi — chunki bitta ovoz hech narsani isbotlamaydi. 110 ovoz esa ishonchli">{`A: 1 ijobiy, 0 salbiy  (n = 1, p = 1.0)
+  score ≈ 0.21
+
+B: 100 ijobiy, 10 salbiy  (n = 110, p = 0.909)
+  score ≈ 0.84
+
+C: 10 ijobiy, 1 salbiy  (n = 11, p = 0.909)
+  score ≈ 0.62
+
+Diqqat: B va C ning nisbati BIR XIL (0.909),
+lekin B ning bali yuqori — chunki ma'lumot ko'proq.`}</Calc>
+
+<Deep title="Wilson intervali nima qilyapti">
+Ovoz berishni **tanga tashlash** deb tasavvur qiling: har bir foydalanuvchi qandaydir
+noma’lum ehtimollik `p` bilan ijobiy ovoz beradi. Biz `p` ni bilmaymiz — faqat namunani
+ko‘ramiz.
+
+1 ta ijobiy ovoz ko‘rsak, haqiqiy `p` 0.05 ham, 0.99 ham bo‘lishi mumkin — ma’lumot
+juda kam. 110 ta ovoz ko‘rsak, `p` ning 0.85–0.95 oralig‘ida ekaniga ishonch ancha
+yuqori.
+
+Wilson intervali shu **ishonch oralig‘ining pastki chegarasini** beradi. Tartiblash uchun
+aynan pastki chegara olinadi: “eng yomon holatda ham bu kommentariya qanchalik yaxshi?”
+
+Natijada tizim **ehtiyotkor** bo‘ladi: yangi kommentariya bir nechta ijobiy ovoz olmaguncha
+yuqoriga chiqmaydi, lekin chiqa boshlagach tez ko‘tariladi.
+
+Amaliy tafsilot: `z` qiymati sozlanadigan tutqich. `z = 1.96` (95%) ehtiyotkor,
+`z = 1.0` (68%) esa yangi kommentariyalarga ko‘proq imkon beradi. Uni o‘zgartirish
+suhbatning “tezligini” sezilarli o‘zgartiradi.
+</Deep>
+
+<Check q="Yangi kommentariya 3 ta ijobiy ovoz oldi. U 200/20 li kommentariyadan yuqori turishi kerakmi?">
+Wilson bo‘yicha — **yo‘q**. 3/3 uchun bal ≈ 0.44, 200/220 uchun ≈ 0.86. Uch ovoz
+statistik jihatdan deyarli hech narsani isbotlamaydi.
+
+Lekin bu yerda **mahsulot ziddiyati** bor: agar yangi kommentariyalar hech qachon
+yuqoriga chiqmasa, birinchi kommentariya abadiy g‘olib bo‘lib qoladi va suhbat
+rivojlanmaydi.
+
+Amaliy tizimlar buni ikki yo‘l bilan yumshatadi:
+
+1. **Yangi kommentariyalarni ataylab yuqoriroq ko‘rsatish** — birinchi bir necha
+   daqiqada ular “sinov muddatini” oladi va ovoz olish imkoniga ega bo‘ladi
+2. **Aralashtirish** — ro‘yxatning ma’lum foizi tasodifiy yangi kommentariyalarga
+   ajratiladi (bu tavsiya tizimlaridagi “exploration” bilan bir xil g‘oya)
+
+Ikkalasi ham bir xil muammoni yechadi: **sovuq start**. Yaxshi kommentariya ovoz olishi
+uchun avval ko‘rinishi kerak, ko‘rinishi uchun esa ovoz kerak.
+</Check>
+
+## 4. v0: eng sodda ishlaydigan yechim
+
+```python
+@app.post("/vote")
+def vote(user_id, thing_id, direction):
+    old = db.query_one("SELECT direction FROM votes WHERE user_id=%s AND thing_id=%s",
+                       (user_id, thing_id))
+    db.execute("""INSERT INTO votes (user_id, thing_id, direction) VALUES (%s,%s,%s)
+                  ON CONFLICT (user_id, thing_id) DO UPDATE SET direction = %s""",
+               (user_id, thing_id, direction, direction))
+    # hisoblagichlarni tuzatamiz
+    db.execute("UPDATE posts SET ups = ups + %s, downs = downs + %s WHERE id = %s",
+               (delta_ups(old, direction), delta_downs(old, direction), thing_id))
+
+@app.get("/r/<sub>/hot")
+def hot_listing(sub):
+    return db.query("""
+        SELECT *, LOG(10, GREATEST(ABS(ups - downs), 1))
+                  + SIGN(ups - downs) * EXTRACT(EPOCH FROM created_at) / 45000 AS hot
+        FROM posts
+        WHERE subreddit_id = %s AND NOT deleted
+        ORDER BY hot DESC
+        LIMIT 25
+    """, (sub,))
+```
+
+<Flow nodes={["Mijoz", "API", "Reytingni hisoblash", "Tartiblash", "25 ta post"]} caption="v0: har bir ro'yxat so'rovida barcha postlar uchun formula hisoblanadi va tartiblanadi." />
+
+Kod to‘g‘ri va kichik jamoada yaxshi ishlaydi. Endi uni buzamiz.
+
+## 5. Nima sindi
+
+### 5.1 Har so‘rovda butun jamoani hisoblash
+
+<Calc title="Ro'yxat so'rovining haqiqiy narxi" result="Sekundiga 3.5 milliard qator hisoblanadi va tartiblanadi. Bu bitta ro'yxat turi uchun — beshtasi bo'lsa, besh barobar">{`Faol jamoada 100 000 ta post bor.
+Har bir ro'yxat so'rovi ularning hammasi uchun:
+  - log10 hisoblash
+  - vaqt qo'shiluvchisini hisoblash
+  - tartiblash: O(n log n)
+
+Sekundiga 34 722 ro'yxat so'rovi:
+  34 722 x 100 000 = 3.47e9 qator / soniya
+
+Baza tuguni ~1e6 - 1e7 qator/soniya uddalaydi
+  -> 350+ tugun, faqat bitta ro'yxat turi uchun`}</Calc>
+
+Indeks ham yordam bermaydi: `hot` — bu **hisoblanadigan qiymat** va u vaqt bilan
+uzluksiz o‘zgaradi. Uni indekslash uchun har soniyada butun indeksni qayta qurish
+kerak bo‘lardi.
+
+### 5.2 Ovoz — bu bitta qatorga yozish
+
+Mashhur post sekundiga 500 ovoz olsa, bu **bitta qatorga** sekundiga 500 ta `UPDATE`.
+Tranzaksiyalar navbatga tizilib, qulf raqobati boshlanadi va ovoz javobi sekundlarga
+cho‘ziladi.
+
+Bu — Redis darsidagi issiq kalit muammosining bazadagi ko‘rinishi.
+
+### 5.3 Beshta tartib — beshta muammo
+
+`hot`, `new`, `top`, `rising`, `controversial` — va `top` uchun yana vaqt oynalari
+(kun, hafta, oy, yil, butun vaqt). Jami bitta jamoa uchun **10 dan ortiq ro‘yxat**.
+Har birini har so‘rovda hisoblash imkonsiz.
+
+### 5.4 Kommentariya daraxti rekursiv
+
+```sql
+-- Bitta postning barcha kommentariyalari, daraxt shaklida
+WITH RECURSIVE tree AS (...)
+```
+
+Rekursiv so‘rov 500 000 kommentariyali postda daqiqalar ishlaydi. Va natija baribir
+kerak emas — foydalanuvchi birinchi 200 tasini ko‘radi.
+
+### 5.5 Ovozni kim berganini tekshirish
+
+Foydalanuvchi ro‘yxatni ochganda, u **qaysi postlarga allaqachon ovoz berganini**
+ko‘rishi kerak (o‘q rangi o‘zgaradi). Bu 25 ta post uchun 25 ta so‘rov degani —
+klassik N+1 muammosi.
+
+| Muammo | Qaysi qadamda hal qilinadi |
+| --- | --- |
+| Har so‘rovda hisoblash | 3-qadam: oldindan hisoblangan ro‘yxatlar |
+| Bitta qatorga ovoz oqimi | 2-qadam: ovoz navbati |
+| Ko‘p tartib turlari | 4-qadam: yangilash strategiyasi |
+| Rekursiv daraxt | 7-bo‘lim: kommentariya modeli |
+| N+1 ovoz tekshiruvi | 5-qadam: ommaviy o‘qish |
+
+## 6. Evolyutsiya: o‘n to‘rt qadam
+
+<Step n="1" title="Denormallashtirilgan hisoblagichlar" gain="Ovozlar sonini o'qish O(1)" cost="Izchillikni qo'lda ta'minlash kerak">
+
+`ups` va `downs` postning o‘zida saqlanadi. `votes` jadvali esa **manba haqiqat** bo‘lib
+qoladi: hisoblagich buzilsa, undan qayta hisoblash mumkin.
+
+```sql
+-- Davriy tekshiruv (kechasi, kichik paketlarda)
+UPDATE posts p SET ups = v.up_count, downs = v.down_count
+FROM (SELECT thing_id,
+             COUNT(*) FILTER (WHERE direction = 1)  AS up_count,
+             COUNT(*) FILTER (WHERE direction = -1) AS down_count
+      FROM votes WHERE thing_id = ANY(%s) GROUP BY thing_id) v
+WHERE p.id = v.thing_id;
+```
+
+Bu naqsh keyingi darslarda ham qaytadi: **tez o‘qiladigan hosila qiymat + sekin
+tekshiriladigan manba**. Hosila buzilishi mumkin, lekin uni har doim tiklash mumkin.
+</Step>
+
+<Step n="2" title="Ovoz navbati" gain="Ovoz javobi 5 ms; bitta qatorga qulf raqobati yo'qoladi" cost="Hisoblagich bir necha soniya kechikadi">
+
+Ovoz bosilganda foydalanuvchi **darhol** javob olishi kerak, lekin bazaga yozish
+kutishi mumkin:
+
+<Flow nodes={["Ovoz bosildi", "Navbatga hodisa", "Darhol 200 OK", "Ishchi: votes jadvali", "Hisoblagich va ro'yxatlar"]} caption="Foydalanuvchi 3-qadamda javob oladi. Interfeys optimistik ravishda yangi holatni ko'rsatadi." />
+
+Ishchi ovozlarni **paketlab** qayta ishlaydi: 100 ms oynada bir xil postga kelgan
+ovozlar birlashtiriladi va bitta `UPDATE` bilan qo‘llanadi.
+
+<Calc title="Paketlash nima beradi" result="Mashhur postga yozish soni 50 barobar kamayadi. Bu qulf raqobatini butunlay yo'q qiladi">{`Mashhur post: 500 ovoz / soniya
+
+Paketlashsiz:
+  500 ta UPDATE / soniya, bitta qatorga
+  -> qulf navbati, kechikish o'sadi
+
+100 ms oynada paketlash:
+  har oynada ~50 ovoz -> 1 ta UPDATE
+  10 UPDATE / soniya
+  Yozish soni 50 barobar kam`}</Calc>
+
+Muhim shart: ovoz hodisasi **idempotent** bo‘lishi kerak. Ishchi qayta urinsa, bir xil
+ovoz ikki marta hisoblanmasligi uchun `votes` jadvalidagi `(user_id, thing_id)`
+birlamchi kaliti ishlatiladi — hisoblagich esa oldingi va yangi holat farqidan
+hisoblanadi.
+</Step>
+
+<Step n="3" title="Oldindan hisoblangan ro'yxatlar" gain="Ro'yxat o'qish O(1) — bitta ZREVRANGE" cost="Har ovozda ro'yxatlarni yangilash kerak; xotira sarfi">
+
+Bu — darsning eng muhim qadami. Ro‘yxat **so‘rov paytida hisoblanmaydi**, u
+**tartiblangan to‘plam** sifatida saqlanadi va ovoz kelganda yangilanadi.
+
+```
+ZADD listing:r/programming:hot  <hot_bali>  <post_id>
+ZREVRANGE listing:r/programming:hot 0 24     -- ro'yxatni o'qish
+```
+
+<Calc title="Ro'yxatlar keshining hajmi" result="Faol jamoalar uchun ~14 GB. Bu butun mahsulotning o'qish yo'lini bitta Redis klasteriga sig'diradi">{`Faol jamoalar: 100 000
+Ro'yxat turlari: hot, new, rising, controversial
+                 + top x 5 vaqt oynasi = 9 ta
+Har bir ro'yxatda saqlanadigan post: 1000 ta
+
+ZSET yozuvi (a'zo + ball + struktura): ~120 bayt
+
+100 000 x 9 x 1000 x 120 bayt = 108 GB
+
+Lekin ko'p jamoalarda 1000 ta post yo'q.
+O'rtacha 150 ta post deb olsak:
+  100 000 x 9 x 150 x 120 = 16 GB`}</Calc>
+
+**Nega faqat 1000 ta post?** Hech kim ro‘yxatning 40-sahifasiga bormaydi. Undan
+narigisi kerak bo‘lsa — bu allaqachon “arxiv ko‘rish” va u bazadan, sekinroq beriladi.
+Bu Twitter darsidagi 800 ta tasma chegarasi bilan bir xil qaror.
+</Step>
+
+<Step n="4" title="Ro'yxatlarni qachon yangilash" gain="Yozish yuki 10 barobar kamayadi" cost="Reyting bir necha o'n soniya kechikadi">
+
+Har bir ovozda barcha ro‘yxatlarni yangilash qimmat:
+
+<Calc title="Sof 'har ovozda yangilash' narxi" result="Sekundiga 21 000 ZADD — Redis uddalaydi, lekin ishning katta qismi behuda: ballning 0.001 ga o'zgarishi tartibni o'zgartirmaydi">{`Ovozlar: 2 315 / soniya
+Har bir ovoz ta'sir qiladigan ro'yxatlar:
+  hot, controversial, rising, top-day, top-week,
+  top-month, top-year, top-all  = 8 ta
+  (new ro'yxati ovozga bog'liq emas)
+
+2 315 x 8 = 18 520 ZADD / soniya
+Plus foydalanuvchi profili va boshqa ro'yxatlar: ~21 000/s`}</Calc>
+
+Uchta optimizatsiya birga ishlatiladi:
+
+| Usul | Qanday | Nima tejaydi |
+| --- | --- | --- |
+| **Sezgirlik chegarasi** | Bal 1% dan kam o‘zgargan bo‘lsa yangilamaslik | Mashhur postlarda yozishning 90% i |
+| **Paketlash** | 2-qadamdagi oyna bilan birga | Yana 50 barobar |
+| **Sovuq postlarni chiqarish** | 48 soatdan eski post `hot` ro‘yxatidan chiqadi | Ro‘yxat hajmi va yozish nuqtalari |
+
+Vaqt qo‘shiluvchisi haqida nozik jihat: `hot` bali vaqt bilan **uzluksiz o‘zgaradi**,
+ya’ni hech kim ovoz bermasa ham tartib o‘zgarishi kerakdek tuyuladi. Aslida yo‘q:
+formuladagi vaqt **postning yoshi**, hozirgi vaqt emas. Post joylangandan keyin uning
+vaqt qismi **o‘zgarmaydi**. Shuning uchun ro‘yxatni faqat ovoz kelganda yangilash
+yetarli — bu formulani shu qadar qulay qiladigan asosiy sabab.
+
+<Callout type="maslahat" title="Formuladagi eng nozik dizayn qarori">
+Agar formula “hozirgi vaqt minus post vaqti” shaklida bo‘lsa (masalan `score / (yosh)²`,
+Hacker News uslubida), har bir postning bali **har soniyada** o‘zgarardi va butun
+ro‘yxatni davriy ravishda qayta hisoblash kerak bo‘lardi.
+
+Reddit formulasi vaqtni **mutlaq** oladi (`t` — post yaratilgan lahza), shuning uchun
+bal faqat ovoz kelganda o‘zgaradi. Ro‘yxat esa ZSET bo‘lgani uchun avtomatik
+tartiblangan qoladi.
+
+Bu — matematik formula bilan saqlash strukturasi bir-biriga **moslab tanlangan**
+holatning yaxshi misoli.
+</Callout>
+</Step>
+
+<Step n="5" title="Ommaviy o'qish: N+1 muammosini yopish" gain="Ro'yxat sahifasi 3 ta so'rovda quriladi" cost="Ilova tomonda birlashtirish mantiqi">
+
+Ro‘yxat sahifasini ko‘rsatish uchun kerak: 25 ta post ID, ularning mazmuni,
+mualliflari, va **foydalanuvchi qaysilariga ovoz bergani**.
+
+```
+1. ZREVRANGE listing:r/x:hot 0 24        -> 25 ta ID
+2. MGET post:<id1> ... post:<id25>        -> mazmun
+3. MGET user:<a1> ... user:<aN>           -> mualliflar
+4. HMGET votes:user:42 <id1> ... <id25>   -> mening ovozlarim (bitta so'rov!)
+```
+
+To‘rtinchi qator muhim: foydalanuvchining ovozlari **hash** sifatida saqlanadi
+(`votes:user:42` → post ID → yo‘nalish), shuning uchun 25 ta tekshiruv bitta `HMGET`
+bilan bajariladi.
+
+Bu — Twitter darsidagi hidratsiya naqshining aynan o‘zi, faqat qo‘shimcha bitta
+o‘lchov bilan: **shaxsiy holat** (kim nimaga ovoz bergan).
+</Step>
+
+<Step n="6" title="Shardlash: jamoa bo'yicha" gain="Yuk tabiiy ravishda taqsimlanadi" cost="Katta jamoalar hot shard bo'lib qoladi">
+
+Reddit‘da tabiiy shard kaliti bor — **jamoa (subreddit)**. Bitta jamoaning postlari,
+ro‘yxatlari va kommentariyalari birga yotadi va deyarli barcha so‘rovlar bitta
+jamoa doirasida bo‘ladi.
+
+Lekin taqsimot juda notekis: eng katta jamoada 50 million a’zo, medianasida 100 ta.
+Ya’ni sof `hash(subreddit) mod N` yuk muvozanatini buzadi.
+
+Chora: eng katta jamoalar uchun **alohida shard** ajratiladi (yoki hatto alohida
+klaster), qolganlari umumiy shardlarga tarqatiladi. Bu — Redis darsidagi hash teg
+muammosining boshqa ko‘rinishi.
+</Step>
+
+<Step n="7" title="Kommentariya daraxti" gain="500 000 kommentariyali post ochiladi" cost="Alohida yuklash mantiqi va sahifalash">
+
+Bu shunchalik katta mavzuki, unga alohida bo‘lim ajratamiz (7-bo‘lim).
+</Step>
+
+<Step n="8" title="Ovoz sonini 'bulg'ash' (fuzzing)" gain="Manipulyatsiyani aniqlash qiyinlashadi" cost="Ko'rsatilgan son aniq emas">
+
+Bu g‘alati ko‘rinadigan, lekin muhim qadam. Agar ovoz soni **aniq** ko‘rsatilsa,
+manipulyator o‘z botlarining ishlayotganini darhol ko‘radi: 10 ta bot ovoz berdi,
+son 10 ga oshdi.
+
+Shuning uchun ko‘rsatiladigan son ataylab **biroz o‘zgartiriladi**:
+
+```
+ko'rsatiladigan_son = haqiqiy_son + shovqin(post_id, vaqt_oynasi)
+```
+
+Shovqin post ID va vaqt oynasidan **deterministik** hisoblanadi — ya’ni sahifani
+yangilaganda son sakramaydi, lekin bot egasiga aniq fikr bermaydi.
+
+<Callout type="ogoh" title="Bu qaror nimani anglatadi">
+Mahsulot darajasida qabul qilingan qaror: **ovoz soni aniq bo‘lmasligi mumkin**.
+Bu 1.2-bo‘limdagi nofunksional talabning to‘g‘riligini tasdiqlaydi — agar aniqlik
+talab qilinsa, bu himoya chorasi umuman mumkin bo‘lmasdi.
+
+Muhim: **tartiblash haqiqiy sonlar bo‘yicha** bajariladi, faqat ko‘rsatish
+bulg‘anadi. Aks holda reyting sifati buzilardi.
+</Callout>
+</Step>
+
+<Step n="9" title="Moderatsiya va filtrlar" gain="Jamoa qoidalari ishlaydi" cost="Har o'qishda qo'shimcha filtr">
+
+Har bir jamoaning o‘z moderatorlari va qoidalari bor. Post o‘chirilishi, yashirilishi,
+“spoiler” yoki “sezgir” deb belgilanishi mumkin.
+
+Twitter darsidagi bilan bir xil qaror: filtrlar **o‘qish paytida** qo‘llanadi.
+Sabab ham bir xil — moderator qarori o‘zgarganda ro‘yxatlarni qayta yozib bo‘lmaydi.
+
+Natijada ro‘yxatdan 25 ta emas, **35–40 ta** ID olinadi va filtrdan keyin 25 tasi
+ko‘rsatiladi.
+</Step>
+
+<Step n="10" title="Qidiruv" gain="Post va kommentariya matni bo'yicha topish" cost="Alohida indeks va uni yangilab turish">
+
+Ro‘yxatlar “kim yozgan va qancha ovoz olgan” bo‘yicha ishlaydi, qidiruv esa
+“nima yozilgan” bo‘yicha. Bu butunlay boshqa saqlash: teskari indeks.
+
+Nozik jihat: qidiruv natijalari ham **tartiblanishi** kerak, va u yerda matn
+mosligi bilan reyting bali birlashtiriladi. Ya’ni 3-bo‘limdagi formulalar qidiruvda
+ham ishlatiladi, faqat qo‘shimcha signal sifatida.
+</Step>
+
+<Step n="11" title="Media va tashqi havolalar" gain="Post ichida rasm va video ko'rinadi" cost="Yuklash quvuri, SSRF xavfi, saqlash">
+
+Post havola bo‘lsa, uning oldindan ko‘rinishi (sarlavha, rasm) kerak — bu 2-darsdagi
+unfurl mexanizmi va **SSRF xavfi** ham o‘sha yerdagidek.
+
+Yuklangan rasm va videolar esa alohida obyekt xotirada saqlanadi va CDN orqali
+beriladi. Ro‘yxat faqat havolani ko‘taradi.
+</Step>
+
+<Step n="12" title="Foydalanuvchi tarixi va karma" gain="Profil sahifasi va obro' ko'rsatkichi" cost="Yana bir denormallashtirilgan hisoblagich">
+
+Foydalanuvchining barcha postlari va kommentariyalari, hamda umumiy “karma” (olgan
+ovozlari yig‘indisi) saqlanadi.
+
+Karma ham denormallashtirilgan hisoblagich — va u **ovoz navbatining ikkinchi
+iste’molchisi**: bitta ovoz hodisasi post hisoblagichini ham, muallif karmasini ham
+yangilaydi.
+</Step>
+
+<Step n="13" title="Ko'p mintaqa" gain="Kechikish kamayadi, nosozlikka chidamlilik" cost="Ovozlar va ro'yxatlar sinxronlashuvi">
+
+O‘qish yo‘li mintaqaviy replikalardan xizmat qiladi. Ro‘yxatlar esa **har bir mintaqada
+mustaqil quriladi** — ular hosila ma’lumot, ularni sinxronlashtirish shart emas.
+
+Bu Twitter darsidagi “tasma keshi replikatsiya qilinmaydi” qarori bilan aynan bir xil.
+</Step>
+
+<Step n="14" title="Degradatsiya" gain="Cho'qqi va viral hodisalarda tizim yiqilmaydi" cost="Ba'zi funksiyalar vaqtincha o'chadi">
+
+Yirik voqea paytida bitta jamoaga trafik yuz barobar oshishi mumkin. Tutqichlar
+9.3-bo‘limda batafsil.
+</Step>
+
+<Check q="Nega `new` ro'yxati boshqa ro'yxatlardan arzon?">
+Chunki u **ovozga bog‘liq emas**. `new` — bu shunchaki `created_at DESC`, ya’ni post
+joylanganda ro‘yxat boshiga bitta yozuv qo‘shiladi va boshqa hech qachon o‘zgarmaydi.
+
+Sekundiga 23 ta post bor, ya’ni 23 ta yozuv. Boshqa ro‘yxatlar esa sekundiga 2315 ta
+ovozdan ta’sirlanadi — **100 barobar ko‘p**.
+
+Amaliy xulosa: agar tizim bo‘g‘ilsa, birinchi navbatda **ovozga bog‘liq ro‘yxatlarni**
+yangilashni sekinlashtirish kerak (masalan yangilash oynasini 100 ms dan 5 soniyaga
+oshirish). `new` ro‘yxati esa hech qanday degradatsiyasiz ishlayveradi — va u
+foydalanuvchi uchun “tizim ishlayapti” degan signal bo‘lib qoladi.
+</Check>
+
+## 7. Kommentariya daraxti
+
+Postlar ro‘yxati — tekis ro‘yxat. Kommentariyalar esa **daraxt**, va bu butunlay
+boshqa masala.
+
+### 7.1 Daraxtni qanday saqlash
+
+| Usul | Qanday | Kuchli tomoni | Kamchiligi |
+| --- | --- | --- | --- |
+| `parent_id` | Har kommentariya otasiga ishora qiladi | Sodda, yozish arzon | Daraxtni olish uchun rekursiv so‘rov |
+| Materiallashtirilgan yo‘l | `path = "12/45/78"` | Butun shox bitta `LIKE` bilan | Yo‘l uzunligi cheklangan, ko‘chirish qiyin |
+| `root_id` + `parent_id` | Ikkalasi ham saqlanadi | **Bitta so‘rovda hammasi**, daraxt ilovada quriladi | Ortiqcha ustun |
+
+Uchinchisi amaliy g‘olib va sabab shundaki, u **saqlash strukturasini so‘rov naqshiga
+moslaydi**:
+
+```sql
+SELECT * FROM comments WHERE post_id = 8891 ORDER BY id;
+-- bitta indeks bo'yicha ketma-ket o'qish, rekursiya yo'q
+```
+
+Barcha kommentariyalar bitta so‘rovda keladi (ular bitta shardda yotadi), daraxt esa
+ilovada `O(n)` da quriladi: har bir kommentariyani `parent_id` bo‘yicha xaritaga
+joylash yetarli.
+
+<Deep title="Daraxtni ilovada qurish">
+```python
+def build_tree(comments):
+    by_id = {c.id: {**c, "children": []} for c in comments}
+    roots = []
+    for c in by_id.values():
+        if c["parent_id"] is None:
+            roots.append(c)
+        else:
+            parent = by_id.get(c["parent_id"])
+            if parent:
+                parent["children"].append(c)
+            else:
+                roots.append(c)      # ota o'chirilgan yoki yuklanmagan
+    return roots
+```
+
+Ikkita nozik holat bor va ular ishlab chiqarishda albatta uchraydi:
+
+**Yetim kommentariya** — otasi o‘chirilgan yoki (ko‘proq) **yuklangan to‘plamga
+tushmagan**. Ikkinchisi 7.2-bo‘limdagi cheklov tufayli doim sodir bo‘ladi. Yechim:
+bunday kommentariyani ildizga qo‘yish o‘rniga, “davomini ko‘rish” havolasi ostiga
+yashirish
+
+**Sikl** — nazariy jihatdan `parent_id` sikl hosil qilishi mumkin (ma’lumot buzilsa).
+Daraxt qurishda chuqurlik hisoblagichi bilan himoyalanish arzon va u cheksiz sikldan
+saqlaydi
+</Deep>
+
+### 7.2 500 000 kommentariyani qanday ko‘rsatasiz
+
+Hech qanday tarzda — va bu to‘g‘ri javob.
+
+<Calc title="Viral postning kommentariyalari" result="Butun daraxtni yuborish 250 MB — bu mumkin emas. Faqat 200 tasi yuboriladi: 100 KB, ya'ni 2500 barobar kam">{`Viral post: 500 000 kommentariya
+Bitta kommentariya (matn + metama'lumot + muallif): ~500 bayt
+
+Butun daraxt:
+  500 000 x 500 = 250 MB
+  Mobil tarmoqda yuklash: bir necha daqiqa
+  Brauzerda render qilish: yiqiladi
+
+Foydalanuvchi haqiqatan o'qiydigan miqdor:
+  ~50-200 ta kommentariya
+
+Yuboriladigan:
+  200 x 500 = 100 KB`}</Calc>
+
+Tanlash strategiyasi:
+
+1. **Birinchi daraja** kommentariyalaridan eng yaxshi 50 tasi (Wilson bo‘yicha)
+2. Har birining ostidan **eng yaxshi 3–5 ta javob**, 3-darajagacha
+3. Qolgani **“ko‘proq ko‘rsatish”** tugmasi ostida yashiriladi
+4. Chuqurroq shoxlar **“davomini ko‘rish”** havolasi bilan alohida sahifada ochiladi
+
+```
+Post
+├── Kommentariya (bal 0.94)
+│   ├── javob (0.81)
+│   ├── javob (0.77)
+│   └── [ yana 43 ta javob ]        <- lazy yuklash
+├── Kommentariya (0.89)
+│   └── javob (0.66)
+│       └── [ davomini ko'rish ]     <- alohida so'rov
+└── [ yana 1 247 ta kommentariya ]
+```
+
+### 7.3 Sahifalash: daraxt uchun kursor ishlamaydi
+
+Tekis ro‘yxatda kursor oddiy (2-darsdagi kabi). Daraxtda esa “keyingi 50 ta” degan
+tushuncha noaniq: keyingi **nimaning** ostida?
+
+Amaliy yechim — har bir yashirilgan tugun uchun **alohida so‘rov**:
+
+```
+GET /post/8891/comments?parent=45678&sort=best&limit=50
+```
+
+Ya’ni sahifalash **butun daraxt bo‘yicha emas, har bir tugun ichida** amalga oshiriladi.
+Bu mahsulot uchun ham tabiiy: foydalanuvchi “keyingi 50 ta kommentariya” emas,
+“shu suhbatning davomi” ni so‘raydi.
+
+### 7.4 Kommentariyalarni tartiblash
+
+| Tartib | Formula | Qachon |
+| --- | --- | --- |
+| **best** | Wilson intervali (3.5-bo‘lim) | Standart: sifat |
+| **top** | `ups - downs` | Eng ko‘p yoqqan |
+| **new** | Vaqt bo‘yicha | Jonli suhbatni kuzatish |
+| **controversial** | Balans formulasi (3.4-bo‘lim) | Bahsli javoblarni topish |
+| **qa** | Savol-javob juftliklari | AMA (savol-javob) postlarida |
+
+Muhim tafsilot: tartiblash **har bir daraja ichida alohida** qo‘llanadi. Ya’ni
+birinchi daraja Wilson bo‘yicha tartiblanadi, har bir kommentariyaning javoblari ham
+o‘z ichida — lekin daraxt strukturasi buzilmaydi.
+
+<Callout type="ogoh" title="Kommentariya bali qachon hisoblanadi">
+Postlar bilan bir xil masala: har ovozda Wilson balini qayta hisoblab, `ZADD` qilish
+kerakmi?
+
+Farqi shundaki, kommentariyalar **ancha ko‘p** (postdan 10 barobar) va ularning
+aksariyati kam ovoz oladi. Shuning uchun amaliy yondashuv boshqacha:
+
+- Kommentariya bali **postning o‘zi bilan birga** keshlanadi (butun daraxt bitta kesh
+  yozuvi sifatida)
+- Ovoz kelganda **butun daraxt keshi bekor qilinadi**, qayta qurish esa keyingi
+  so‘rovda bajariladi
+- Juda faol postlarda kesh bekor qilish chastotasi cheklanadi (masalan 10 soniyada
+  bir marta), aks holda kesh hech qachon ishlamaydi
+
+Ya’ni postlar uchun **yozishda yangilash**, kommentariyalar uchun **o‘qishda qayta
+qurish** tanlanadi — chunki o‘qish/yozish nisbati bu ikki holatda boshqacha.
+</Callout>
+
+<Check q="Post 500 000 kommentariya oldi va sahifa sekinlashdi. Nimadan boshlaysiz?">
+1. **Nechta kommentariya yuborilyapti?** Agar cheklov ishlamayotgan bo‘lsa (masalan
+   “barcha birinchi daraja” yuklanayotgan bo‘lsa va ularning o‘zi 50 000 ta bo‘lsa) —
+   asosiy sabab shu
+2. **Daraxt keshi ishlayaptimi?** Faol postda kesh har ovozda bekor bo‘lib, hech qachon
+   ishlatilmayotgan bo‘lishi mumkin. Chora: bekor qilish chastotasini cheklash
+3. **Bitta so‘rovda kelayaptimi?** `post_id` indeksi bo‘lmasa yoki rekursiv so‘rov
+   ishlatilayotgan bo‘lsa, baza tomonda sekinlashadi
+4. **Render tomoni** — 200 ta kommentariya HTML‘i og‘ir bo‘lsa, muammo serverda emas,
+   brauzerda. Bu ko‘pincha e’tibordan chetda qoladi
+
+Eng ko‘p uchraydigani — 2-punkt: kesh bor, lekin viral postda u foydasiz, chunki
+sekundiga o‘nlab ovoz kelib turadi.
+</Check>
+
+## 8. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Mijoz", boxes: ["Veb", "Mobil ilova", "Optimistik ovoz UI"], note: "Ovoz bosilganda interfeys darhol o'zgaradi, server javobi kutilmaydi." },
+    { name: "API qatlami", boxes: ["Auth", "Tezlik cheklovi", "Marshrutlash"] },
+    { name: "O'qish yo'li", boxes: ["Ro'yxat keshi (ZSET)", "Post keshi", "Daraxt keshi", "Shaxsiy ovozlar (hash)"], note: "34 000 so'rov/s. Ro'yxat tayyor — hisoblash yo'q." },
+    { name: "Yozish yo'li", boxes: ["Ovoz navbati", "Paketlovchi ishchi", "Ro'yxat yangilagich", "Karma yangilagich"], note: "2 315 ovoz/s. Paketlash bilan bazaga yozish 50 barobar kam." },
+    { name: "Saqlash", boxes: ["Postlar (shardlangan)", "Ovozlar", "Kommentariyalar", "Jamoalar"] },
+    { name: "Yon tizimlar", boxes: ["Qidiruv indeksi", "Moderatsiya", "Manipulyatsiya aniqlash", "Media va CDN"] },
+  ]}
+/>
+
+### 8.1 Ro‘yxat so‘rovining kechikish byudjeti
+
+<Calc title="200 ms qayerga ketadi" result="Ro'yxatning o'zi atigi 2 ms — chunki u oldindan tayyor. Vaqtning katta qismi hidratsiya va filtrlarga ketadi">{`Foydalanuvchi r/programming ni ochdi:
+
+   ->  15 ms  Tarmoq
+   ->   3 ms  Auth va tezlik cheklovi
+   ->   2 ms  ZREVRANGE listing:r/programming:hot 0 39
+   ->  20 ms  MGET post:<id> x40 (mazmun)
+   ->   8 ms  MGET user:<id> (mualliflar)
+   ->   4 ms  HMGET votes:user:42 (mening ovozlarim)
+   ->   6 ms  Filtrlash: o'chirilgan, bloklangan, moderatsiya
+   ->  10 ms  Javobni yig'ish
+   ->  15 ms  Tarmoq (javob)
+   ==========================================
+      ~83 ms
+
+Cho'qqi yuklamada navbat kutish qo'shiladi -> 200 ms`}</Calc>
+
+Bu jadval 6-bo‘limning 3-qadamini oqlaydi: ro‘yxatni oldindan hisoblaganimiz uchun
+eng qimmat qism (tartiblash) butunlay yo‘qolgan. Qolgan hamma narsa — ma’lumotni
+yig‘ish, va u parallel bajariladi.
+
+<Deep title="Nega 83 ms ni 40 ms ga tushirish oson emas">
+Byudjetga qarasangiz, birinchi instinkt — eng katta raqamni olish: 20 ms lik
+`MGET post:<id> x40`. Uni tezlashtirish mumkinmi?
+
+Hisoblab ko‘ramiz. 40 ta post × ~2 KB = 80 KB ma’lumot. Redis dan 80 KB o‘qish
+tarmoq bo‘yicha 1 Gbit/s da 0.64 ms. Ya’ni **haqiqiy uzatish vaqti 20 ms ning
+3% i**. Qolgan 19 ms — deserializatsiya, obyekt yaratish va axlat yig‘uvchi.
+
+Bu muhim xulosa: siz Redis ni tezlashtirsangiz, hech narsa o‘zgarmaydi, chunki
+Redis allaqachon tez. Sekin joy — **sizning ilovangizdagi 40 ta obyektni JSON
+dan qurish**. Uni tuzatish yo‘llari butunlay boshqacha: ikkilik format (protobuf,
+MessagePack), obyekt hovuzi, yoki javobni oldindan seriyalab keshda saqlash.
+
+Oxirgisi eng kuchli: agar kesh JSON parchasini tayyor holda saqlasa, siz uni
+deserializatsiya qilmasdan to‘g‘ridan-to‘g‘ri javobga ulaysiz. 19 ms → ~2 ms.
+Narxi — kesh hajmi oshadi (JSON ikkilik ko‘rinishdan kattaroq) va har bir
+foydalanuvchiga xos maydonni (mening ovozim) alohida ulash kerak bo‘ladi.
+
+Umumiy naqsh: **byudjetdagi raqamni ko‘rish yetarli emas, uning ichida nima
+borligini biling.** Aks holda siz allaqachon tez bo‘lgan komponentni
+optimallashtirasiz.
+</Deep>
+
+## 9. Ishonchlilik
+
+### 9.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Belgisi | Sabab | Chora |
+| --- | --- | --- | --- |
+| Ovoz navbati orqada | Ovozlar sekin ko‘rinadi | Cho‘qqi yoki ishchi tushgan | Ishchi qo‘shish, paketlash oynasini oshirish |
+| Ro‘yxat eskirdi | Yangi postlar chiqmayapti | Yangilagich to‘xtagan | Qayta qurish (manba: postlar jadvali) |
+| Daraxt keshi ishlamayapti | Viral postda sahifa sekin | Har ovozda bekor qilinyapti | Bekor qilish chastotasini cheklash |
+| Hisoblagich xato | Ovoz soni haqiqatdan farq qiladi | Ishchi ikki marta ishlatgan | Davriy tekshiruv (6-bo‘lim, 1-qadam) |
+| Hot jamoa | Bitta shard 100% CPU | Viral post yoki yirik jamoa | Alohida shard, chekka kesh |
+| Karma noto‘g‘ri | Foydalanuvchi shikoyat qiladi | Ovoz hodisasi yo‘qolgan | Qayta hisoblash vazifasi |
+
+### 9.2 Ro‘yxatni qayta qurish
+
+Ro‘yxatlar — **hosila ma’lumot**, ularni har doim postlar jadvalidan tiklash mumkin:
+
+```python
+def rebuild_listing(subreddit_id, kind="hot", limit=1000):
+    posts = db.query("""SELECT id, ups, downs, created_at FROM posts
+                        WHERE subreddit_id = %s AND NOT deleted
+                          AND created_at > now() - interval '30 days'""",
+                     (subreddit_id,))
+    scored = [(hot_score(p), p.id) for p in posts]
+    scored.sort(reverse=True)
+    redis.zadd(f"listing:{subreddit_id}:{kind}",
+               {pid: s for s, pid in scored[:limit]})
+```
+
+30 kunlik chegara muhim: `hot` ro‘yxatiga eski postlar baribir tushmaydi, ularni
+hisoblash esa vaqt oladi. Bu — ishni **kerakli qismi bilan cheklash** naqshi.
+
+<Deep title="Qayta qurish paytida ro'yxat qanday holatda bo'ladi">
+`rebuild_listing` ni sodda yozsangiz, jiddiy muammo bor: ZADD lar ketma-ket
+bajariladi, ya’ni qayta qurish davomida ro‘yxat **yarim eski, yarim yangi**
+bo‘ladi. 1000 ta postli ro‘yxat uchun bu bir necha yuz millisekund — sezilmaydi.
+Lekin katta subreddit uchun, sekin bazadan o‘qish bilan, bu bir necha soniya
+bo‘lishi mumkin va shu vaqt ichida foydalanuvchilar chalkash tartib ko‘radi.
+
+To‘g‘ri yechim — **yon tomonda qurish va atomik almashtirish**:
+
+```
+1. listing:r/x:hot:rebuild ga to'liq yangi ro'yxatni yozing
+2. RENAME listing:r/x:hot:rebuild listing:r/x:hot
+```
+
+Redis da `RENAME` atomik, ya’ni o‘quvchilar yo to‘liq eski, yo to‘liq yangi
+ro‘yxatni ko‘radi. Oraliq holat yo‘q.
+
+Ikkinchi nozik joy: qayta qurish davomida **yangi ovozlar kelib turadi**.
+Ular eski kalitga ZADD qiladi va `RENAME` dan keyin yo‘qoladi. Yechim — qayta
+qurishni ovoz oqimidan **keyingi nuqtadan** boshlash: navbatdagi joriy offsetni
+eslab qoling, qayta qurishni tugating, keyin shu offsetdan boshlab ovozlarni
+qayta qo‘llang. Bu — “snapshot + log replay” naqshi, va u deyarli har qanday
+hosila ma’lumotni qayta qurishda takrorlanadi.
+</Deep>
+
+### 9.3 Degradatsiya tartibi
+
+<Timeline
+  rows={[
+    { when: "1-bosqich", what: "Ro'yxat yangilash oynasini oshirish", why: "100 ms dan 5 soniyaga. Reyting biroz kechikadi, yozish yuki 50 barobar kamayadi." },
+    { when: "2-bosqich", what: "Kam ishlatiladigan ro'yxatlarni to'xtatish", why: "controversial, rising, top-year — ularni kam kishi ochadi." },
+    { when: "3-bosqich", what: "Daraxt keshi TTL sini oshirish", why: "Kommentariyalar 30 soniya eskiradi — hech kim sezmaydi." },
+    { when: "4-bosqich", what: "Ovoz navbatini sekinlashtirish", why: "Ovozlar qabul qilinadi, lekin kechroq qo'llanadi. Interfeys optimistik ko'rsatib turadi." },
+    { when: "5-bosqich", what: "Faqat 'new' va keshdagi ro'yxatlar", why: "new ovozga bog'liq emas — u har doim ishlaydi (6-bo'lim, nazorat savoli)." },
+    { when: "6-bosqich", what: "Yozishga tezlik cheklovi", why: "Oxirgi chora: yangi post va kommentariyalar cheklanadi, o'qish ishlaydi." },
+  ]}
+/>
+
+Bu tartibning mantig‘i: **o‘qish yozishdan muhimroq**, va reyting aniqligi
+mavjudlikdan muhimroq emas. Foydalanuvchi ro‘yxat 5 soniya eskirganini sezmaydi;
+sahifa ochilmaganini esa darhol sezadi.
+
+## 10. Xavfsizlik: ovoz manipulyatsiyasi
+
+Reyting tizimining xavfsizlik yuzasi boshqa tizimlarnikidan tubdan farq qiladi.
+Bank tizimida hujumchi **pulni o‘g‘irlashga** harakat qiladi va buni aniq
+ko‘rsatib bo‘ladi: hisobdan pul ketdi. Reyting tizimida hujumchi **e’tiborni
+o‘g‘irlaydi** — va bu o‘g‘irlikning “jabrlanuvchisi” yo‘q. Hech kim shikoyat
+qilmaydi, chunki hech kim o‘zi ko‘rmagan postni sog‘inmaydi.
+
+Shuning uchun bu bo‘limni “qo‘shimcha” deb o‘ylamang. Reyting tizimida
+manipulyatsiyaga qarshi himoya — **mahsulotning o‘zi**, keyin qo‘shiladigan
+qatlam emas. Agar birinchi sahifani pul bilan sotib olish mumkin bo‘lsa, sizda
+reyting tizimi yo‘q, sizda reklama platformasi bor — faqat pul sizga tushmaydi.
+
+### 10.1 Hujum turlari
+
+| Hujum | Qanday ishlaydi | Nima uchun qiyin |
+| --- | --- | --- |
+| Sock puppet | Bitta odam 50 ta akkaunt yaratadi va o‘z postiga ovoz beradi | Akkauntlar haqiqiy: har biri elektron pochta, parol, biroz tarixga ega |
+| Vote ring | 20 ta haqiqiy odam kelishib bir-birining postiga ovoz beradi | Har bir odam haqiqiy, har bir ovoz “halol” — faqat naqsh sun’iy |
+| Brigading | Boshqa jamoadan yuzlab odam bir postga kelib minus beradi | Ovozlar chin, motivatsiya tashqi |
+| Sotib olingan akkaunt | Eski, karmasi yuqori akkaunt bozorda sotiladi | Akkaunt tarixi haqiqatan uzoq — yosh filtri ishlamaydi |
+| Vaqt hujumi | Post joylanadi, 5 daqiqada 60 ovoz beriladi | Formula yangilikni mukofotlaydi — hujum aynan shu oynada bo‘ladi |
+
+Diqqat qiling: jadvalning yuqori qismidagi hujumlarni **texnik** aniqlash mumkin
+(bir IP, bir qurilma barmoq izi), pastki qismidagilarni esa faqat **naqsh**
+orqali. Bu ikki xil mudofaa demakdir — va ular bir-birini almashtira olmaydi.
+Sock puppet uchun qurilma identifikatsiyasi kerak; vote ring uchun grafik
+tahlili kerak. Agar sizda faqat birinchisi bo‘lsa, siz eng arzon hujumni
+to‘xtatib, eng samaralisini o‘tkazib yuborasiz.
+
+Ikkinchi diqqat: oxirgi qatorni qarang. Vaqt hujumi **formulaning o‘zidan**
+kelib chiqadi. 3.2-bo‘limda ko‘rgan edik: 45 000 soniya = 1 ball = 10 barobar
+ovoz. Demak yangi postga berilgan 60 ovoz, 12 soat oldingi 600 ovozga teng. Bu
+xato emas, bu — dizayn qarori; lekin har bir dizayn qarori o‘z hujum yuzasini
+yaratadi. Yangilikni mukofotlaysizmi? Unda hujumchi yangilik oynasiga hujum
+qiladi.
+
+### 10.2 Nima uchun oddiy chegara ishlamaydi
+
+Birinchi g‘oya har doim bitta: “bitta IP dan soatiga 10 tadan ko‘p ovoz
+qabul qilmaymiz”. Buni raqam bilan tekshiraylik.
+
+<Calc title="IP chegarasi kimni to‘xtatadi" result="Universitet umumyotoqxonasi — 4000 talaba, bitta NAT IP">
+  Kollej tarmog‘i: 4000 foydalanuvchi, hammasi bitta tashqi IP orqali chiqadi.
+  Faol foydalanuvchi kuniga 30 ovoz beradi.
+
+  Kutilgan yuk: 4000 × 30 / 24 soat = **5000 ovoz/soat, bitta IP dan**
+
+  Chegara 10 bo‘lsa: halol foydalanuvchilarning 99.8% i bloklanadi.
+  Chegara 5000 bo‘lsa: hujumchi 500 ta sock puppet ni bemalol ishlatadi.
+
+  Bitta chegara ikkala holatni ham to‘g‘ri hal qila olmaydi.
+</Calc>
+
+Bu — chegaraga asoslangan har qanday himoyaning umumiy kasalligi: **halol
+foydalanuvchilarning taqsimoti hujumchi taqsimoti bilan kesishadi**. Agar
+kesishmasa, chegara ishlaydi (masalan, sekundiga 1000 so‘rov — hech bir odam
+buni qo‘lda qilmaydi). Kesishsa — chegara faqat qaysi tomonni qurbon qilishni
+tanlaydi.
+
+Shuning uchun jiddiy tizimlar chegara emas, **ishonch ballari** bilan ishlaydi:
+har bir ovozning og‘irligi 0 dan 1 gacha bo‘lgan son, akkaunt tarixiga bog‘liq.
+
+```python
+def vote_weight(user, post):
+    w = 1.0
+    age_days = (now() - user.created_at).days
+    if age_days < 1:   w *= 0.0     # bugun ochilgan akkaunt — ovoz sanalmaydi
+    elif age_days < 7: w *= 0.3
+    elif age_days < 30: w *= 0.7
+
+    if user.karma < 10:  w *= 0.5   # hech qanday hissa qo'shmagan
+    if user.email_verified is False: w *= 0.5
+
+    # Bu foydalanuvchi shu muallifga necha marta ovoz bergan?
+    affinity = redis.get(f"aff:{user.id}:{post.author_id}") or 0
+    if affinity > 20:   w *= 0.2    # "do'stlar guruhi" belgisi
+
+    return w
+```
+
+Bu kodning eng muhim qismi — oxirgisi. Birinchi to‘rtta shart akkauntning
+**o‘zini** baholaydi; oxirgisi **munosabatni** baholaydi. Vote ring aynan
+shu yerda ochiladi: har bir akkaunt alohida mukammal ko‘rinadi, lekin ular
+doim bir-biriga ovoz beradi.
+
+<Deep title="Nega ovoz og'irligi 0 bo'lsa ham ovozni yozib qo'yamiz">
+Yangi akkauntning ovozi reytingga ta’sir qilmaydi, lekin biz uni baribir
+`votes` jadvaliga yozamiz va foydalanuvchiga strelkani yoqib ko‘rsatamiz.
+Buning uchta sababi bor.
+
+Birinchisi — mahsulot: foydalanuvchi ovozi sanalmaganini bilsa, u sizga
+ishonishni to‘xtatadi yoki tizimni aldashni o‘rganadi. “Shadow” yondashuv
+qo‘pol, lekin samarali.
+
+Ikkinchisi — signal: hujumchi o‘z hujumi ishlamayotganini darhol bilmasa,
+u hujumni davom ettiradi va sizga ko‘proq ma’lumot beradi. Blok ko‘rsatilsa,
+u strategiyani o‘zgartiradi.
+
+Uchinchisi — qayta hisoblash: akkaunt 30 kundan keyin ishonchli bo‘lsa,
+uning eski ovozlarini **retroaktiv** hisobga olish mumkin. Ma’lumot saqlangan
+bo‘lsa, bu shunchaki fon vazifasi. Saqlanmagan bo‘lsa — u yo‘q.
+
+Umumiy naqsh: **qabul qil, yozib qo‘y, lekin og‘irligini keyin bel­gila.**
+Bu deyarli har qanday spam/abuse tizimida takrorlanadi.
+</Deep>
+
+### 10.3 Vote ring ni grafik sifatida ko‘rish
+
+Vote ring ni topishning eng ishonchli usuli — ovozlarni **ikki tomonlama
+graf** deb ko‘rish: bir tomonda foydalanuvchilar, ikkinchi tomonda postlar,
+qirralar — ovozlar. Halol foydalanuvchilar grafi tarqoq bo‘ladi; ring esa
+zich klaster hosil qiladi.
+
+<Calc title="Tasodifiy kesishuv qanchalik ehtimolli" result="Halol foydalanuvchilarda 6 ta umumiy post — deyarli imkonsiz">
+  Faraz: kuniga 2 000 000 post, faol foydalanuvchi kuniga 50 postga ovoz beradi.
+
+  Ikki tasodifiy foydalanuvchining bitta postda kesishish ehtimoli:
+  50 / 2 000 000 = 2.5×10⁻⁵
+
+  Kuniga kutilgan umumiy postlar soni: 50 × 2.5×10⁻⁵ = 0.00125
+
+  Yigirma foydalanuvchi kuniga 6 ta bir xil postga ovoz bergan bo‘lsa —
+  bu tasodif emas. Ehtimollik amalda **nol**.
+
+  Eslatma: bu Puasson taqribi, mustaqillik farazi bilan.
+  Haqiqatda mavzuviy klasterlanish bor, shuning uchun chegarani
+  jamoa (subreddit) ichida hisoblash kerak.
+</Calc>
+
+Oxirgi eslatma — bu bo‘limning eng muhim jumlasi. Agar siz kesishuvni **butun
+sayt** bo‘yicha hisoblasangiz, r/uzbekistan ning 200 ta doimiy o‘quvchisi ham
+“ring” bo‘lib chiqadi: ular tabiiy ravishda bir xil postlarni ko‘radi. Baseline
+har doim **kontekst ichida** hisoblanishi kerak — aks holda siz o‘z eng sodiq
+foydalanuvchilaringizni jazolaysiz.
+
+```python
+def ring_score(user_a, user_b, window_days=7):
+    a = set(redis.smembers(f"voted:{user_a}:{window_days}d"))
+    b = set(redis.smembers(f"voted:{user_b}:{window_days}d"))
+    if len(a) < 10 or len(b) < 10:
+        return 0.0                       # ma'lumot yetarli emas
+    jaccard = len(a & b) / len(a | b)
+    # Jamoa ichidagi o'rtacha kesishuv — baseline
+    return jaccard / (baseline_jaccard(user_a.top_sub) + 1e-9)
+```
+
+Amalda bu hisob real vaqtda emas, kunlik batch vazifada bajariladi: 200 million
+ovozdan graf qurish sekundlar emas, daqiqalar ishi. Natija — shubhali juftliklar
+ro‘yxati — moderatsiya navbatiga tushadi. **Avtomatik blok yo‘q.** Sababi
+oddiy: yolg‘on pozitiv narxi bu yerda juda yuqori, chunki bloklangan halol
+foydalanuvchi qaytib kelmaydi.
+
+<Check q="Nega ring aniqlash uchun oxirgi 7 kun olinadi, butun tarix emas?">
+Ikki sabab. Birinchisi statistik: uzoq oynada halol foydalanuvchilarning
+kesishuvi ham tabiiy ravishda o‘sadi — bir yil davomida bir jamoani o‘qigan
+ikki kishi albatta ko‘p bir xil postni ko‘radi. Signal shovqinga ko‘miladi.
+
+Ikkinchisi amaliy: hujumlar qisqa umr ko‘radi. Ring bir kampaniya uchun
+tuziladi, ishlatiladi va tashlanadi. Uzoq oyna hujum tugaganidan keyin
+signal beradi — bu allaqachon kech.
+
+Umumiy qoida: **oyna hujumning umriga mos bo‘lsin, ma’lumot hajmiga emas.**
+</Check>
+
+### 10.4 Ovoz raqamlarini “xiralashtirish”
+
+6-bo‘limda ovoz raqamlarini biroz tasodifiy o‘zgartirish (vote fuzzing) haqida
+qisqa aytdik. Endi sababini to‘liq ochamiz, chunki bu — noaniq ko‘rinadigan,
+lekin chuqur qaror.
+
+Agar interfeys aniq raqam ko‘rsatsa (`1 247`), hujumchi mukammal
+**qayta aloqa halqasiga** ega bo‘ladi: u ovoz beradi, sahifani yangilaydi,
+raqam o‘zgardimi — ko‘radi. Bir necha urinishda u sizning barcha
+filtrlaringizni teskari muhandislik qiladi: qaysi akkaunt sanaladi, qaysi
+sanalmaydi, chegara qayerda.
+
+<Calc title="Aniq raqam hujumchiga qancha ma'lumot beradi" result="20 ta test bilan filtr chegarasi topiladi">
+  Hujumchi 100 ta akkaunt yaratdi, har xil yoshda.
+  Aniq hisoblagich bilan: har bir akkaunt bilan ovoz beradi, raqamni tekshiradi.
+
+  Ikkilik qidiruv: 100 akkaunt ichida chegara yoshini topish ≈ log₂(100) ≈ **7 ta test**
+  Karma chegarasi uchun yana ≈ 7 ta test
+  Affinity chegarasi uchun ≈ 6 ta test
+
+  Jami ≈ 20 ta ovoz — va butun ishonch modeli oshkor.
+
+  ±5% shovqin bilan: bitta testning natijasi ishonchsiz, uni 20–30 marta
+  takrorlash kerak. 20 test o‘rniga ~500 test — va har bir test yangi
+  akkaunt talab qiladi.
+</Calc>
+
+Bu — kriptografiyadan tanish naqsh: **oracle ni yo‘q qilish**. Siz hujumni
+imkonsiz qilmaysiz, uni **qimmat** qilasiz. 25 barobar qimmat hujum ko‘p
+hollarda umuman bo‘lmaydigan hujumdir.
+
+Narxi ham bor va uni ochiq aytish kerak: foydalanuvchilar raqamlarga
+ishonmay qo‘yadi, “nega mening postimda 3 ovoz kamayib qoldi” degan savollar
+paydo bo‘ladi, va sizning o‘z analitikangiz ham xiralashadi. Shuning uchun
+ikkita raqam saqlanadi: **haqiqiy** (ichki, analitika va reyting uchun) va
+**ko‘rsatiladigan** (shovqin bilan). Reyting doim haqiqiysidan hisoblanadi —
+aks holda siz o‘z tizimingizga shovqin kiritgan bo‘lasiz.
+
+<Callout type="ogoh" title="Eng ko'p uchraydigan xato">
+Ko‘pchilik `displayed_score` ni saqlab, keyin uni reytingda ishlatadi. Natija:
+tartiblash tasodifiy tebranadi, keshni invalidatsiya qilish signali doim
+“o‘zgardi” deydi, va A/B testlar shovqin ichida yo‘qoladi. Shovqin faqat
+**javob chegarasida**, ko‘rsatishdan oldin qo‘shilishi kerak — va u
+deterministik bo‘lsin (post id dan seed olib), aks holda har bir yangilashda
+raqam sakraydi.
+</Callout>
+
+## 11. Iqtisod: bitta ro‘yxat ko‘rinishi qancha turadi
+
+Reyting tizimining iqtisodi noodatiy: **eng ko‘p pul ovozga emas, o‘qishga
+ketadi**. Bu intuitiv emas, chunki ovoz “yozish” bo‘lib tuyuladi va yozish
+qimmat deb o‘rgatilgan. Keling, hisoblaymiz.
+
+<Calc title="Ovoz oqimining oylik narxi" result="≈ 210 $/oy — deyarli hech narsa">
+  1.3-bo‘limdagi farazlar: kuniga 200 000 000 ovoz = 2 315 ovoz/s (o‘rtacha),
+  cho‘qqida 3 barobar = ~7 000 ovoz/s.
+
+  6-bo‘limdagi guruhlash bilan: 100 ms oyna, o‘rtacha 50 ovoz bitta guruhda
+  → 46 ta DB yozuvi/s (o‘rtacha), cho‘qqida 140.
+
+  Bu bitta o‘rtacha Postgres primary uchun ham arzimas yuk.
+  Navbat (Kafka): 200 M × 100 bayt = 20 GB/kun, 7 kun saqlash = 140 GB.
+  Uch broker, har biri 4 vCPU / 16 GB: ~210 $/oy.
+
+  Xulosa: **ovozning butun infratuzilmasi bitta muhandisning bir kunlik ish
+  haqidan arzon.**
+</Calc>
+
+<Calc title="Ro'yxat o'qishining oylik narxi" result="≈ 46 000 $/oy — 200 barobar qimmat">
+  34 722 ro‘yxat o‘qishi/s (1.3-bo‘lim), cho‘qqida 3 barobar = 104 000/s.
+
+  Har bir ko‘rinish: 1 ta ZREVRANGE + 25 ta post MGET + 25 ta ovoz holati.
+  Redis: bitta node ~100 000 oddiy operatsiya/s, lekin pipeline bilan
+  ~50 000 murakkab so‘rov/s deb hisoblaymiz.
+
+  Kerakli Redis nodelar: 104 000 / 50 000 ≈ 3 (yuklama uchun) + replika = 6.
+  Xotira (6-bo‘limdan): 16 GB listing + 400 GB post keshi.
+
+  6 × r6g.4xlarge (128 GB) ≈ 6 × 730 $ = 4 400 $/oy
+  API qatlami: 104 000 so‘rov/s, har biri 8 ms CPU → 830 vCPU → ~210 ta instans
+  210 × c6g.xlarge ≈ 210 × 100 $ = 21 000 $/oy
+  Tarmoq chiqishi: 104 000 × 40 KB × 2.6 M s/oy... = 10.8 PB/oy
+</Calc>
+
+Oxirgi qatorda ataylab to‘xtadik. 10.8 petabayt chiqish trafigi AWS narxlarida
+oyiga **500 000 dollardan ortiq** turadi — ya’ni butun qolgan infratuzilmadan
+10 barobar qimmat. Bu — yangi boshlanuvchilar hisobda deyarli har doim
+o‘tkazib yuboradigan raqam, va u mahsulot qarorlarini butunlay o‘zgartiradi.
+
+| Xarajat moddasi | Oylik | Ulushi |
+| --- | --- | --- |
+| Chiqish trafigi (CDN siz) | ~540 000 $ | 91% |
+| API hisoblash | ~21 000 $ | 4% |
+| Redis (listing + kesh) | ~4 400 $ | 1% |
+| Postgres (shardlar) | ~25 000 $ | 4% |
+| Kafka + ishchilar | ~210 $ | 1% dan kam |
+
+Jadval bitta narsani aytadi: **siz optimallashtirishni noto‘g‘ri joydan
+boshlaysiz.** Muhandisning tabiiy instinkti — SQL so‘rovni tezlashtirish,
+kesh urish darajasini 94% dan 97% ga chiqarish. Bu 4% li moddaning ichida
+qo‘lga kiritilgan 20% — ya’ni umumiy xarajatning 0.8% i. Bir kunlik CDN
+sozlash esa 91% li moddani uchdan biriga tushiradi.
+
+Bundan uchta amaliy qaror chiqadi:
+
+**Birinchi qaror: media hech qachon sizning serverlaringizdan o‘tmaydi.**
+Rasm va video to‘g‘ridan-to‘g‘ri obyekt saqlashdan, CDN orqali beriladi.
+Ilova faqat URL qaytaradi. Bu 40 KB li javobni 4 KB ga tushiradi.
+
+**Ikkinchi qaror: JSON javobini qisqartirish haqiqiy pul.** Ro‘yxat javobida
+har bir post uchun to‘liq matn emas, 200 belgilik parcha qaytariladi. 25 ta
+post × 2 KB tejash = 50 KB. Bu “mikro-optimallashtirish” emas — bu oyiga
+o‘n minglab dollar.
+
+**Uchinchi qaror: sahifa hajmi mahsulot emas, iqtisod qarori.** Sahifada 25
+ta post ko‘rsatasizmi yoki 50 tami — bu chiqish trafigini ikki barobar
+o‘zgartiradi. To‘g‘ri javob foydalanuvchilarning nechtasi ikkinchi sahifaga
+o‘tishiga bog‘liq: agar 30% o‘tsa, 25 tadan berish arzonroq; agar 80% o‘tsa,
+50 tadan berish arzonroq (chunki ikkinchi so‘rovning o‘z qo‘shimcha narxi bor).
+
+<Deep title="Nega ovoz shunchalik arzon — umumiy naqsh">
+Ovozning arzonligi tasodif emas. U uchta xususiyatga ega, va bu uchtasi
+birga bo‘lgan har qanday yozish oqimi arzon bo‘ladi:
+
+1. **Kichik** — 100 bayt. Yozish narxi ko‘pincha baytga emas, operatsiyaga
+   bog‘liq, lekin kichik yozuvlarni guruhlash oson.
+2. **Idempotent** — bir xil ovozni ikki marta qo‘llash natijani o‘zgartirmaydi
+   (`(user_id, thing_id)` birlamchi kalit). Demak takrorlash xavfsiz, demak
+   “at least once” yetarli, demak tranzaksiya kerak emas.
+3. **Kechikishga toqatli** — foydalanuvchi ovozini interfeys darhol
+   ko‘rsatadi (optimistik), haqiqiy qo‘llanish 2 soniyada bo‘lsa ham hech kim
+   sezmaydi.
+
+Uch xususiyat birga bo‘lganda **guruhlash** (batching) ishlaydi — va guruhlash
+narxni chiziqli emas, keskin tushiradi. Aksincha, kommentariya yozish
+katta, idempotent emas va darhol ko‘rinishi kerak — shuning uchun uni
+guruhlab bo‘lmaydi va u ovozdan qimmatroq, garchi soni 10 barobar kam bo‘lsa ham.
+
+Ish oqimingizni baholayotganda avval shu uchta savolni bering, keyin arxitektura
+tanlang.
+</Deep>
+
+<Check q="Kesh urish darajasini 94% dan 97% ga chiqarish qancha tejaydi?">
+Kesh urishi Postgres yukiga ta’sir qiladi. 94% → 97% degani DB ga boradigan
+so‘rovlar 6% dan 3% ga, ya’ni **ikki barobar** kamayadi. Postgres oylik
+25 000 $ turadi, shundan yarmi o‘qish shardlari bo‘lsa — ~6 000 $ tejash.
+
+Bu yomon natija emas. Lekin uni CDN bilan solishtiring: bitta konfiguratsiya
+o‘zgarishi 540 000 $ dan ~150 000 $ ga tushiradi. Nisbat 65 barobar.
+
+Xulosa qoidasi: **optimallashtirishni foizdan emas, absolyut dollardan
+boshlang.** 3% ni 1.5% ga tushirish hayajonli tuyuladi; qaysi moddada
+ekanini bilmasangiz — bu shunchaki hayajon.
+</Check>
+
+## 12. Sig‘im rejalashtirish
+
+Sig‘im rejalashtirish — bu “qancha server kerak” degan savol emas. Bu **qachon
+arxitekturani o‘zgartirish kerak** degan savol. Har bir arxitektura o‘z
+diapazonida to‘g‘ri; muammo shundaki, diapazondan chiqqaningizni odatda
+ishlamay qolganda bilasiz.
+
+Quyidagi jadval — shu darsda qurgan tizimning bosqichlari. Har bir qatorda
+“nima ishlaydi” va “qaysi signal keyingi qatorga o‘tish vaqti kelganini
+aytadi”.
+
+| Bosqich | Yuk | Arxitektura | Keyingi bosqichga o‘tish signali |
+| --- | --- | --- | --- |
+| A | 10 ovoz/s, 100 o‘qish/s | Bitta Postgres, `ORDER BY` real vaqtda | Ro‘yxat so‘rovi p99 > 200 ms |
+| B | 100 ovoz/s, 2 000 o‘qish/s | Denormalizatsiya + o‘qish replikasi | Replikatsiya kechikishi > 1 s |
+| C | 1 000 ovoz/s, 20 000 o‘qish/s | Redis ZSET ro‘yxatlari + ovoz navbati | ZADD tezligi Redis CPU ni 60% dan oshirsa |
+| D | 5 000 ovoz/s, 100 000 o‘qish/s | Subreddit bo‘yicha sharding | Bitta shard yozishning 30% idan ko‘pini olsa |
+| E | 20 000 ovoz/s, 500 000 o‘qish/s | Ko‘p region + chekka kesh | Regionlararo kechikish mahsulot metrikasiga ta’sir qilsa |
+
+Jadvalning eng muhim ustuni — oxirgisi. Diqqat qiling, hech bir signal
+“foydalanuvchilar soni 1 000 000 dan oshdi” emas. Foydalanuvchi soni yomon
+signal: 1 000 000 passiv o‘quvchi 50 000 faol muhokamachidan kamroq yuk beradi.
+Signallar **tizimning o‘z o‘lchovlari** bo‘lishi kerak — kechikish, CPU,
+replikatsiya lagi, shardlar nomutanosibligi.
+
+Ikkinchi diqqat: signallar **oldindan** ishlaydi. “p99 > 200 ms” — bu hali
+buzilmagan tizim; foydalanuvchi buni sezmaydi. Agar siz signalni “sahifa
+ochilmayapti” deb qo‘ysangiz, o‘tish migratsiyasini panika ichida qilasiz.
+Migratsiya esa haftalar oladi — demak signal haqiqiy chegaradan **kamida
+bir chorak oldin** yonishi kerak.
+
+<Calc title="C bosqichida Redis qachon to'yadi" result="~21 000 ZADD/s da bitta node 40% band — 2.5 barobar zaxira bor">
+  6-bo‘limdan: ro‘yxat yangilash 21 000 ZADD/s (barcha subredditlar bo‘yicha).
+
+  Bitta Redis node: oddiy komandalar ~100 000/s, ZADD (skip list, log n)
+  ~80 000/s katta to‘plamlarda.
+
+  Yuklanish: 21 000 / 80 000 = 26% (yozish)
+  O‘qish: 34 722 ZREVRANGE/s / 3 node = 11 574/s har biriga = ~14%
+  Jami ≈ 40%
+
+  Zaxira: 2.5 barobar. Trafik yiliga 2 barobar o‘ssa — **15 oy** vaqtingiz bor.
+
+  Lekin: 60% chegarasiga 8 oyda yetasiz. Demak sharding ishini
+  **8-oyda boshlash** kerak, 15-oyda emas.
+</Calc>
+
+Bu hisobning oxirgi ikki qatori — sig‘im rejalashtirishning butun mohiyati.
+“Qachon to‘yadi” savoli emas, “**qachon ishni boshlash kerak**” savoli.
+Formulasi oddiy: to‘yish vaqtidan migratsiya davomiyligini ayiring, keyin
+xavfsizlik uchun yana yarmini ayiring.
+
+<Deep title="Nomutanosib shard: nega 'o'rtacha' yolg'on gapiradi">
+D bosqichida sharding subreddit bo‘yicha qilinadi. Bu tabiiy tanlov, chunki
+ro‘yxat so‘rovlari doim bitta subreddit ichida bo‘ladi — cross-shard so‘rov
+yo‘q. Lekin subredditlar hajmi **kuchli qonun** (power law) bo‘yicha
+taqsimlangan.
+
+Faraz qilaylik, 100 000 subreddit bor va yuk Zipf taqsimotiga yaqin.
+Zipf da eng katta elementning ulushi taxminan `1 / ln(N)` ga teng:
+1 / ln(100 000) ≈ 1/11.5 ≈ **8.7%**.
+
+Ya’ni eng katta subreddit yolg‘iz o‘zi butun yukning ~9% ini beradi. 10 ta
+shard bo‘lsa, o‘rtacha shard 10% oladi — demak eng katta subreddit deyarli
+butun bir shardni to‘ldiradi, va u shard bilan bir joyga tushgan boshqa
+subredditlar shu zahoti muammoga aylanadi.
+
+Yechim ikkita:
+1. **Eng kattalarini alohida ajratish** — top 20 subreddit o‘z shardida
+   (yoki o‘z klasterida). Bu ro‘yxat qo‘lda boshqariladi va bu normal.
+2. **Ichki sharding** — juda katta subredditni vaqt bo‘yicha bo‘lish:
+   oxirgi 7 kun bir shardda, arxiv boshqasida. `hot` ro‘yxati baribir
+   yangi postlardan iborat (6-bo‘limdagi 30 kunlik chegara), shuning uchun
+   o‘qishlar 90% bir shardga tushadi.
+
+Umumiy dars: **kalit bo‘yicha sharding tekis taqsimotni nazarda tutadi;
+odamlar yaratgan hech bir taqsimot tekis emas.** Har doim eng kattasini
+alohida ko‘rib chiqing.
+</Deep>
+
+<Check q="B bosqichida signal nega 'replikatsiya kechikishi', 'DB CPU' emas?">
+Chunki CPU to‘lgunga qadar tizim allaqachon noto‘g‘ri javob beradi.
+Replikatsiya lagi 1 soniya bo‘lsa, foydalanuvchi ovoz beradi, sahifani
+yangilaydi va o‘z ovozini ko‘rmaydi — chunki o‘qish replikadan keldi.
+Bu **mahsulot buzilishi**, va u CPU 40% da ham sodir bo‘ladi.
+
+Umumiy qoida: signal foydalanuvchi sezadigan xususiyatga eng yaqin
+o‘lchovdan olinsin. Resurs metrikalari (CPU, xotira) ikkinchi darajali —
+ular sabab bo‘lishi mumkin, lekin ular buzilishning o‘zi emas.
+</Check>
+
+## 13. Kuzatuv: reyting buzilganini qanday bilasiz
+
+Reyting tizimining kuzatuvi klassik tizimlardan bitta muhim jihati bilan
+farq qiladi: **buzilish jim bo‘ladi**. Agar Redis o‘lsa, siz buni 30 soniyada
+bilasiz — xatolik darajasi sakraydi, pager jiringlaydi. Agar reyting formulasi
+noto‘g‘ri ishlay boshlasa — masalan, ovoz ishchisi ba’zi guruhlarni tashlab
+ketsa — hech qanday xatolik yo‘q. Sahifa ochiladi, postlar chiqadi, hamma
+yashil. Faqat **noto‘g‘ri postlar** chiqadi.
+
+Shuning uchun bu yerda ikki qatlam kuzatuv kerak: infratuzilma sog‘lig‘i
+(hammaga tanish) va **reyting sog‘lig‘i** (bu domenga xos).
+
+### 13.1 Infratuzilma metrikalari
+
+| Metrika | Nima ko‘rsatadi | Ogohlantirish chegarasi |
+| --- | --- | --- |
+| `listing_read_p99` | Ro‘yxat so‘rovining oxirgi kechikishi | > 200 ms, 5 daqiqa |
+| `vote_queue_lag` | Navbatdagi qo‘llanmagan ovozlar yoshi | > 10 s |
+| `vote_queue_depth` | Navbatda kutayotgan xabarlar soni | > 500 000 yoki 10 daq. o‘sish |
+| `zset_write_rate` | Sekundiga ZADD soni | > 60 000/s (sig‘im signali) |
+| `cache_hit_ratio` | Post keshi urishi | 90% dan past |
+| `shard_write_skew` | Eng band shard / o‘rtacha | > 2.0 |
+
+Bu jadvalda diqqat qilinadigan narsa — `vote_queue_lag` va `vote_queue_depth`
+alohida turishi. Ular bir xil emas: chuqurlik katta bo‘lib, lag kichik
+bo‘lishi mumkin (cho‘qqi paytida navbat to‘ldi, lekin ishchilar tez ishlayapti),
+va aksincha — chuqurlik kichik bo‘lib, lag katta bo‘lishi mumkin (bitta
+bo‘lim tiqilib qolgan, qolganlari bo‘sh). Ikkinchisi ancha yomon holat, va
+faqat chuqurlikni kuzatsangiz, uni ko‘rmaysiz.
+
+`shard_write_skew` — 12-bo‘limdagi Zipf muammosining bevosita o‘lchovi.
+Uni kuzatmaslik odatiy xato: sizda 10 ta shard bor, o‘rtacha yuk 40%, hammasi
+joyida ko‘rinadi — lekin bittasi 85% da va u birinchi bo‘lib yiqiladi.
+
+### 13.2 Reyting sog‘lig‘i metrikalari
+
+| Metrika | Nima ko‘rsatadi | Buzilganda nima ko‘rinadi |
+| --- | --- | --- |
+| `hot_top10_churn` | Bir soatda birinchi 10 talikning necha foizi almashdi | 0% — ro‘yxat muzlab qoldi; 90% — formula tebranyapti |
+| `median_post_age_top25` | Birinchi sahifadagi postlarning o‘rtacha yoshi | O‘smoqda — yangi kontent chiqmayapti |
+| `vote_apply_ratio` | Qo‘llangan ovoz / qabul qilingan ovoz | 0.99 dan past — ishchi guruhlarni tashlayapti |
+| `zero_score_posts` | Ovoz olmagan yangi postlar ulushi | O‘smoqda — kirish nuqtasi buzilgan |
+| `listing_position_ctr` | Har bir pozitsiyaning bosilish darajasi | Tekislashmoqda — tartib ma’nosini yo‘qotgan |
+
+Bu jadval oldingisidan tubdan boshqacha: unda hech bir chegara qattiq raqam
+emas, hammasi **trend**. Sababi shundaki, bu metrikalarning “to‘g‘ri” qiymati
+yo‘q — sizning jamoangizda `hot_top10_churn` 40% bo‘lishi normal, boshqasida
+15%. Muhimi — u kecha 40% bo‘lib, bugun 3% bo‘lib qolganmi.
+
+Eng qimmatli metrika — oxirgisi. `listing_position_ctr` normal tizimda keskin
+pasayuvchi egri chiziq bo‘ladi: 1-pozitsiya 2-dan ancha ko‘p bosiladi, 25-si
+deyarli bosilmaydi. Agar bu egri **tekislashsa**, demak tartiblash endi
+foydalanuvchi qiziqishi bilan bog‘liq emas — ya’ni reyting ishlamayapti,
+garchi barcha texnik metrikalar yashil bo‘lsa ham.
+
+<Calc title="vote_apply_ratio ni sezish uchun qancha vaqt kerak" result="1% yo'qotish 4 soatda ko'rinadi, 0.1% — 2 kunda">
+  Faraz: kuniga 200 M ovoz, 1 daqiqalik oynada 138 900 ovoz.
+
+  Statistik shovqin (Puasson): σ = √138 900 ≈ 373, ya’ni ±0.27%
+  1% yo‘qotish = 1389 ovoz = 3.7σ → bitta daqiqada ham ko‘rinadi, lekin
+  yolg‘on signal ehtimoli yuqori. 5 daqiqalik oynada 8.3σ — ishonchli.
+
+  0.1% yo‘qotish = 139 ovoz = 0.37σ bir daqiqada. Ishonchli signal uchun
+  3σ kerak → oyna 68 barobar katta → **~1 soat**.
+
+  Lekin `vote_apply_ratio` ni ikki mustaqil hisoblagichdan olamiz
+  (qabul qilingan / qo‘llangan), ular orasida navbat kechikishi bor.
+  Kechikish 10 s bo‘lsa, qisqa oynada ratio doim biroz past ko‘rinadi.
+  Amalda oynani 15 daqiqadan kichik qilmang.
+</Calc>
+
+Bu hisobning amaliy xulosasi: **kichik yo‘qotishlarni real vaqtda tutib
+bo‘lmaydi.** Shuning uchun `vote_apply_ratio` ga qo‘shimcha ravishda kunlik
+**yarashtirish** (reconciliation) vazifasi kerak: navbatdagi barcha ovoz
+identifikatorlarini va bazadagi barcha ovozlarni solishtirish. Bu sekin,
+lekin aniq. Real vaqt metrikasi katta buzilishni tutadi; yarashtirish
+sizilishni tutadi.
+
+### 13.3 Sintetik nazorat
+
+Eng kuchli vosita — o‘z tizimingizga soxta post joylash. Har 10 daqiqada
+kanareyka post yaratiladi, unga ma’lum sonli ovoz beriladi va **kutilgan
+pozitsiya** hisoblanadi.
+
+```python
+def canary_check():
+    post = create_post(sub="r/system_design_canary", title=f"canary {now()}")
+    for u in canary_users[:40]:
+        vote(u, post.id, +1)
+    sleep(30)                            # navbat qo'llashini kutamiz
+    expected = hot_score(ups=40, downs=0, created_at=post.created_at)
+    rank = redis.zrevrank(f"listing:{post.sub_id}:hot", post.id)
+    stored = redis.zscore(f"listing:{post.sub_id}:hot", post.id)
+
+    emit("canary_rank", rank)
+    emit("canary_score_error", abs(stored - expected))
+    if rank is None or rank > 3:
+        alert("Kanareyka post ro'yxatga tushmadi")
+```
+
+Bu test uchta bosqichni birdan tekshiradi: ovoz qabul qilindimi, ishchi uni
+qo‘lladimi, ro‘yxat yangilandimi. Uchtasidan bittasi buzilsa — signal keladi,
+va **hech bir foydalanuvchi shikoyat qilmaguncha**. Sintetik nazoratning
+qiymati shunda: u passiv metrikalar ko‘rmaydigan “jim buzilish” ni ko‘radi.
+
+<Callout type="maslahat" title="Kanareyka jamoasi yashirin bo'lsin">
+Kanareyka postlari alohida, indekslanmaydigan jamoada yaratilsin va ular
+umumiy (`r/all`) ro‘yxatlarga tushmasin. Aks holda siz o‘z sintetik
+trafigingizni haqiqiy reytingga aralashtirasiz — va bir kun kelib kanareyka
+birinchi sahifaga chiqib qoladi.
+</Callout>
+
+<Check q="Nega 'xatolik darajasi' (error rate) reyting uchun yetarli metrika emas?">
+Chunki reytingdagi buzilishlarning ko‘pchiligi **muvaffaqiyatli javob**
+qaytaradi. Ovoz ishchisi guruhning yarmini tashlab ketsa — HTTP 200. ZSET
+yangilanmay qolsa — 200, faqat eski ro‘yxat. Formula konstantasi noto‘g‘ri
+deploy qilinsa — 200, faqat noto‘g‘ri tartib.
+
+Xatolik darajasi tizim **ishlayaptimi** degan savolga javob beradi;
+reyting metrikalari tizim **to‘g‘ri ishlayaptimi** degan savolga. Ikkinchisi
+mahsulot uchun muhimroq va uni o‘lchash ancha qiyin — shuning uchun ko‘pchilik
+uni umuman o‘lchamaydi.
+</Check>
+
+## 14. Antinaqshlar
+
+Quyidagi to‘rt qaror birinchi qarashda mantiqiy ko‘rinadi. Har biri haqiqiy
+loyihalarda uchraydi va har biri o‘z narxini kech ko‘rsatadi. Har birida
+avval **nima uchun jozibali** ekanini tushuntiramiz — chunki xatoni faqat
+“noto‘g‘ri” deb belgilash uni takrorlashdan saqlamaydi.
+
+<TradeOffs
+  rows={[
+    { choice: "Reytingni o'qish paytida hisoblash", pro: "Doim yangi, kesh invalidatsiyasi yo'q, kod sodda", con: "34 722 so'rov/s × 10 000 post = 3.47×10⁸ hisob/s (5.1-bo'lim)" },
+    { choice: "Ovoz kelganda ro'yxatni darhol yangilash", pro: "Ro'yxat doim aniq, kechikish nol", con: "Cho'qqi paytda 7 000 ZADD/s bitta mashhur postga — hot key" },
+    { choice: "Kommentariya daraxtini rekursiv so'rov bilan olish", pro: "SQL bir marta yoziladi, kod tushunarli", con: "Chuqurlik cheklanmagan, bitta so'rov 500 000 qatorni skanerlashi mumkin" },
+    { choice: "Ko'rsatiladigan (shovqinli) ballni saqlash", pro: "Bitta manba, interfeys va baza mos", con: "Tartiblash tebranadi, A/B testlar shovqinda yo'qoladi (10.4-bo'lim)" },
+  ]}
+/>
+
+Birinchi qator — eng keng tarqalgan xato, va u eng jozibali, chunki u
+**to‘g‘ri**. Reytingni o‘qishda hisoblash aniqroq natija beradi va kesh
+muammolarini butunlay yo‘q qiladi. U faqat bitta sabab bilan ishlamaydi:
+miqyos. 100 foydalanuvchida bu eng yaxshi arxitektura; 100 000 da — halokat.
+Bu yerdagi dars “hech qachon o‘qishda hisoblamang” emas, balki
+**“qaysi miqyosda ekaningizni biling”**. v0 ni to‘g‘ri qurgan odam
+D bosqichida boshqa narsa qurishi kerakligini oldindan biladi.
+
+Ikkinchi qator jozibali, chunki u eng sodda mustahkamlik hikoyasini beradi:
+ovoz keldi — ro‘yxat yangilandi, orada hech narsa yo‘q, yo‘qotish imkoni yo‘q.
+Narxi esa taqsimotda yashiringan: ovozlar postlar bo‘yicha tekis tarqalmaydi.
+Bir vaqtning o‘zida trend bo‘layotgan bitta post butun ovozlarning 5–10% ini
+oladi, va u bitta ZSET a’zosiga aylanadi. Yechim — 6-bo‘limdagi guruhlash;
+lekin uni **birinchi kundan** qurish shart emas, faqat qachon kerak
+bo‘lishini biling (12-bo‘lim, C bosqichi).
+
+Uchinchi qator jozibali, chunki rekursiv CTE chiroyli SQL. Va u 200 ta
+kommentariyada mukammal ishlaydi — ya’ni sizning barcha testlaringizda.
+Muammo faqat AMA postida, kechqurun, 500 000 kommentariyada ko‘rinadi.
+Bu — **test ma’lumotlari taqsimoti ishlab chiqarish taqsimotidan farq
+qilishi** ning klassik namunasi. 7.2-bo‘limda buni raqam bilan ko‘rdik.
+
+To‘rtinchi qator jozibali, chunki u “bitta haqiqat manbai” tamoyiliga
+mos keladi — bu odatda yaxshi tamoyil. Lekin bu yerda shovqin **ataylab**
+kiritilgan yolg‘on; uni haqiqat manbaiga aylantirish — yolg‘onni tizimning
+ichkarisiga tarqatish. Qoida: **himoya uchun kiritilgan buzilish faqat
+chiqish chegarasida bo‘lsin.**
+
+<Callout type="xato" title="Beshinchi antinaqsh: ovozni o'chirish">
+Ba’zi tizimlar joyni tejash uchun eski ovozlarni o‘chiradi — “post 6 oydan
+oshdi, kim ham qaytib ovoz berardi”. Keyin ma’lum bo‘ladiki: ovoz
+tarixi manipulyatsiya aniqlash (10.3), karma qayta hisoblash, retroaktiv
+og‘irlik (10.2) va nizolarni tekshirish uchun kerak. 200 M ovoz/kun × 100 bayt
+= 20 GB/kun = yiliga 7 TB — sovuq saqlashda bu oyiga ~150 $. Siz 150 dollar
+tejab, butun abuse tizimingizni ko‘r qildingiz.
+</Callout>
+
+## 15. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Oldindan hisoblangan ro'yxatlar (ZSET)", pro: "O'qish O(log n), 34 722 so'rov/s arzon", con: "Yozish yuki oshadi, ro'yxat eskiradi, xotira 16 GB" },
+    { choice: "Ovozni guruhlash (100 ms oyna)", pro: "DB yozuvi 50 barobar kam", con: "Ovoz 100 ms kech qo'llanadi, ishchi yiqilsa guruh yo'qoladi" },
+    { choice: "Wilson intervali (kommentariya)", pro: "Kam ovozli yaxshi kommentariya adolatli baholanadi", con: "Hisoblash qimmatroq, tushuntirish qiyin, yangilikni hisobga olmaydi" },
+    { choice: "Subreddit bo'yicha sharding", pro: "Ro'yxat so'rovi bitta shardda, cross-shard yo'q", con: "Zipf nomutanosibligi, r/all alohida yechim talab qiladi" },
+    { choice: "Ovoz raqamini xiralashtirish", pro: "Hujum 25 barobar qimmatlashadi", con: "Foydalanuvchi ishonchi pasayadi, qo'llab-quvvatlash savollari ko'payadi" },
+    { choice: "Kommentariya daraxtini keshlash", pro: "Daraxt qurish takrorlanmaydi, p99 tushadi", con: "Yangi kommentariya 30 s kech ko'rinadi, invalidatsiya murakkab" },
+  ]}
+/>
+
+Jadvalni ustunlar bo‘yicha emas, **juftliklar bo‘yicha** o‘qing. Birinchi
+ikki qator bir xil narsani aytadi: ikkalasi ham **yangilikni** aniqlikka
+almashtiradi. Uchinchi va oltinchi qator ham juft: ikkalasi ham **hisoblash
+narxini** foydalanuvchi tajribasiga almashtiradi. To‘rtinchi va beshinchi
+qator esa yolg‘iz — ular boshqa o‘lchamdagi qarorlar (taqsimlanish va
+xavfsizlik).
+
+Bu naqsh tasodifiy emas. Reyting tizimida deyarli barcha qarorlar bitta
+o‘qda yotadi: **qanchalik eski ma’lumot bilan yashay olasiz?** Ro‘yxat
+1 soniya eskimi yoki 5 soniyami; ovoz darhol qo‘llanadimi yoki 100 ms
+kechmi; daraxt keshi 10 s yashaydimi yoki 60 s. Har bir javob narxni
+o‘nlab barobar o‘zgartiradi va foydalanuvchi tajribasini deyarli
+o‘zgartirmaydi — chegaraga yetgunicha.
+
+<Callout type="ogoh" title="Qaysi metrikani optimallashtiryapsiz?">
+Reyting tizimida uchta raqobatdosh maqsad bor va ular **bir vaqtda**
+maksimallashtirilmaydi:
+
+**Aniqlik** — ro‘yxat hozirgi ovozlarni to‘liq aks ettiradimi. Buni
+maksimallashtirsangiz, oldindan hisoblashdan voz kechasiz va o‘qish narxi
+200 barobar oshadi.
+
+**Yangilik** — yangi post birinchi sahifaga qanchalik tez chiqadi. Buni
+maksimallashtirsangiz, `t/45000` koeffitsientini kuchaytirasiz va sifatsiz
+kontent ham chiqib qoladi.
+
+**Manipulyatsiyaga chidamlilik** — 40 ta soxta ovoz bilan birinchi sahifaga
+chiqib bo‘ladimi. Buni maksimallashtirsangiz, ovoz og‘irliklarini
+qattiqlashtirasiz va yangi halol foydalanuvchilarning ta’siri nolga tushadi.
+
+Yangi mahsulot uchun to‘g‘ri javob odatda **yangilik** — chunki jamoa
+kichik bo‘lganda manipulyatsiya foydasi ham kichik, va aniqlik farqi
+sezilmaydi. O‘sish bilan urg‘u manipulyatsiyaga chidamlilikka siljiydi.
+Agar siz uchtasini ham “muhim” desangiz, siz hech qaysi biri uchun
+sozlanmagan tizim qurasiz.
+</Callout>
+
+## 16. Intervyu savollari
+
+Savollar uch guruhga bo‘lingan: mexanizm (formula va ma’lumot modeli),
+miqyos (arxitektura qarorlari), va tajriba (nosozlik va operatsiya). Har bir
+javobda **raqam yoki mexanizm** bor — “kesh ishlatamiz” tipidagi javob
+intervyuda ball bermaydi.
+
+### 16.1 Mexanizm
+
+<QA q="Reddit ning 'hot' formulasini yozing va har bir hadining ma'nosini tushuntiring.">
+`hot = log10(max(|ups − downs|, 1)) + sign(ups − downs) × (t − t0) / 45000`,
+bu yerda `t` — post yaratilgan vaqt (epoch soniya), `t0` — sobit tayanch
+nuqta (Reddit da 2005-yil 8-dekabr).
+
+Birinchi had — **ovoz hissasi logarifmik**: dastlabki 10 ovoz keyingi 100
+ovoz bilan bir xil ta’sir beradi. Bu birinchi ovoz beruvchilarning
+nomutanosib kuchini kamaytiradi va katta postlarning ro‘yxatni abadiy
+egallashiga yo‘l qo‘ymaydi.
+
+Ikkinchi had — **vaqt hissasi chiziqli**: har 45 000 soniya (12.5 soat)
++1 ball. Logarifmik shkalada +1 ball 10 barobar ovozga teng, demak 12.5
+soatda post 10 barobar ko‘p ovoz “qarzdor” bo‘ladi.
+
+`sign` — salbiy postlar uchun: minus ballli postda vaqt ballni **pasaytiradi**,
+aks holda yomon post shunchaki eskirib yuqoriga chiqib ketardi.
+</QA>
+
+<QA q="Nima uchun ballni oldindan hisoblab, ZSET da saqlash to'g'ri, lekin uni har ovozda yangilash noto'g'ri?">
+Ball funksiyasi **vaqtga bog‘liq**, lekin bog‘liqligi barcha postlar uchun
+bir xil tezlikda (chiziqli, 1/45000). Demak postlarning **nisbiy tartibi**
+vaqt o‘tishi bilan o‘zgarmaydi — faqat ovoz kelganda o‘zgaradi. Bu
+oldindan hisoblashni to‘g‘ri qiladi: ZSET ni faqat ovoz kelganda yangilash
+kifoya, taymer bilan qayta hisoblash shart emas.
+
+Lekin har ovozda yangilash boshqa muammoga olib keladi: trend postga
+sekundiga minglab ovoz keladi va har biri bitta ZSET a’zosiga ZADD qiladi.
+Bu — hot key. Yechim: ovozlarni 100 ms oynada guruhlash, guruh oxirida
+bitta ZADD. Natijada yozish 50 barobar kamayadi, ro‘yxat 100 ms eskiradi —
+hech kim sezmaydi.
+</QA>
+
+<QA q="Kommentariyalar uchun nega boshqa formula (Wilson) ishlatiladi?">
+Postlar uchun asosiy savol — “bu hozir qiziqmi”, shuning uchun vaqt hadi bor.
+Kommentariyalar uchun asosiy savol — “bu yaxshimi”, va ular allaqachon
+bitta postning kontekstida, ya’ni yoshlari yaqin.
+
+Muammo shundaki, oddiy `ups − downs` kam ovozli kommentariyaga nisbatan
+adolatsiz: 1/0 (bitta plus) 10/3 dan yuqori turadi, garchi ikkinchisi
+ancha ko‘proq ma’lumot bersa ham. Wilson ball intervalining **quyi
+chegarasini** oladi: bu “eng yomon holatda haqiqiy nisbat qancha”
+degan savolga javob. 1/0 uchun quyi chegara ~0.21, 100/10 uchun ~0.84.
+
+Natijada oz ovozli kommentariya yuqoriga chiqmaydi, lekin ovoz to‘plagani
+sari tabiiy ravishda ko‘tariladi.
+</QA>
+
+<QA q="votes jadvalining birlamchi kaliti nima bo'lishi kerak va nega?">
+`(user_id, thing_id)` — kompozit birlamchi kalit. Sun’iy `id` emas.
+
+Sabab: ovoz **o‘z tabiatiga ko‘ra idempotent**. Bitta foydalanuvchi bitta
+obyektga faqat bitta ovozga ega bo‘lishi mumkin; “yana bir marta ovoz berish”
+degan tushuncha yo‘q, faqat “ovozni o‘zgartirish” bor. Kompozit kalit buni
+ma’lumotlar bazasi darajasida kafolatlaydi va `INSERT ... ON CONFLICT
+DO UPDATE` ni tabiiy qiladi.
+
+Bu miqyosda ham foyda beradi: navbatdan kelgan xabar ikki marta qayta
+ishlansa (at-least-once yetkazish), natija o‘zgarmaydi. Sun’iy kalit bilan
+ikkinchi xabar ikkinchi qator yaratardi va hisoblagich ikki marta oshardi.
+</QA>
+
+<QA q="Ovoz hisoblagichini (ups/downs) denormalizatsiya qilishning narxi nima?">
+Yutuq: ro‘yxat so‘rovida `COUNT(*)` yo‘q — bitta indeksdan o‘qish yetadi.
+5.1-bo‘limda ko‘rganimizdek, bu 3.47×10⁸ hisob/s ni nolga tushiradi.
+
+Narx uchta. Birinchi — **haqiqat ikki joyda**: `votes` jadvali va
+`posts.ups`. Ular ajralib qolishi mumkin (ishchi yiqildi, xabar yo‘qoldi).
+Shuning uchun kunlik yarashtirish vazifasi kerak.
+
+Ikkinchi — **yozish yuki**: har ovoz endi ikki joyga tegadi. Guruhlash buni
+yumshatadi.
+
+Uchinchi — **raqobat**: bitta postning `ups` ustuniga bir vaqtda ko‘p
+yangilanish kelsa, qator qulfida navbat hosil bo‘ladi. Guruhlash bu yerda
+ham yechim: 50 ta ovoz bitta `UPDATE ... SET ups = ups + 50` ga aylanadi.
+</QA>
+
+<QA q="'new' tartibi nega hech qachon buzilmaydi?">
+Chunki u ovozga bog‘liq emas. `ORDER BY created_at DESC` — bu birlamchi
+ma’lumotdan to‘g‘ridan-to‘g‘ri o‘qish, hech qanday hisoblangan qiymat,
+hisoblagich yoki fon ishchisi ishtirok etmaydi.
+
+Amaliy natijasi katta: degradatsiya rejasida (9.3-bo‘lim) `new` eng oxirgi
+saqlanadigan funksiya. Reyting quvuri butunlay yiqilsa ham, sayt `new`
+bilan ishlashda davom etadi — foydalanuvchilar kontent ko‘radi va joylay
+oladi. Har bir tizimda shunday “hech narsaga bog‘liq bo‘lmagan yo‘l” ni
+ataylab saqlash kerak.
+</QA>
+
+<QA q="Postni qaysi ro'yxatlarga qo'shish kerakligini qanday hal qilasiz?">
+Har bir subreddit uchun bir nechta ZSET bor: `hot`, `new`, `top:day`,
+`top:week`, `top:all`, `controversial`, `rising`. Ularning hammasini har
+ovozda yangilash — 7 barobar yozish.
+
+To‘g‘ri yondashuv — **yangilanish chastotasini ro‘yxat tabiatiga moslashtirish**.
+`new` umuman ovozdan bog‘liq emas — faqat post yaratilganda yoziladi.
+`hot` — har guruhda. `top:day` — har guruhda, lekin faqat post 24 soatdan
+yosh bo‘lsa. `top:all` — kuniga bir marta batch bilan qayta quriladi.
+`controversial` va `rising` — kam ochiladi, 5 daqiqada bir marta.
+
+Natijada 7 ta ro‘yxat o‘rniga amalda 2 tasi issiq yo‘lda qoladi.
+</QA>
+
+<QA q="Ovoz og'irligi tushunchasini tushuntiring va nega u chegaradan yaxshiroq.">
+Ovoz og‘irligi — 0 dan 1 gacha bo‘lgan koeffitsient, akkaunt yoshi, karma,
+tasdiqlanganlik va muallif bilan “yaqinlik” dan hisoblanadi. Ovoz qabul
+qilinadi va yoziladi, lekin reytingga og‘irligi bilan kiradi.
+
+Chegaradan yaxshiroq, chunki chegara **ikkilik qaror** talab qiladi va
+halol hamda yovuz foydalanuvchilar taqsimoti kesishadi: universitet NATi
+ortida 4000 talaba bitta IP dan soatiga 5000 ovoz beradi (10.2-bo‘lim
+hisobi). Har qanday IP chegarasi yo ularni bloklaydi, yo hujumchiga yo‘l
+beradi.
+
+Og‘irlik esa **uzluksiz**: shubhali akkaunt to‘liq bloklanmaydi, uning
+ta’siri kamayadi. Xato qilish narxi shu bilan keskin tushadi.
+</QA>
+
+### 16.2 Miqyos
+
+<QA q="500 000 kommentariyali postni qanday ko'rsatasiz?">
+Butun daraxtni qurish mumkin emas: 500 000 × 500 bayt = 250 MB javob.
+
+Uch qadam. Birinchi — **daraxtni faqat yuqori qismini olish**: har bir
+ildiz kommentariyasi uchun eng yaxshi 3–5 ta bola, jami ~200 tugun = ~100 KB.
+
+Ikkinchi — qolganini “yana 47 ta javob” tugmasi ortiga yashirish; bosilganda
+alohida so‘rov shu shoxni yuklaydi.
+
+Uchinchi — **sahifalash kursor bilan emas, shoxlar bo‘yicha**. Daraxt uchun
+klassik kursor sahifalash ishlamaydi, chunki tartib ierarxik: siz “keyingi
+20 ta” deyolmaysiz, chunki 20 ta qayerdan boshlanishini faqat butun daraxtni
+bilgandagina aniqlaysiz. Shuning uchun sahifalash birligi — **ildiz
+kommentariyasi va uning qisqartirilgan shoxi**.
+</QA>
+
+<QA q="Sharding kalitini qanday tanlaysiz va uning zaifligi nimada?">
+Kalit — `subreddit_id`. Sababi: barcha ro‘yxat so‘rovlari bitta subreddit
+ichida, demak cross-shard so‘rov yo‘q, va bu eng issiq yo‘l.
+
+Zaiflik — **Zipf taqsimoti**. 100 000 subreddit bo‘lsa, eng kattasi
+yolg‘iz o‘zi yukning ~9% ini beradi (1/ln(100 000)). 10 ta shardda o‘rtacha
+10% — demak eng katta subreddit deyarli butun shardni to‘ldiradi.
+
+Yechim: top 20 subredditni alohida shardlarga qo‘lda ajratish, va juda
+kattalarini ichkarida vaqt bo‘yicha bo‘lish (oxirgi 30 kun — issiq shard,
+qolgani — arxiv). `r/all` esa umuman boshqa yechim talab qiladi: u
+shardlardan yig‘iladi va alohida keshlanadi.
+</QA>
+
+<QA q="r/all (butun sayt bo'yicha ro'yxat) ni qanday quryapsiz?">
+Uni real vaqtda barcha shardlardan yig‘ib bo‘lmaydi: 100 000 subreddit
+bo‘yicha scatter-gather har so‘rovda imkonsiz.
+
+Yondashuv: **ikki bosqichli yig‘ish**. Har bir shard o‘zining eng yaxshi
+1000 postini alohida ZSET da saqlaydi. Fon vazifasi har 30 soniyada shu
+ZSET larni o‘qib, umumiy `listing:all:hot` ni quradi (10 shard × 1000 =
+10 000 nomzod, ulardan top 1000 saqlanadi).
+
+Bu to‘liq aniq emas: 1001-o‘rindagi post nazariy jihatdan umumiy ro‘yxatga
+tushishi mumkin edi. Amalda bu hech qachon muhim emas, chunki r/all
+foydalanuvchilari birinchi 100 tadan narini deyarli ko‘rmaydi.
+</QA>
+
+<QA q="Kesh urish darajasi 94% bo'lsa, uni 99% ga chiqarish arziydimi?">
+Avval nima qimmatligini hisoblang. 11-bo‘limdagi taqsimotda Postgres umumiy
+xarajatning 4% i, chiqish trafigi esa 91% i. Kesh urishini 94% dan 99% ga
+chiqarish DB yukini 6 barobar kamaytiradi — bu ~4% moddadan 3.3% tejash,
+ya’ni umumiy xarajatning ~3% i.
+
+Xuddi shu kunni CDN sozlashga sarflasangiz, 91% moddani uchdan biriga
+tushirasiz — umumiy xarajatning ~60% i.
+
+Intervyuda bu javob ikkita narsani ko‘rsatadi: siz optimallashtirishni
+absolyut qiymatdan boshlaysiz, va siz “o‘zim uchun qiziq” bilan “biznes
+uchun muhim” ni ajratasiz.
+</QA>
+
+<QA q="Ovoz navbati ishchisi 10 daqiqa yiqilib turdi. Nima bo'ladi va nima qilasiz?">
+Nima bo‘ladi: ovozlar navbatda to‘planadi (Kafka da saqlanadi, yo‘qolmaydi).
+Foydalanuvchilar strelkani bosadi, interfeys optimistik ko‘rsatadi — ular
+hech narsa sezmaydi. Ro‘yxatlar esa muzlab qoladi: yangi ovozlar reytingga
+kirmaydi.
+
+Nima qilasiz. Birinchi — ishchini ko‘tarasiz va **guruhlash oynasini
+vaqtincha kattalashtirasiz** (100 ms → 2 s), chunki 10 daqiqalik qarz
+=~1.4 M ovoz va uni odatdagi tezlikda qo‘llash yana cho‘qqi hosil qiladi.
+Katta guruhlar bilan DB yozuvi kamayadi.
+
+Ikkinchi — **navbat lagini kuzatasiz**, chuqurligini emas: qarz qancha
+vaqtda so‘rilayotganini bilish kerak.
+
+Uchinchi — qarz so‘rilgach, `hot_top10_churn` metrikasini tekshirasiz:
+u qisqa vaqt sakraydi (10 daqiqalik ovozlar birdan qo‘llandi) va bu normal.
+</QA>
+
+<QA q="Nima uchun ro'yxatlarni Redis da saqlaymiz, Postgres da indeks bilan emas?">
+Postgres da `hot` bo‘yicha indeks qurish mumkin emas, chunki `hot` — vaqtga
+bog‘liq funksiya. Uni saqlangan ustunga aylantirsak (har ovozda yangilanadi),
+indeks har yozishda qayta muvozanatlanadi — 7 000 yozish/s da B-tree indeksi
+issiq nuqtaga aylanadi.
+
+Redis ZSET esa skip list: ZADD O(log n), ZREVRANGE O(log n + k). Katta
+farq — **xotirada** va bitta oqimli, ya’ni qulflash yo‘q. Bundan tashqari
+ro‘yxatni 1000 element bilan cheklab (`ZREMRANGEBYRANK`) o‘lchamni sobit
+ushlab turish oson.
+
+Muhim eslatma: bu Redis ni “ma’lumotlar bazasi” qilmaydi. Ro‘yxat —
+**hosila** ma’lumot, haqiqat manbai Postgres da. ZSET yo‘qolsa, uni
+qayta qurish mumkin (9.2-bo‘limdagi `rebuild_listing`).
+</QA>
+
+<QA q="Foydalanuvchi 25 ta postni ko'rdi. Uning har biriga ovoz berganini qanday bilasiz?">
+Yomon yechim — har post uchun bitta so‘rov: 25 ta aylanma. Yaxshi yechim —
+bitta batch so‘rov: `SELECT thing_id, direction FROM votes WHERE user_id = ?
+AND thing_id = ANY(?)`.
+
+Miqyosda esa bu ham DB ga tegmasligi kerak. Foydalanuvchining oxirgi
+ovozlari Redis da saqlanadi: `HGETALL votes:user:123` yoki katta akkauntlar
+uchun oxirgi N ta ovoz. Kesh o‘tkazib yuborilsa — DB dan batch bilan.
+
+Bu — N+1 muammosining klassik ko‘rinishi, va u ayniqsa xavfli, chunki
+u **funksional testlarda ko‘rinmaydi**: bitta foydalanuvchida 25 ta so‘rov
+ham tez ishlaydi.
+</QA>
+
+<QA q="Ikkita post bir xil ballga ega bo'lsa nima bo'ladi?">
+ZSET da bir xil ballli a’zolar **leksikografik tartibda** qaytadi — ya’ni
+post identifikatoriga qarab. Bu deterministik, lekin ma’nosiz: eski postlar
+identifikatori kichik bo‘lgani uchun doim oldinda turadi.
+
+Amalda bu deyarli muammo emas, chunki ball float va vaqt hadi uzluksiz —
+aynan teng bo‘lish ehtimoli juda kichik. Lekin ball yaxlitlansa (masalan,
+7 kasrgacha) tenglik ko‘payadi.
+
+To‘g‘ri yechim — **ballga mikro-tie-breaker qo‘shish**: `score + (post_id
+mod 1000) × 1e-9`. Bu tartibni barqaror qiladi va eski postlar foydasiga
+tizimli siljishni yo‘q qiladi.
+</QA>
+
+### 16.3 Tajriba
+
+<QA q="Ertalab soat 9 da 'hot' ro'yxati muzlab qoldi, lekin xatolik yo'q. Diagnostika tartibi?">
+Uchta ehtimol bor va ularni **quvur bo‘ylab ketma-ket** tekshiring.
+
+Birinchi — ovozlar kelyaptimi: `vote_accepted_rate` metrikasi. Agar nol
+bo‘lsa, muammo API qatlamida yoki mijozda.
+
+Ikkinchi — ovozlar qo‘llanyaptimi: `vote_apply_ratio` va `vote_queue_lag`.
+Lag o‘smoqda bo‘lsa — ishchi muammosi. Ratio 1 ga yaqin, lekin lag katta
+bo‘lsa — ishchi ishlayapti, lekin sekin.
+
+Uchinchi — ZSET yangilanyaptimi: `zset_write_rate` va to‘g‘ridan-to‘g‘ri
+`ZSCORE` bilan ma’lum bir postni tekshirish. Ball o‘zgaryapti, lekin
+tartib o‘zgarmayapti bo‘lsa — muammo o‘qish keshida, ro‘yxatda emas.
+
+Kanareyka posti (13.3) bu uch bosqichni bir vaqtda tekshiradi va odatda
+javobni bir daqiqada beradi.
+</QA>
+
+<QA q="Yangi reyting formulasini qanday chiqarasiz?">
+To‘g‘ridan-to‘g‘ri almashtirish mumkin emas: formula o‘zgarishi butun
+saytdagi tartibni birdan o‘zgartiradi va buni orqaga qaytarish qiyin
+(foydalanuvchilar allaqachon boshqa kontentga ovoz berib bo‘lgan).
+
+Tartib: (1) yangi ballni **soya rejimida** hisoblash — parallel ZSET ga
+yozish, foydalanuvchiga ko‘rsatmaslik; (2) ikki ro‘yxatni oflayn
+solishtirish: top-25 kesishuvi, o‘rtacha yosh, jamoalar taqsimoti;
+(3) kichik subredditlarda A/B, asosiy metrika — o‘qish vaqti va
+kommentariya soni, ovoz soni emas; (4) bosqichma-bosqich 1% → 5% → 25% → 100%.
+
+Va **eng muhimi**: eski ZSET larni bir necha kun saqlab turing. Orqaga
+qaytarish yo‘li bo‘lmagan chiqarish — chiqarish emas, qimor.
+</QA>
+
+<QA q="Bitta post birdan 50 000 ovoz oldi. Tizim qanday javob beradi?">
+Ovozlar navbatga tushadi — bu qism muammosiz, Kafka 7 000 xabar/s ni
+sezmaydi ham.
+
+Muammo guruhlashda: barcha 50 000 ovoz **bitta kalit** ga tegadi.
+Agar guruhlash `post_id` bo‘yicha bo‘linsa, bitta ishchi bo‘limi butun
+yukni oladi — hot partition. Buni oldindan hal qilish kerak: guruhlash
+kaliti `post_id`, lekin juda issiq postlar uchun `post_id:shard_n`
+(bir nechta hisoblagich, o‘qishda yig‘iladi).
+
+Ro‘yxat tomonida esa muammo yo‘q: 50 000 ovoz 100 ms oynada ~10 ta
+guruhga aylanadi, ya’ni 10 ta ZADD. Aynan shuning uchun guruhlash
+faqat tejash emas, **himoya** mexanizmi hamdir.
+</QA>
+
+<QA q="Moderator postni o'chirdi. Nima sodir bo'lishi kerak?">
+Postni haqiqiy o‘chirish emas, `deleted` bayrog‘ini qo‘yish. Sabab:
+kommentariyalar qoladi, moderatsiya tarixi kerak, va nizolar bo‘lishi mumkin.
+
+Keyin darhol barcha ro‘yxatlardan chiqarish kerak: `ZREM` har bir tegishli
+ZSET dan. Bu **sinxron** bo‘lishi shart — moderatsiya harakati navbatga
+tushib, 30 soniya kutmasin.
+
+Nozik joy: post `r/all` da ham bo‘lishi mumkin, va u alohida ZSET.
+Shuning uchun o‘chirish ro‘yxatlar ro‘yxatini bilishi kerak. Amalda buni
+postning o‘zida saqlash qulay: `post.listings` — u qaysi ZSET larga
+qo‘shilgan.
+</QA>
+
+<QA q="Yangi jamoa (subreddit) ochildi. Birinchi postlar reytingi qanday ishlaydi?">
+Formula miqyosga bog‘liq emas — u faqat ovoz va vaqtga qaraydi. Demak
+5 ovozli post 3 ovozlidan yuqori turadi, xuddi 5000 va 3000 kabi.
+
+Lekin **manipulyatsiyaga chidamlilik** miqyosga bog‘liq: 10 ta ovoz bilan
+birinchi o‘rinni egallash mumkin. Kichik jamoada bu muammo emas (kimga
+kerak), lekin jamoa o‘sganda birdan muammo bo‘ladi.
+
+Amaliy yechim — ovoz og‘irliklarini **jamoa hajmiga nisbatan** emas,
+akkaunt sifatiga qarab hisoblash (10.2), va ring aniqlashning baseline ini
+har bir jamoa uchun alohida saqlash (10.3). Aks holda kichik jamoaning
+sodiq o‘quvchilari ring deb belgilanadi.
+</QA>
+
+<QA q="Postgres primary yiqildi. Sayt qanday holatda qoladi?">
+O‘qish ishlaydi: ro‘yxatlar Redis da, post matnlari keshda. Kesh urishi
+94% bo‘lsa, foydalanuvchilarning 94% i farqni sezmaydi.
+
+Yozish to‘xtaydi: yangi post, kommentariya joylab bo‘lmaydi. Ovozlar esa
+**navbatda to‘planadi** — bu muhim farq: ular yo‘qolmaydi, faqat kech
+qo‘llanadi. Interfeys optimistik ko‘rsatishda davom etadi.
+
+Amaliy qadamlar: yozish yo‘llarini darhol “vaqtincha mavjud emas” ga
+o‘tkazish (retry storm ni oldini olish), o‘qishni to‘liq keshdan berish,
+replikadan yangi primary ko‘tarish. Eng katta xavf — ko‘tarilgandan keyin
+to‘plangan yozish qarzining bir vaqtda kelishi; guruhlash oynasini
+vaqtincha kattalashtirish shu yerda ham yordam beradi.
+</QA>
+
+<QA q="Ovoz sonlari bazada va Redis da farq qilyapti. Qaysi biri to'g'ri?">
+Haqiqat manbai — `votes` jadvali (xom ovozlar). `posts.ups` — denormalizatsiya,
+Redis dagi ball — hosila. Farq bo‘lsa, `votes` dan qayta hisoblang.
+
+Lekin avval **farq kattaligini** o‘lchang. 1–2 ovozlik farq normal:
+navbat kechikishi bor. 5% farq — ishchi xabar tashlayapti. 50% farq —
+qayta qurish jarayoni yarim yo‘lda to‘xtagan.
+
+Doimiy yechim — kunlik yarashtirish vazifasi: `votes` dan agregat hisoblab,
+`posts.ups` bilan solishtirish va nomuvofiqliklar sonini metrika sifatida
+chiqarish. Bu metrika nolga yaqin bo‘lishi kerak; o‘sishi kod xatosining
+eng erta belgisi.
+</QA>
+
+<QA q="Foydalanuvchi 'mening postim ko'rinmayapti' deb shikoyat qildi. Tekshiruv ro'yxati?">
+Ketma-ketlik: (1) post bazada bormi va `deleted` emasmi; (2) spam filtri
+uni ushlab qolganmi (`removed_by` maydoni); (3) ZSET da bormi —
+`ZSCORE listing:sub:hot post_id`; (4) balli qanday va u 1000-o‘rindan
+pastdami (ro‘yxat cheklangan); (5) foydalanuvchi qaysi tartibda qarayapti —
+`hot` da past, lekin `new` da bor bo‘lishi mumkin.
+
+Eng ko‘p uchraydigan javob to‘rtinchi: post bor, hammasi to‘g‘ri, u
+shunchaki past. Buni foydalanuvchiga tushuntirish qiyin, shuning uchun
+mahsulot tomonda “sizning postingiz r/x da 47-o‘rinda” degan ko‘rsatkich
+foydali bo‘ladi.
+</QA>
+
+<QA q="Reyting o'zgarishini foydalanuvchiga qanday tushuntirasiz — ochiqmi yoki yopiq?">
+Bu mahsulot va xavfsizlik o‘rtasidagi savol, va texnik javobi yo‘q —
+lekin muhandis sifatida siz narxini ko‘rsatishingiz kerak.
+
+To‘liq ochiqlik (formulani e’lon qilish): foydalanuvchilar ishonchi ortadi,
+lekin optimallashtirish boshlanadi — post joylash vaqtini tanlash,
+sarlavha naqshlari, va oxir-oqibat manipulyatsiya. Reddit formulani ochiq
+qildi va bu SEO ga o‘xshash sanoat yaratdi.
+
+To‘liq yopiqlik: manipulyatsiya qiyinlashadi, lekin har bir moderatsiya
+qarori “senzura” deb qabul qilinadi.
+
+Amaliy o‘rta yo‘l: **tamoyillarni** e’lon qiling (yangilik muhim, ovozlar
+logarifmik hisoblanadi), **parametrlarni** yashiring (og‘irliklar, chegaralar,
+filtr qoidalari). Ochiq formulaning o‘zi xavfli emas; ochiq **himoya
+chegaralari** xavfli.
+</QA>
+
+## 17. Amaliyot
+
+To‘rt daraja. Har birida tekshiruv mezoni **o‘lchangan natija** — “ishladi”
+emas. Ikkinchi daraja uchun boshlang‘ich kod `docs/amaliyot/reddit/` da:
+o‘lchov va grafik qismi tayyor, mantiq qismi TODO.
+
+<Task title="1-daraja: formulani qo'lda his qilish">
+Jadval tuzing. Ustunlar: post yoshi (0, 3, 6, 12, 24, 48 soat), ovozlar
+soni (10, 100, 1000, 10 000), va `hot` balli.
+
+Keyin uchta savolga **raqam bilan** javob bering:
+
+1. 3 soatlik 100 ovozli post necha ovozli 24 soatlik postga teng?
+2. Ballda +2 farq necha barobar ovozga teng?
+3. −5 ballli post 12 soatdan keyin qayerda bo‘ladi?
+
+**Tekshiruv mezoni:** jadvalni to‘ldirib, 12.5 soat = +1 ball = 10×
+ovoz munosabatini o‘z hisobingizdan chiqarib ko‘rsating. Agar bu chiqmasa,
+formulani noto‘g‘ri qo‘llagansiz.
+</Task>
+
+<Task title="2-daraja: ovoz quvuri va ro'yxat (asosiy topshiriq)">
+Postgres + Redis + oddiy navbat (Redis Stream yoki fayl navbati ham bo‘ladi).
+Quring:
+
+- `POST /vote` — ovozni navbatga qo‘yadi va darhol 202 qaytaradi
+- ishchi — 100 ms oynada guruhlaydi, `votes` ni yangilaydi, `posts.ups/downs`
+  ni oshiradi, `hot` ni qayta hisoblab ZADD qiladi
+- `GET /r/:sub/hot` — ZREVRANGE + batch post o‘qish
+
+Keyin **ikki rejimda** yuk testi o‘tkazing: guruhlash yoqilgan va
+o‘chirilgan holatda, sekundiga 2 000 ovoz.
+
+**Tekshiruv mezoni:** ikkita grafik — DB yozuvlari/s va ro‘yxat so‘rovi p99.
+Guruhlash bilan DB yozuvi kamida **20 barobar** kamayishi kerak. Agar
+farq 5 barobardan kam bo‘lsa, guruhlash kaliti noto‘g‘ri (ehtimol
+har bir ovoz alohida tranzaksiyada qo‘llanyapti).
+</Task>
+
+<Task title="3-daraja: kommentariya daraxti va Wilson">
+Ikki qismli.
+
+Birinchi qism: 500 000 kommentariyali post yarating (sun’iy ma’lumot,
+chuqurlik 1–12, tarmoqlanish tasodifiy). Daraxtni ikki usulda oling —
+rekursiv CTE bilan va ota-ona ko‘rsatkichi bo‘yicha ilova tomonida
+qurish bilan. Vaqtni o‘lchang.
+
+Ikkinchi qism: qisqartirilgan daraxt yasang — har bir ildizga eng yaxshi
+3 ta bola, jami 200 tugundan oshmasin. Tartiblash Wilson quyi chegarasi
+bo‘yicha.
+
+**Tekshiruv mezoni:** javob hajmi (bayt) va p99 kechikish uchta variant
+uchun — to‘liq daraxt, qisqartirilgan daraxt, keshlangan qisqartirilgan
+daraxt. Qisqartirish javobni kamida **1000 barobar** kichraytirishi kerak.
+Wilson tartibi `ups − downs` tartibidan qanday farq qilganini 10 ta misolda
+ko‘rsating.
+</Task>
+
+<Task title="4-daraja: sig'im modeli va sharding simulyatsiyasi">
+Elektron jadval yoki skript yozing. Kirish parametrlari: kunlik ovoz soni,
+o‘qish/yozish nisbati, subredditlar soni, Zipf ko‘rsatkichi, shardlar soni.
+
+Chiqish: har bir shard uchun yozish tezligi, eng band shard / o‘rtacha
+nisbati, Redis ZADD tezligi, taxminiy oylik xarajat (11-bo‘lim
+tarkibi bo‘yicha).
+
+Keyin uchta ssenariyni o‘tkazing: trafik 2×, 5×, 20×.
+
+**Tekshiruv mezoni:** har bir ssenariy uchun 12-bo‘limdagi qaysi bosqichda
+(A–E) turganingizni va **qaysi signal birinchi bo‘lib yonishini** ayting.
+Modelingiz eng katta subreddit yolg‘iz o‘zi yukning ~9% ini olishini
+ko‘rsatishi kerak — agar ko‘rsatmasa, taqsimotni tekis deb olgansiz.
+</Task>
+
+## 18. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| hot | Ovoz va yangilikni birlashtiruvchi asosiy reyting formulasi |
+| Wilson score interval | Ishonch intervalining quyi chegarasi; kam ovozli elementlarni adolatli baholaydi |
+| controversial | Plus va minus ovozlar muvozanatini mukofotlovchi tartib |
+| ZSET (sorted set) | Redis ning tartiblangan to‘plami; ZADD/ZREVRANGE O(log n) |
+| Denormalizatsiya | Hisoblangan qiymatni (masalan `ups`) asosiy jadvalda saqlash |
+| Guruhlash (batching) | Ko‘p kichik yozuvni bitta operatsiyaga birlashtirish |
+| Hot key | Nomutanosib ko‘p so‘rov keladigan yagona kalit |
+| Vote fuzzing | Ko‘rsatiladigan ovoz raqamiga ataylab shovqin qo‘shish |
+| Sock puppet | Bitta odam boshqaradigan soxta akkauntlar to‘plami |
+| Vote ring | Kelishib bir-biriga ovoz beruvchi haqiqiy foydalanuvchilar guruhi |
+| Brigading | Tashqi jamoadan uyushtirilgan ommaviy ovoz berish |
+| Ovoz og‘irligi | Akkaunt ishonchiga qarab ovozning 0–1 oralig‘idagi koeffitsienti |
+| Jaccard indeksi | Ikki to‘plam kesishuvi / birlashmasi; ring aniqlashda ishlatiladi |
+| Shard skew | Eng band shard yukining o‘rtachaga nisbati |
+| Zipf taqsimoti | Kuchli qonun; eng katta element ulushi ≈ 1/ln(N) |
+| Optimistik yangilash | Serverdan tasdiq kelmasdan interfeysni darhol o‘zgartirish |
+| Yarashtirish (reconciliation) | Hosila ma’lumotni haqiqat manbai bilan davriy solishtirish |
+| Kanareyka (synthetic check) | Tizimga ataylab yuborilgan test trafigi |
+| Tie-breaker | Teng ballli elementlar tartibini barqarorlashtiruvchi qo‘shimcha |
+| Scatter-gather | So‘rovni ko‘p shardga tarqatib, natijalarni yig‘ish |
+
+## 19. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| `hot` vaqt koeffitsienti | 45 000 s | Reddit ochiq kodi (`_sorts.pyx`), tarixiy |
+| `hot` tayanch vaqti | 2005-12-08 07:46:43 UTC | Reddit ochiq kodi |
+| Wilson uchun z (darsda, 95%) | 1.959964 | Normal taqsimot jadvali |
+| Wilson uchun z (Reddit kodida, 85%) | 1.281551565545 | Reddit ochiq kodi, `_sorts.pyx` |
+| 45 000 s soatda | 12.5 soat | 45 000 / 3600, hisoblab chiqilgan |
+| +1 ball = ovoz nisbati | 10× | log10 ta’rifidan |
+| Zipf: eng katta element ulushi | ≈ 1/ln(N) | Zipf qonunining standart taqribi |
+| Redis ZADD tezligi | ~80 000/s (bitta node) | `redis-benchmark`, katta to‘plamlarda taxminiy |
+| Redis skip list qidiruvi | O(log n) | Redis manba kodi, `t_zset.c` |
+| ZSET a’zosi xotirasi | ~64–100 bayt | Redis ichki tuzilmasi, kalit uzunligiga bog‘liq |
+| AWS chiqish trafigi narxi | ~0.05 $/GB | AWS ochiq narxlar, mintaqaga bog‘liq |
+
+Foydalanuvchi soni, kunlik post va ovozlar soni — **illyustratsiya uchun
+taxminiy raqamlar**. Ular Reddit ning e’lon qilingan ko‘rsatkichlariga
+yaqin tartibda, lekin aniq emas; darsdagi barcha hisoblar shu farazlardan
+kelib chiqadi va ularni o‘z loyihangiz raqamlari bilan almashtirishingiz
+kerak.
+
+## 20. Manbalar
+
+- Reddit ochiq kodi, `r2/lib/db/_sorts.pyx` — `hot`, `confidence` (Wilson) va
+  `controversy` funksiyalarining asl matni
+- Amir Salihefendic, “How Reddit ranking algorithms work” — formulalarning
+  batafsil tahlili
+- Evan Miller, “How Not To Sort By Average Rating” — Wilson intervali nima
+  uchun kerakligi haqida asosiy maqola
+- Edwin B. Wilson (1927), “Probable Inference, the Law of Succession, and
+  Statistical Inference” — intervalning dastlabki ta’rifi
+- Redis hujjatlari, Sorted Sets — ZSET operatsiyalari va murakkabligi
+- Reddit muhandislik blogi — sharding, kesh va ro‘yxatlar haqidagi yozuvlar
+- Hacker News reyting formulasi (`news.arc`) — taqqoslash uchun soddaroq model
