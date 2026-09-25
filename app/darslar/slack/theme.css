@@ -1,0 +1,45 @@
+/* Slack skini — quyuq yon panel + yorug' xabar oqimi (rasmiy brend materiali emas) */
+[data-skin="slack"] {
+  --skin-bg: #ffffff;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f8f8f8;
+  --skin-border: #dddddd;
+  --skin-text: #1d1c1d;
+  --skin-muted: #616061;
+  --skin-accent: #611f69;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(97, 31, 105, 0.35);
+  --skin-radius: 8px;
+  --skin-font: "Lato", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --skin-mono: "Monaco", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Yon panel ranglari — xabar maydonidan mustaqil */
+  --slack-rail: #2c032e;
+  --slack-side: #3f0e40;
+  --slack-side-hover: #4a154b;
+  --slack-side-text: #cfc3cf;
+  --slack-active: #1164a3;
+  --slack-online: #2bac76;
+}
+
+/* Sarlavhalar — Slack'dagi sana ajratgichi kabi chiziq bilan */
+[data-skin="slack"] .lesson-prose h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+[data-skin="slack"] .lesson-prose h2::after {
+  content: "";
+  flex: 1 1 2rem;
+  height: 1px;
+  background: var(--skin-border);
+}
+
+/* Kod bloklari — Slack'dagi kabi ingichka ramka, kichik radius */
+[data-skin="slack"] .lesson-prose pre {
+  border-radius: 6px;
+}
+
+body:has([data-skin="slack"]) {
+  background: #ffffff;
+}

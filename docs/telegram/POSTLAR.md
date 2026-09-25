@@ -44,8 +44,9 @@ Hozir 4 ta dars tayyor:
 03 — Redis: 12 ta asosiy stsenariy (11 100 so'z)
 04 — Twitter tasmasi qanday ishlaydi (10 200 so'z)
 05 — Reddit qanday ishlaydi (14 000 so'z)
+06 — Slack qanday ishlaydi (17 000 so'z)
 
-Yana 12 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, WhatsApp,
+Yana 11 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, WhatsApp,
 fond birjasi va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
@@ -65,8 +66,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-5 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit),
-12 tasi rejada. Internetsiz ham o'qish mumkin.
+6 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack), 11 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -188,6 +189,34 @@ hot formulasi, Wilson intervali, 500 000 kommentariyali daraxt, ovoz navbati,
 sharding va soxta ovozlarga qarshi himoya. Hammasi hisob-kitob bilan.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/reddit/
+```
+
+---
+### 3.6 — Slack
+
+```
+Slack'dagi yashil nuqta — "onlayn" belgisi — suhbatning o'zidan
+50 000 BAROBAR ko'proq trafik yaratadi.
+
+Hisob oddiy. 100 000 a'zoli kompaniyada 30 000 kishi ulangan.
+Har bir odam 5 daqiqada bir marta "onlayn" va "uzoqda" orasida
+o'tadi — bu sekundiga 100 ta o'zgarish.
+
+Agar har bir o'zgarish HAMMAGA yuborilsa:
+    100 x 30 000 = 3 000 000 xabar/s
+
+O'sha kompaniyaning haqiqiy yozishmasi esa: 58 xabar/s.
+
+Sabab strukturaviy: xabar yo'naltirilgan (kanal a'zolariga),
+presence esa eshittirish (hammaga). Birinchisi chiziqli o'sadi,
+ikkinchisi kvadratik.
+
+Yangi dars — Slack qanday ishlaydi (17 000 so'z):
+WebSocket nima turadi (bitta bo'sh ulanish 35 KB), ulanish paytida
+155 MB yuborishning oqibati, qayta ulanish bo'roni va jitter,
+xabar tartibi, ts nega satr. Hammasi hisob-kitob bilan.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/slack/
 ```
 
 ---
