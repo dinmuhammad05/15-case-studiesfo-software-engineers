@@ -17,7 +17,12 @@ export function LessonNav({ slug }: { slug: string }) {
       ) : (
         <span />
       )}
-      {next ? (
+      {next && next.status !== "tayyor" ? (
+        <div className="rounded-[var(--skin-radius)] border border-dashed border-[var(--skin-border)] p-4 text-right opacity-70">
+          <div className="text-xs text-[var(--skin-muted)]">Keyingi dars · tez orada</div>
+          <div className="mt-1 text-sm font-medium">{next.title}</div>
+        </div>
+      ) : next ? (
         <Link
           href={`/darslar/${next.slug}/`}
           className="rounded-[var(--skin-radius)] border border-[var(--skin-border)] bg-[var(--skin-surface)] p-4 text-right transition-colors hover:border-[var(--skin-accent)]"

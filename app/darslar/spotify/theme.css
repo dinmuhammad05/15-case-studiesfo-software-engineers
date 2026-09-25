@@ -1,0 +1,38 @@
+/* Spotify skini — desktop ilovasi uslubi (rasmiy brend materiali emas) */
+[data-skin="spotify"] {
+  --skin-bg: #121212;
+  --skin-surface: #181818;
+  --skin-surface-2: #242424;
+  --skin-border: #333333;
+  --skin-text: #ffffff;
+  --skin-muted: #b3b3b3;
+  --skin-accent: #1ed760;
+  --skin-accent-text: #000000;
+  --skin-ring: rgba(30, 215, 96, 0.4);
+  --skin-radius: 8px;
+  --skin-font: "Circular", "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  --skin-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --sp-black: #000000;
+  --sp-green: #1ed760;
+  --sp-hover: #2a2a2a;
+}
+
+/* Sarlavhalar — pleylistdagi trek raqami kabi yashil nuqta bilan */
+[data-skin="spotify"] .lesson-prose h2 {
+  letter-spacing: -0.01em;
+}
+[data-skin="spotify"] .lesson-prose h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.55rem;
+  vertical-align: 0.12em;
+  border-radius: 999px;
+  background: var(--sp-green);
+}
+
+body:has([data-skin="spotify"]) {
+  background: #000000;
+}

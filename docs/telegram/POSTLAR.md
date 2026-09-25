@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 4 ta dars tayyor:
+Hozir 9 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -47,8 +47,9 @@ Hozir 4 ta dars tayyor:
 06 — Slack qanday ishlaydi (19 500 so'z)
 07 — WhatsApp qanday ishlaydi (20 000 so'z)
 08 — YouTube qanday ishlaydi (19 000 so'z)
+09 — Spotify qanday ishlaydi (20 000 so'z)
 
-Yana 9 tasi rejada: Kafka, Amazon S3, Google Docs, Uber ETA, Spotify, Airbnb,
+Yana 8 tasi rejada: Kafka, Amazon S3, Google Docs, Uber ETA, Airbnb,
 fond birjasi va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
@@ -68,8 +69,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-8 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp, YouTube), 9 tasi rejada. Internetsiz ham o'qish mumkin.
+9 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp, YouTube, Spotify), 8 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -277,6 +278,34 @@ uzun dum iqtisodi. Amaliyotda — o'zingizning ABR algoritmingizni
 simulyatorda sinaysiz.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/youtube/
+```
+
+---
+### 3.9 — Spotify
+
+```
+Spotify'ning butun musiqa katalogi — 100 million trek, barcha sifat
+darajalarida — taxminan 4.5 petabayt. Saqlash narxi oyiga ~90 ming dollar.
+
+Huquq egalariga to'lov esa oyiga ~830 million dollar.
+
+9 000 barobar farq. Shuning uchun bu tizimda eng qimmat xato — sekin
+server emas, noto'g'ri sanalgan tinglash: 1% dublikat yiliga ~100 million
+dollarni noto'g'ri odamlarga yuboradi.
+
+Qiziq tomoni: tinglashni server emas, pleyer biladi. Qo'shiq keshdan
+yoki oflayn o'ynasa, server hech narsa ko'rmaydi. Kesh qancha yaxshi
+ishlasa, server loglari shuncha KAM sanaydi.
+
+Yangi dars — Spotify qanday ishlaydi (20 000 so'z):
+qo'shiq 250 ms da qanday boshlanadi, treklar orasidagi pauza qanday
+yo'qoladi, oflayn tinglashlar bir haftadan keyin kelsa oylik hisob
+qanday yopiladi, pro-rata va foydalanuvchi-markazli royalti, bot
+fermalari iqtisodi, matritsa faktorizatsiyasi va Discover Weekly.
+Amaliyotda — 540 000 hodisalik oqimdan tinglashlar kitobini yozasiz
+va botlarni ushlaysiz.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/spotify/
 ```
 
 ---

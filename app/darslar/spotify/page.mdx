@@ -1,0 +1,3076 @@
+## Bu darsda nima o‘rganasiz
+
+YouTube darsida muammo **baytlar** edi: kuniga bir eksabayt trafik, millionlab
+yadroli transkodlash, eksabaytlab saqlash. Spotify ham media platformasi, va
+birinchi qarashda u YouTube’ning kichikroq nusxasiga o‘xshaydi. Lekin raqamlarni
+hisoblasangiz, manzara butunlay boshqacha chiqadi: Spotify’ning trafigi
+YouTube’nikidan o‘nlab barobar kichik, transkodlashi — deyarli nol, butun
+katalogi — bir necha petabayt.
+
+Demak Spotify’ning qiyin muammolari **boshqa joyda**. Bu darsda ular uchta:
+
+**Kechikish.** Qo‘shiq bosilgan zahoti eshitilishi kerak — videodagi kabi
+“bir soniya kutish” musiqada sezilarli. Va qo‘shiqlar orasida **pauza
+bo‘lmasligi** kerak: jonli albomda bitta trek ikkinchisiga uzilmasdan o‘tadi.
+
+**Bashorat.** Foydalanuvchi keyin nimani eshitadi? Bu savolga javob ikki
+joyda kerak: keyingi trekni **oldindan yuklash** uchun (kechikishni nolga
+tushirish) va **tavsiyalar** uchun (yuz million trekdan o‘ttiztasini tanlash).
+
+**Hisob-kitob.** Spotify daromadining katta qismi huquq egalariga to‘lanadi,
+va har bir tinglash — pul. Demak “bu trek necha marta eshitildi” degan
+savolga javob taxminiy bo‘lishi mumkin emas: dublikat, soxta tinglash, oflayn
+rejimda eshitilib, bir haftadan keyin xabar qilingan tinglash — hammasi
+aniq hisoblanishi kerak. Bu darsning eng noodatiy qismi: **muhandislik
+tizimi buxgalteriya kitobi sifatida**.
+
+Dars YouTube darsidan keyin o‘qish uchun qulay — ko‘p joyda ikkalasi
+solishtiriladi — lekin mustaqil ham o‘qiladi.
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+| Talab | Tafsilot |
+| --- | --- |
+| Tinglash | Yuz millionlab trekdan istalganini darhol boshlash |
+| Uzluksiz ijro | Treklar orasida pauzasiz o‘tish (albomlar, miks) |
+| Oflayn | Minglab trekni qurilmaga yuklab, internetsiz tinglash |
+| Sifat tanlash | Tarmoq va obunaga qarab past, oddiy, yuqori, yo‘qotishsiz |
+| Pleylistlar | Yaratish, ulashish, birgalikda tahrirlash |
+| Tavsiyalar | Haftalik shaxsiy pleylist, “keyingi trek”, radio |
+| Qurilmalarni boshqarish | Telefondan kompyuterdagi ijroni boshqarish |
+| Tinglashlar hisobi | Har bir trek uchun aniq son — huquq egalariga to‘lov asosi |
+
+Oxirgi qatorga alohida e’tibor bering, chunki u boshqa darslarda bo‘lmagan
+turdagi talab. YouTube darsidagi ko‘rishlar hisoblagichi ham pulga bog‘langan
+edi, lekin u yerda “taxminan 1.2 M ko‘rish” ekranda ko‘rsatish uchun yetarli
+edi. Bu yerda esa **har bir tinglash to‘lov bo‘ladi**, va hisob-kitob oylik
+buxgalteriya hujjatiga aylanadi. 8-bo‘lim butunlay shunga bag‘ishlangan.
+
+### 1.2 Nofunksional talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Boshlanish | Bosishdan tovushgacha p50 < 250 ms, p90 < 1 s |
+| Keyingi trek | Ketma-ket ijroda pauza 0 ms (gapless) |
+| Uzilishsiz | Ijro vaqtining 0.1% idan kam qismi to‘xtashda |
+| Oflayn | Internetsiz 30 kungacha ishlash |
+| Hisob aniqligi | Tinglashlar soni xatosi 0.01% dan kam, dublikatsiz |
+| Batareya | Fonda ijro — ekran o‘chiq holda soatlab |
+
+Birinchi qatordagi 250 ms — tasodifiy raqam emas. 2010-yilda Spotify
+muhandislari nashr qilgan ilmiy maqolada (Kreitz va Niemelä) ijro
+boshlanishining **median kechikishi ~265 ms** deb qayd etilgan — va bu
+o‘sha paytda mahsulotning asosiy raqobat ustunligi sifatida ko‘rilgan.
+Taqqoslang: YouTube darsida boshlanish byudjeti ~650 ms edi (YouTube,
+9.1) va bu video uchun yaxshi natija hisoblanadi. Musiqa uchun bu sekin.
+
+Ikkinchi qator — **nol**. Ya’ni butunlay boshqa turdagi talab: bu yerda
+“tez” yetarli emas, “oldindan” kerak. Keyingi trek hozirgisi tugashidan
+**oldin** tayyor bo‘lishi shart. 6-bo‘lim shu haqida.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="~600 M" label="Oylik tinglovchi" hint="Taxminiy, 2024" />
+  <Stat value="100 M+" label="Treklar katalogi" hint="Taxminiy" />
+  <Stat value="~500 M soat" label="Kuniga tinglash" hint="Faraz, pastdagi hisob" />
+  <Stat value="~99 000" label="Tinglash/s" hint="Hisoblangan" />
+</StatGrid>
+
+<Calc title="Spotify va YouTube — bir xil o'lchov bilan" result="Trafik ~40-55x kichik, hisoblash ~75 000x, saqlash ~4 000x. Muammo baytlarda emas">{`TINGLASH:
+  Faraz: kuniga ~270 M faol tinglovchi x ~2 soat = ~540 M soat
+  yaxlitlab 500 000 000 soat/kun
+
+  O'rtacha samarali bitreyt ~128 kbit/s (past/oddiy/yuqori aralash)
+  1 soat = 128e3 x 3 600 / 8 = 57.6 MB
+  500e6 x 57.6 MB = 28.8 PB/kun (tinglash hajmi)
+
+  Ulardan ~30% qurilma keshi va yuklab olinganlardan (qayta tinglash!)
+  Tarmoq orqali: ~20 PB/kun  (YouTube: ~1 100 PB/kun -> ~55x kichik)
+
+  O'rtacha bir vaqtdagi oqimlar: 500e6 / 24 = 20.8 M
+  x 128 kbit/s = ~2.7 Tbit/s  (YouTube: ~104 Tbit/s)
+
+TINGLASHLAR SONI:
+  O'rtacha trek ~3.5 daqiqa
+  500e6 x 60 / 3.5 = 8.6 mlrd tinglash/kun = ~99 000/s
+
+YUKLASH VA QAYTA ISHLASH:
+  Kuniga ~100 000 yangi trek (taxminan) x 210 s = 21 M audio-soniya/kun
+  = ~243 audio-soniya har real soniyada   (YouTube: 30 000 video-soniya)
+
+  Audio kodlash — real vaqtdan ~100-200x tez bitta yadroda;
+  6 ta format -> ~0.04 yadro-soniya har audio-soniyaga
+  243 x 0.04 = ~10 YADRO  (YouTube, faqat H.264: ~750 000 yadro)
+
+SAQLASH:
+  100 M trek x ~50 MB (barcha formatlar, yo'qotishsiz bilan) = ~5 PB
+  (YouTube: har yili ~4 EB QO'SHILADI)`}</Calc>
+
+Bu hisob darsning yo‘nalishini belgilaydi, shuning uchun uni uch jumlada
+xulosa qilamiz.
+
+**Birinchi: baytlar muammo emas.** Trafik YouTube’nikidan ~50 barobar,
+saqlash ~4 000 barobar, hisoblash ~75 000 barobar kichik. YouTube darsidagi
+eng qimmat qarorlar — kodekni mashhurlikka qarab tanlash, maxsus kodlash
+chiplari, provayder ichidagi keshlar — bu yerda deyarli ahamiyatsiz. Butun
+katalogni barcha formatlarda saqlash oddiy ob’ekt omborining bir burchagi.
+
+**Ikkinchi: hodisalar soni katta.** Sekundiga ~99 000 tinglash, va har
+biri bir nechta hodisa yaratadi (boshlandi, 30 soniyadan o‘tdi, o‘tkazib
+yuborildi, tugadi). Bu hodisalar **pul**, shuning uchun ular yo‘qolmasligi
+va takrorlanmasligi kerak.
+
+**Uchinchi: foydalanuvchi o‘zini takrorlaydi.** Video odatda bir marta
+ko‘riladi; qo‘shiq esa o‘nlab, yuzlab marta. Bu qurilma keshini juda
+samarali qiladi (7-bo‘lim) — va trafikning sezilarli qismi umuman tarmoqqa
+chiqmaydi.
+
+<Check q="Nega Spotify uchun YouTube'ning 'kodekni mashhurlikka qarab tanlash' strategiyasi deyarli ma'nosiz?">
+YouTube’da bu strategiya ikki narsaga tayangan edi: kodlash **qimmat**
+(AV1 bir video daqiqasi uchun ~0.33 $) va trafik **katta** (bitta mashhur
+video terabaytlar). Ikkalasi ham shu yerda yo‘q.
+
+Audio kodlash real vaqtdan yuz barobar tez — 100 M trekning hammasini
+barcha formatlarda kodlash **bir martalik** bir necha ming yadro-soat
+ishi. Trek esa kichik: 160 kbit/s da 3.5 daqiqa ~4.2 MB — bu 1080p
+videoning **7 soniyasi**.
+
+Demak katalogdagi har bir trekni har formatda saqlash — eng oddiy va eng
+to‘g‘ri yechim. “Mashhurlikka qarab” murakkabligi hech narsa tejamaydi.
+
+Umumiy dars: **bitta sohada (media) ishlagan arxitektura naqshi boshqa
+o‘lchamda ma’nosiz bo‘lishi mumkin.** Naqshni ko‘chirishdan oldin uni
+yaratgan cheklov yangi tizimda ham borligini tekshiring.
+</Check>
+
+## 2. Nol nuqta: tovush raqamda
+
+Keshlar, oldindan yuklash va tavsiyalar haqida gapirishdan oldin: **bir
+soniya musiqa nechta bayt, va nega?**
+
+### 2.1 Namuna olish: havo bosimidan sonlargacha
+
+Tovush — havo bosimining tebranishi. Mikrofon uni elektr kuchlanishiga,
+analog-raqamli o‘zgartirgich esa **sonlar ketma-ketligiga** aylantiradi:
+har bir lahzada kuchlanish qancha ekanini o‘lchaydi. Bu **namuna olish**
+(sampling) deyiladi.
+
+Ikki savol: qancha tez o‘lchash va qancha aniq?
+
+<Calc title="CD sifatidagi audio" result="1 411 kbit/s — 3.5 daqiqalik qo'shiq ~37 MB">{`TEZLIK: 44 100 namuna/soniya (44.1 kHz)
+  Nyquist teoremasi: f chastotali tovushni tiklash uchun
+  soniyasiga kamida 2f namuna kerak.
+  Inson qulog'i ~20 000 Hz gacha eshitadi -> kamida 40 000 namuna/s.
+  44 100 — ozgina zaxira bilan.
+
+ANIQLIK: 16 bit har namunaga -> 2^16 = 65 536 daraja
+  Dinamik diapazon: ~6.02 dB x 16 = ~96 dB
+  (shivirlashdan samolyot dvigateligacha deyarli butun diapazon)
+
+STEREO: 2 kanal
+
+  44 100 x 16 x 2 = 1 411 200 bit/s = ~1 411 kbit/s
+
+  3.5 daqiqa: 1 411 200 x 210 / 8 = ~37 MB`}</Calc>
+
+Bu raqam — **PCM** (siqilmagan audio) — butun sohaning boshlang‘ich
+nuqtasi. YouTube darsidagi siqilmagan video (746 Mbit/s) bilan solishtiring:
+audio **500 barobar** kichik. Shuning uchun hatto siqilmagan audio ham
+zamonaviy tarmoq uchun ko‘tarib bo‘lmas emas — yo‘qotishsiz formatlar
+(2.3) aynan shu sababli mumkin.
+
+### 2.2 Psixoakustik siqish: eshitilmaydiganni tashlash
+
+Video kodeki “ketma-ket kadrlar o‘xshash” degan kuzatishdan foydalangan edi.
+Audio kodeki boshqa kuzatishdan foydalanadi: **quloq hamma narsani
+eshitmaydi**.
+
+| Hodisa | Nima bo‘ladi | Kodek nima qiladi |
+| --- | --- | --- |
+| Chastota bo‘yicha niqoblash | Baland tovush yaqin chastotadagi past tovushni “yopadi” | Yopilgan tovush uchun bit sarflamaydi |
+| Vaqt bo‘yicha niqoblash | Baland zarbadan keyingi ~100 ms da past tovushlar eshitilmaydi | Shu oynada aniqlikni kamaytiradi |
+| Eshitish chegarasi | Juda past yoki juda yuqori chastotalarga quloq kam sezgir | U yerda kam bit |
+| Stereo o‘xshashligi | Chap va o‘ng kanal ko‘pincha deyarli bir xil | “O‘rta + farq” sifatida kodlaydi |
+
+Jadvaldagi har bir qator — **quloq modeli**, va kodek sifati aynan shu
+modelning aniqligiga bog‘liq. Mexanizm video kodekiga o‘xshash: signal
+qisqa bloklarga bo‘linadi (masalan, ~20–40 ms), chastota tarkibiga
+aylantiriladi (MDCT deb ataladigan o‘zgartirish), va har bir chastota
+guruhiga **eshitilishiga qarab** bit taqsimlanadi.
+
+<Calc title="Siqish darajalari" result="160 kbit/s — PCM dan 8.8x kichik; ko'pchilik tinglovchi farqni sezmaydi">{`PCM:                 1 411 kbit/s   (1x)
+Yo'qotishsiz (FLAC): ~800-1 000     (~1.5-1.8x)  — bit-bit bir xil tiklanadi
+Juda yuqori:         320 kbit/s     (4.4x)
+Yuqori:              160 kbit/s     (8.8x)
+Oddiy:               96 kbit/s      (14.7x)
+Past:                24 kbit/s      (59x)       — nutq uchun yaxshi, musiqa uchun sezilarli
+
+3.5 daqiqalik trek:
+  320 kbit/s: 8.4 MB
+  160 kbit/s: 4.2 MB   <- 1080p videoning ~7 soniyasi (5 Mbit/s)
+   96 kbit/s: 2.5 MB
+   24 kbit/s: 0.6 MB`}</Calc>
+
+Uchinchi qatordan pastdagi raqamlar Spotify’ning sifat sozlamalariga yaqin:
+tarixan past (~24), oddiy (~96), yuqori (~160) va juda yuqori (~320 kbit/s)
+darajalari, asosiy formati Ogg Vorbis, veb-pleyerda esa AAC. 2025-yilda
+Premium uchun yo‘qotishsiz (FLAC) sifat ham qo‘shilgan. Aniq qiymatlar
+platforma va vaqtga qarab o‘zgargan, lekin tartib shu.
+
+Asosiy xulosa jadvalning oxirgi ustunida: **bitta trek — bir necha
+megabayt.** Bu arxitekturani tubdan o‘zgartiradi: YouTube’da video
+bo‘laklarga bo‘linishi *majburiy* edi, chunki butun faylni kutib bo‘lmaydi.
+Bu yerda butun trekni bir necha soniyada yuklab olish mumkin — demak
+savol “qanday bo‘laklash” emas, balki “birinchi tovush qachon chiqadi”.
+
+<Deep title="Gapless ijro: nega MP3 albomlarda treklar orasida 'chiq' eshitiladi">
+Jonli albom yoki DJ miks treklarga bo‘lingan, lekin musiqa uzilmasdan
+davom etadi. Ko‘p pleyerlarda esa trek chegarasida qisqa pauza yoki
+“chiq” eshitiladi. Sabab kodekning o‘zida.
+
+Blokli kodeklar (MP3, AAC, Vorbis) signalni bloklarda kodlaydi, va
+dekoderni “ishga tushirish” uchun faylning boshiga bir necha **qo‘shimcha
+namuna** qo‘shiladi (kodlovchi kechikishi, priming). Faylning oxiri esa
+blok o‘lchamiga yetkaziladi — **to‘ldiruvchi namunalar** (padding).
+
+```
+AAC odatiy qiymatlari (iTunes kodlovchisi):
+  boshida:  2 112 namuna  = 2 112 / 44 100 = ~48 ms "jimlik"
+  oxirida:  blokgacha to'ldirish, 0-1 023 namuna = 0-23 ms
+
+Ikki trek ketma-ket, hech narsa qilinmasa:
+  [.... trek 1 musiqa][to'ldiruvchi][priming 48 ms][trek 2 musiqa ....]
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      ~48-71 ms pauza — quloq sezadi
+```
+
+Yechim — **metama’lumot**: kodlovchi faylga “boshidan N ta, oxiridan
+M ta namunani tashla” deb yozadi (masalan, AAC’da iTunes’ning maxsus
+belgisi, Vorbis’da bu formatning o‘zida aniq belgilangan). Pleyer esa:
+
+1. Keyingi trekni **oldindan** dekodlaydi (6-bo‘lim — oldindan yuklash
+   bo‘lmasa, bu umuman imkonsiz).
+2. Joriy trekning oxirgi M namunasini va keyingisining birinchi N
+   namunasini kesadi.
+3. Ikki oqimni **namuna aniqligida** tutashtiradi.
+
+Bu tafsilot bir muhim arxitektura talabini ochadi: **gapless ijro
+tarmoqqa emas, oldindan yuklashga bog‘liq.** Agar keyingi trek hozirgisi
+tugaganda hali kelmagan bo‘lsa, eng tez CDN ham 48 ms ni yopa olmaydi —
+chunki RTT ning o‘zi odatda undan ko‘p. Ya’ni 1.2-bo‘limdagi “0 ms” talabi
+faqat **bashorat** orqali bajariladi.
+</Deep>
+
+### 2.3 Balandlikni tenglashtirish: bir marta o‘lchab, abadiy ishlatish
+
+Turli treklar turli balandlikda yozilgan: 1970-yillar yozuvi zamonaviy pop
+qo‘shiqdan sezilarli past. Pleylistda ular ketma-ket kelsa, foydalanuvchi
+har safar ovoz tugmasini buraydi.
+
+Yechim — har bir trekning **idrok qilinadigan balandligini** (LUFS birligida)
+bir marta o‘lchash va pleyerda kuchaytirish koeffitsientini qo‘llash.
+Spotify standart holatda taxminan **−14 LUFS** darajasiga tenglashtiradi.
+
+```
+Yuklashda (bir marta, trek boshiga):
+  balandlik = LUFS(audio)                  # masalan, -8.5 LUFS (baland pop)
+  kuchaytirish = -14 - (-8.5) = -5.5 dB     # pasaytirish kerak
+  metama'lumotga yoziladi: gain_db = -5.5, peak = 0.98
+
+Ijroda (har safar, tekin):
+  namuna_chiqish = namuna x 10^(gain_db / 20)
+  (musbat kuchaytirishda peak bo'yicha kesilishdan himoya — limiter)
+```
+
+Bu — YouTube darsidagi “bir marta to‘lab, ko‘p marta foydalanish”
+naqshining eng sof ko‘rinishi: o‘lchash trek yuklanganda bir marta
+bajariladi (sekundlar), natija esa har tinglashda — milliardlab marta —
+tekin qo‘llanadi. Faylni o‘zgartirish shart emas, faqat 8 baytlik
+metama’lumot.
+
+<Check q="Nega balandlik tenglashtirish faylni qayta kodlab emas, metama'lumot orqali qilinadi?">
+Uch sabab.
+
+**Sifat.** Faylni pasaytirib qayta kodlash — yo‘qotishli kodekni ikkinchi
+marta qo‘llash, ya’ni sifatni yana yo‘qotish. Metama’lumot esa dekodlangan
+PCM’ga matematik ko‘paytirish sifatida qo‘llanadi — hech narsa yo‘qolmaydi.
+
+**Tanlov.** Foydalanuvchi tenglashtirishni o‘chirishi yoki boshqa daraja
+tanlashi mumkin (masalan, shovqinli joyda −11 LUFS). Agar kuchaytirish
+faylga “pishirilgan” bo‘lsa, buning iloji yo‘q.
+
+**Albom rejimi.** Albom ichidagi treklar orasidagi nisbiy balandlik —
+san’atkorning niyati (sokin intro, baland final). Albom tinglanayotganda
+butun albom uchun **bitta** koeffitsient qo‘llanadi, pleylistda esa har
+trek uchun alohida. Ikkalasi ham bir xil faylda faqat metama’lumot bilan
+mumkin.
+
+Umumiy qoida: **ma’lumotni o‘zgartirmang — uni qanday talqin qilishni
+saqlang.** Bu Slack darsidagi “ts satr sifatida” va YouTube’dagi “original
+saqlanadi” qarorlarining qarindoshi: asl ma’lumotga tegmaslik keyingi har
+qanday qarorni ochiq qoldiradi.
+</Check>
+
+## 3. v0: eng sodda ishlaydigan yechim
+
+Treklarni MP3 fayl sifatida saqlash, so‘ralganda butun faylni berish,
+va har bir so‘rovni “tinglash” deb sanash. 2000-yillarning boshidagi
+ko‘p musiqa saytlari aynan shunday ishlagan.
+
+```python
+@app.get("/track/{tid}")
+def play(tid, user):
+    db.execute("UPDATE tracks SET plays = plays + 1 WHERE id = %s", tid)
+    db.insert("plays", user=user.id, track=tid, at=now())     # royalti uchun
+    return storage.stream(f"tracks/{tid}.mp3")                # 320 kbit/s, ~8 MB
+
+@app.get("/recommend")
+def recommend(user):
+    mine = db.query("SELECT track FROM plays WHERE user = %s", user.id)
+    # "sizga o'xshaganlar" — tinglash tarixi kesishadigan foydalanuvchilar
+    similar = db.query("""SELECT p2.user, COUNT(*) c FROM plays p1
+                          JOIN plays p2 ON p1.track = p2.track
+                          WHERE p1.user = %s GROUP BY p2.user
+                          ORDER BY c DESC LIMIT 50""", user.id)
+    return top_tracks_of(similar, exclude=mine)[:30]
+```
+
+Bu kod o‘n minglab foydalanuvchi uchun **haqiqatan ishlaydi**, va unda
+ikkita to‘g‘ri g‘oya bor.
+
+Birinchi — **har bir tinglash alohida yozuv** (`plays` jadvali), faqat
+hisoblagich emas. Bu Reddit darsidagi ovozlar jadvali bilan bir xil
+qaror: agregatni (son) istalgan paytda xom yozuvlardan qayta hisoblash
+mumkin, teskarisi esa yo‘q. Royalti hisobida bu hal qiluvchi (8-bo‘lim).
+
+Ikkinchi — tavsiya **xulq-atvordan** olinadi, janr yoki metama’lumotdan
+emas: “sizga o‘xshab tinglaganlar yana nimani tingladi”. Bu hamkorlikdagi
+filtrlash (collaborative filtering) g‘oyasi, va u 9-bo‘limda ham qoladi —
+faqat boshqa matematika bilan.
+
+Muammo shundaki, bu kodning har bir qatori keyingi miqyosda boshqacha
+sabab bilan sinadi.
+
+## 4. Nima sindi
+
+### 4.1 Butun faylni kutish — boshlanish soniyalab
+
+Brauzer yoki ilova MP3’ni boshidan o‘ynay boshlashi mumkin (progressiv
+yuklash), lekin bu hali ham tarmoqqa bog‘liq: birinchi baytlar kelguncha
+jimlik.
+
+<Calc title="v0 da bosishdan tovushgacha" result="Yaxshi tarmoqda ~0.5 s, 3G da ~1.5-2 s. Maqsad: p50 250 ms">{`Qadamlar (bitta trek, sovuq holat):
+  DNS                               ~20-100 ms  (keshlanmagan bo'lsa)
+  TCP ulanish (1 RTT)               RTT
+  TLS (1-2 RTT)                     1-2 x RTT
+  HTTP so'rov -> birinchi bayt       RTT + server vaqti (~20 ms)
+  Dekoder uchun yetarli ma'lumot    ~0.5-1 s audio = 20-40 KB (320 kbit/s)
+  Audio chiqish buferi              ~20-50 ms
+
+Wi-Fi (RTT 30 ms, 20 Mbit/s):
+  50 + 30 + 60 + 50 + (40 KB / 2.5 MB/s = 16 ms) + 30 = ~240 ms
+  + qurilma audio tizimini "uyg'otish" -> ~300-500 ms
+
+3G (RTT 150 ms, 1 Mbit/s):
+  100 + 150 + 300 + 170 + (40 KB / 125 KB/s = 320 ms) + 30 = ~1 070 ms
+  + TCP sekin boshlanishi (slow start) -> ~1.5-2 s`}</Calc>
+
+Hisobdagi taqsimotga qarang: tezkor tarmoqda **baytlar deyarli hech narsa**
+emas (16 ms), vaqtning deyarli hammasi **aylanishlar** (RTT) — DNS, TCP,
+TLS, so‘rov. Bu 6-bo‘limning asosiy g‘oyasini oldindan aytadi: boshlanishni
+tezlashtirish — ko‘proq tarmoq tezligi emas, **kamroq aylanish**. Ulanish
+oldindan ochiq bo‘lsa, uchta aylanish yo‘qoladi; birinchi baytlar
+qurilmada bo‘lsa, hammasi.
+
+Sekin tarmoqda esa ikkinchi omil qo‘shiladi: 320 kbit/s fayl 1 Mbit/s
+tarmoqda real vaqtdan atigi ~3 barobar tez keladi. Demak **sifat** ham
+boshlanishga ta’sir qiladi — xuddi YouTube’dagi kabi (YouTube, 6.4).
+
+### 4.2 Treklar orasidagi pauza
+
+v0 da keyingi trek faqat joriysi tugaganda so‘raladi. Demak har trek
+chegarasida 4.1-dagi butun zanjir takrorlanadi.
+
+<Calc title="Albom tinglashda yig'ilgan jimlik" result="12 trekli albomda ~4-18 soniya ortiqcha jimlik — va har chegarada uzilish">{`Albom: 12 trek, ketma-ket ijro
+Har chegarada: so'rov + birinchi baytlar + dekoder
+  Wi-Fi: ~300-500 ms (ulanish ochiq bo'lsa ham ~100-200 ms)
+  3G:    ~1.5 s
+
+11 chegara:
+  Wi-Fi: 11 x 0.3-0.5 s = 3.3-5.5 s
+  3G:    11 x 1.5 s     = ~16.5 s
+
+Gapless talabi (1.2): 0 ms. Farq — cheksiz marta.`}</Calc>
+
+Bu raqamlar kichik ko‘rinadi, lekin musiqada ular **sifat** masalasi,
+tezlik emas: jonli albomda publikaning olqishi o‘rtasida yarim soniyalik
+uzilish — mahsulot buzilgan degan taassurot. Va 2.2-dagi Deep’da
+ko‘rganimizdek, hatto nol tarmoq kechikishida ham kodek to‘ldiruvchilari
+~48 ms pauza qoldiradi. Ya’ni bu muammoni tarmoqni tezlashtirib hal
+qilib bo‘lmaydi — faqat **keyingi trekni oldindan bilish** bilan.
+
+### 4.3 Mobil trafik va batareya
+
+Foydalanuvchilarning ko‘pchiligi telefonda tinglaydi, ko‘pincha mobil
+tarmoqda va oylik trafik chegarasi bilan.
+
+<Calc title="Oyiga mobil trafik: sifat darajasi va kesh" result="320 kbit/s da 6.5 GB/oy; 96 kbit/s va kesh bilan ~1 GB — 6 barobar farq">{`Faraz: kuniga 1.5 soat, oyiga 30 kun = 45 soat tinglash
+
+1 soat tinglash hajmi:
+  320 kbit/s: 320e3 x 3 600 / 8 = 144 MB
+  160 kbit/s:                      72 MB
+   96 kbit/s:                      43 MB
+
+45 soat, v0 (kesh yo'q, har tinglash tarmoqdan):
+  320 kbit/s: 45 x 144 MB = 6.5 GB
+  160 kbit/s: 45 x  72 MB = 3.2 GB
+   96 kbit/s: 45 x  43 MB = 1.9 GB
+
+Qurilma keshi bilan (tinglashlarning ~50% i qayta tinglash):
+   96 kbit/s: 1.9 GB x 0.5 = ~1 GB
+
+Oylik 5 GB tarifda: v0 (320) butun tarifni yeydi,
+kesh + 96 kbit/s esa uning 20% ini.`}</Calc>
+
+Ikki xulosa. Birinchisi — **mobil tarmoqda sukut bo‘yicha sifat past
+bo‘lishi kerak**: 320 va 96 kbit/s orasidagi farqni telefon
+karnayida yoki oddiy quloqchinda ko‘pchilik sezmaydi, trafik farqini esa
+har oy hisobda sezadi. Ikkinchisi — **kesh sifat tanlovidan kam emas**:
+qayta tinglashlar tarmoqqa chiqmasa, trafik yana ikki barobar kamayadi.
+
+Batareya ham xuddi shu yo‘ldan boradi. Telefon radiosi (ayniqsa 3G/4G)
+har uzatishdan keyin bir necha soniya yuqori quvvat holatida qoladi
+(“dum energiyasi”). v0 dagi kabi uzluksiz kichik bo‘laklab yuklash
+radioni doim yoqiq ushlaydi. Butun trekni **bir zarbda** yuklab, keyin
+radioni uxlatish — bir xil baytlar uchun sezilarli kam energiya. Bu
+musiqa uchun mumkin (trek bir necha MB), video uchun esa yo‘q — yana
+o‘lcham arxitekturani belgilaydi.
+
+### 4.4 Tinglashlarni sanash — “so‘rov = tinglash” emas
+
+v0 har bir HTTP so‘rovni tinglash deb yozadi. Bu uch xil yo‘l bilan
+noto‘g‘ri, va har biri pulga aylanadi.
+
+| Holat | v0 nima yozadi | Haqiqat |
+| --- | --- | --- |
+| Foydalanuvchi 3 soniyadan keyin o‘tkazib yubordi | 1 tinglash | Tinglash emas |
+| Tarmoq uzildi, ilova qayta so‘radi | 2 tinglash | 1 tinglash |
+| Oflayn tinglandi (fayl allaqachon qurilmada) | 0 | 1 tinglash |
+| Oldindan yuklangan, lekin hech qachon o‘ynalmagan | 1 tinglash | 0 |
+| Bot bir trekni sutkasiga 5 000 marta “tingladi” | 5 000 | 0 |
+
+Jadvalning har bir qatori boshqa muammo, va ular birgalikda muhim
+kuzatishga olib keladi: **tinglashni server emas, pleyer biladi.**
+Faqat pleyer trek haqiqatan necha soniya **eshitilganini** biladi;
+server faqat baytlar yuborilganini ko‘radi, va baytlar yuborilishi
+tinglash emas (oldindan yuklash, qayta urinish) yoki umuman sodir
+bo‘lmaydi (oflayn).
+
+<Calc title="Kichik xatoning narxi" result="1% dublikat — yiliga ~100 M dollar noto'g'ri taqsimlangan">{`Tinglashlar: ~8.6 mlrd/kun x 365 = ~3.1 trln/yil
+Huquq egalariga to'lov: ~10 mlrd dollar/yil (8-bo'lim)
+O'rtacha bir tinglash qiymati: 10e9 / 3.1e12 = ~0.0032 dollar
+
+1% dublikat: 31 mlrd ortiqcha tinglash
+  -> 31e9 x 0.0032 = ~100 M dollar/yil
+  (pro-rata modelda umumiy fond o'zgarmaydi — pul YO'QOLMAYDI,
+   lekin NOTO'G'RI odamlarga ketadi: 8.2)
+
+0.01% maqsad (1.2): ~1 M dollar/yil — audit chidaydigan daraja`}</Calc>
+
+Bu hisob muammo sinfini o‘zgartiradi. Twitter va Reddit darslarida
+“taxminan to‘g‘ri” hisoblagich yetarli edi — 1% xato hech kimga zarar
+qilmasdi. Bu yerda 1% xato — yuz million dollar, va har bir san’atkor
+o‘z hisobotini tekshirishi mumkin. **Tinglashlar tizimi buxgalteriya
+tizimi**, va buxgalteriyaning qoidalari (o‘zgarmas yozuvlar, bir martalik
+hisob, audit izi) muhandislik talabiga aylanadi.
+
+### 4.5 Tavsiyalar — JOIN milliardlab qatorda
+
+v0 dagi tavsiya so‘rovi foydalanuvchining barcha tinglashlarini boshqa
+barcha foydalanuvchilarning tinglashlari bilan birlashtiradi.
+
+<Calc title="v0 tavsiya so'rovining narxi" result="Bitta so'rov milliardlab qatorni o'qiydi — 600 M foydalanuvchi uchun imkonsiz">{`Foydalanuvchi: oxirgi yilda ~2 000 ta turli trek tinglagan
+Mashhur trek: kuniga ~10 M tinglash, yiliga ~2-3 mlrd
+
+JOIN: 2 000 trek x har birining barcha tinglovchilari
+  Agar 2 000 ning 100 tasi mashhur (har biri ~50 M foydalanuvchi):
+  100 x 50 M = 5 mlrd juftlik -> GROUP BY
+  Bitta so'rov: daqiqalar, terabaytlab o'qish
+
+600 M foydalanuvchi x haftasiga 1 marta:
+  600e6 x 5e9 = 3e18 juftlik/hafta — hech qanday klaster emas`}</Calc>
+
+Muammo SQL’da emas, **usulda**: “o‘xshash foydalanuvchilarni to‘g‘ridan-to‘g‘ri
+qidirish” har bir so‘rovda butun tarixni ko‘zdan kechiradi. To‘g‘ri yo‘l
+— tarixni **bir marta siqish**: har bir foydalanuvchini va har bir trekni
+qisqa sonlar vektori bilan ifodalash, va o‘xshashlikni vektorlar orasida
+qidirish (9-bo‘lim). Bu YouTube darsidagi kodlash g‘oyasining yana bir
+ko‘rinishi: oflayn og‘ir ish, onlayn arzon so‘rov.
+
+<Check q="Nega tinglashlarni serverdagi so'rovlar jurnalidan sanab bo'lmaydi, garchi server har bir baytni ko'rsa ham?">
+Chunki server **uzatishni** ko‘radi, **eshitishni** emas, va ular ikki
+yo‘nalishda farq qiladi.
+
+**Uzatish bor, eshitish yo‘q:** oldindan yuklangan keyingi trek (6-bo‘lim)
+— foydalanuvchi pleylistni o‘chirib qo‘ydi; qayta urinishlar; 3 soniyadan
+keyin o‘tkazib yuborilgan trek (baytlar allaqachon kelgan).
+
+**Eshitish bor, uzatish yo‘q:** keshdan qayta tinglash (7-bo‘lim) va
+oflayn rejim — baytlar oylar oldin kelgan. Kesh qanchalik samarali bo‘lsa,
+server jurnali shunchalik **kam** sanaydi — ya’ni yaxshi optimallashtirish
+hisobni buzadi.
+
+Demak manba — pleyer hodisalari: “trek X, pozitsiya 0 dan 31 s gacha
+eshitildi”. Lekin endi yangi muammo: mijoz **ishonchsiz** manba (yolg‘on
+gapirishi, bir hodisani ikki marta yuborishi, bir hafta kechiktirishi
+mumkin). 8 va 12-bo‘limlar shu ishonchsiz manbadan ishonchli buxgalteriya
+qurish haqida.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar uch guruhga bo‘lingan: **yetkazish** (1–8: tovush tez, uzluksiz
+va arzon kelishi), **hisob** (9–10: har tinglash aniq sanalishi) va
+**bashorat** (11–14: keyingi trekni bilish). Tartib taxminan tarixiy,
+lekin asosiysi — har qadam oldingisi ochgan muammoni hal qiladi.
+
+<Step n={1} title="Har trek — bir necha sifat darajasida" gain="Mobil trafik 3 barobar kamayadi, sekin tarmoqda ham ijro" cost="Saqlash bir necha barobar; kodlash quvuri">
+Trek yuklanganda (musiqa yorlig‘i yoki distributor orqali, odatda
+yo‘qotishsiz WAV/FLAC) u bir marta barcha darajalarga kodlanadi.
+Pleyer tarmoq turi va foydalanuvchi sozlamasiga qarab darajani tanlaydi.
+
+<Calc title="Barcha darajalarni saqlash narxi" result="Bitta trek ~49 MB (hammasi yo'qotishsiz nusxaga ega emas), katalog ~4.5 PB — oyiga ~90 ming dollar">{`3.5 daqiqalik trek (210 s), har daraja:
+  24 kbit/s:   0.6 MB
+  96 kbit/s:   2.5 MB
+  160 kbit/s:  4.2 MB
+  320 kbit/s:  8.4 MB
+  AAC 128/256 (veb, ba'zi qurilmalar): ~3.4 + 6.7 MB
+  FLAC (yo'qotishsiz):  ~900 kbit/s -> ~23 MB
+  ------------------------------------------------
+  Jami: ~49 MB   (yo'qotishsiz asl nusxasiz: ~26 MB)
+
+100 M trek x ~45 MB = ~4.5 PB
+Ob'ekt ombori ~0.02 dollar/GB/oy: 4.5e6 GB x 0.02 = ~90 000 dollar/oy
+
+Taqqoslash: huquq egalariga oylik to'lov ~830 M dollar
+  -> saqlash undan ~9 000 barobar kichik`}</Calc>
+
+Oxirgi qator butun darsning iqtisodini oldindan ko‘rsatadi: Spotify
+uchun infratuzilma — xarajatlarning kichik qismi. Saqlashni tejash uchun
+murakkablik qo‘shishning (YouTube’dagi kabi “faqat mashhurlarni yaxshi
+kodlash”) ma’nosi yo‘q.
+
+Darajalar orasida o‘tish YouTube’dagi ABR’dan ancha oddiy: trek kichik,
+va odatda **butun trek bitta darajada** o‘ynaydi. Daraja trek boshida
+tanlanadi (tarmoq turi, sozlama, oxirgi o‘lchangan tezlik); trek o‘rtasida
+almashish kamdan-kam kerak, chunki trek ko‘pincha o‘ynashdan ancha
+oldin to‘liq yuklanib bo‘ladi.
+</Step>
+
+<Step n={2} title="Boshqaruv va ma'lumot tekisligini ajratish" gain="Audio baytlari ilova serverlaridan o'tmaydi — CDN'dan" cost="Imzolangan URL, kalit boshqaruvi, ikki xil infratuzilma">
+v0 da `/track/{tid}` ham ruxsatni tekshiradi, ham baytlarni yuboradi.
+Endi ikkiga bo‘linadi:
+
+```
+1. Mijoz -> Spotify API:   "trek X ni o'ynamoqchiman, 160 kbit/s"
+   <- { cdn_url: "https://audio-cdn.../ab12...?exp=...&sig=...",
+        file_id: "ab12...", key_ref: "..." }          (~1 KB)
+
+2. Mijoz -> CDN:           GET cdn_url  (Range bilan)
+   <- shifrlangan audio baytlari                       (~4 MB)
+
+3. Mijoz -> Kalit xizmati: "file_id ab12... uchun kalit"
+   <- AES kaliti (faqat obunasi va litsenziyasi to'g'ri bo'lsa)
+```
+
+Bu YouTube darsidagi “boshqaruv tekisligi — kilobaytlar, ma’lumot
+tekisligi — megabaytlar” naqshining aynan o‘zi, bitta farq bilan:
+**fayllar shifrlangan**. Shifrlangan fayl CDN’da, hatto ommaviy keshda
+ham, erkin turishi mumkin — kalitsiz u shovqin. Huquqni tekshirish
+esa kichik kalit so‘rovida (12-bo‘lim).
+
+Bu ajratish keyingi deyarli har bir qadamni mumkin qiladi: CDN fayllari
+**o‘zgarmas** (file_id — mazmun xeshi kabi), demak ular abadiy keshlanadi —
+CDN’da ham, qurilmada ham, P2P tarmoqda ham.
+</Step>
+
+<Step n={3} title="Bitta doimiy ulanish — 'kirish nuqtasi'" gain="Har so'rovdan 2-3 RTT yo'qoladi" cost="Holatli ulanish serverlari; ulanish uzilganda qayta tiklash mantig'i">
+4.1-dagi hisob ko‘rsatdiki, boshlanishning asosiy qismi — DNS, TCP va
+TLS aylanishlari. Spotify’ning dastlabki arxitekturasida mijoz ilova
+ochilganda **bitta** uzoq yashovchi shifrlangan ulanishni eng yaqin
+“kirish nuqtasi” (access point) serveriga ochadi va barcha boshqaruv
+so‘rovlari (metama’lumot, kalit, pleylist) shu ulanish orqali
+multiplekslanadi.
+
+<Calc title="Doimiy ulanish qancha tejaydi" result="3G da ~600 ms, Wi-Fi da ~120 ms — boshlanish vaqtining yarmi">{`Har yangi HTTPS so'rov (sovuq): DNS + TCP (1 RTT) + TLS 1.2 (2 RTT) + so'rov (1 RTT)
+Doimiy ulanishda:               faqat so'rov (1 RTT)
+
+Tejash: ~3 RTT + DNS
+  Wi-Fi, RTT 30 ms:   3 x 30 + ~30 = ~120 ms
+  3G, RTT 150 ms:     3 x 150 + ~100 = ~550-600 ms
+
+Trek boshlash uchun kerak bo'lgan boshqaruv so'rovlari:
+  metama'lumot + kalit = 2 ta, doimiy ulanishda parallel -> 1 RTT`}</Calc>
+
+Bu Slack va WhatsApp darslaridagi doimiy ulanish bilan bir xil g‘oya,
+lekin boshqa maqsadda: u yerda server mijozga **xabar yetkazishi** kerak
+edi (push), bu yerda esa mijoz serverga **tez so‘rash** kerak. Narxi
+ham bir xil: millionlab ochiq ulanish, har biri serverda xotira, va
+server qayta ishga tushganda “qayta ulanish bo‘roni” (Slack, 11-bo‘lim).
+
+Bugungi kunda HTTP/2 va HTTP/3 (QUIC) oddiy HTTPS’ning o‘zida
+multiplekslash va 0-RTT qayta ulanishni beradi — ya’ni maxsus protokol
+foydasining katta qismi standart vositalarga o‘tgan.
+</Step>
+
+<Step n={4} title="Birinchi baytlar — eng tez manbadan" gain="Boshlanish tarmoq manbasiga emas, bitta kichik so'rovga bog'liq" cost="Bir trek uchun ikki manba mantig'i">
+Trekni boshlash uchun butun fayl emas, faqat **birinchi bir necha
+soniya** kerak: 160 kbit/s da 1 soniya — 20 KB. Demak strategiya:
+
+```
+Bosish:
+  1. Birinchi ~16-32 KB ni ENG TEZ manbadan so'ra (server/CDN, Range: 0-32767)
+  2. Parallel: qolgan qismini ARZON manbadan boshla (CDN, P2P yoki kesh)
+  3. Dekoder birinchi baytlar kelishi bilan ishlay boshlaydi
+
+Ijro davomida:
+  bufer = yuklangan soniyalar - o'ynalgan soniyalar
+  bufer past bo'lsa -> tez manbaga qayt
+```
+
+Spotify’ning 2010-yilgi maqolasida aynan shunday tasvirlangan:
+trekning boshi serverdan so‘ralgan (tezlik uchun), qolgani esa imkon
+qadar P2P tarmoqdan (narx uchun), va bufer kamaysa yana serverga
+qaytilgan. Natija — median **~265 ms** boshlanish, P2P’ning barcha
+noaniqligiga qaramay.
+
+G‘oya umumiy: **kechikishga sezgir kichik qism va hajmga sezgir katta
+qismni turli yo‘llardan yuborish.** YouTube’da birinchi bo‘lak past
+sifatda edi (YouTube, 6.4); bu yerda birinchi baytlar tezroq manbadan.
+</Step>
+
+<Step n={5} title="P2P: tinglovchilar bir-biriga tarqatadi (2008-2014)" gain="Server trafigi ~10% gacha tushadi" cost="Murakkablik, mobil qurilmalarga mos emas, oxir-oqibat voz kechildi">
+Desktop ilovasi har bir mijozni kichik “server”ga aylantirgan:
+keshdagi treklarni boshqa tinglovchilarga bergan. 2010-yilgi o‘lchovlar:
+
+<Calc title="Tinglash baytlari qayerdan kelgan (2010, desktop)" result="Serverlar trafikning atigi ~9% ini bergan — 11 barobar tejash">{`Kreitz va Niemela (2010) o'lchovi:
+  Mijozning o'z keshi:  55.4%
+  P2P (boshqa mijozlar): 35.8%
+  Spotify serverlari:     8.8%
+
+Kesh bo'lmaganda (tarmoq so'rovlari ichida):
+  P2P:    35.8 / (35.8 + 8.8) = ~80%
+  Server:  8.8 / 44.6         = ~20%
+
+Umumiy tinglash hajmiga nisbatan server yuki:
+  100% -> 8.8%  = ~11 barobar kam
+
+Muhim: tejashning YARMIDAN KO'PI kesh hisobiga (55.4%), P2P emas.`}</Calc>
+
+Oxirgi qator eng muhim va tez-tez e’tibordan chetda qoladi: P2P
+tejashining eng katta qismi aslida **mahalliy kesh** edi. Foydalanuvchi
+o‘z sevimli qo‘shiqlarini qayta-qayta tinglaydi, va ular tarmoqqa umuman
+chiqmaydi. Bu 7-bo‘limning asosi.
+
+Spotify 2014-yil atrofida P2P’dan voz kechdi — sabablari quyidagi Deep’da.
+</Step>
+
+<Deep title="Nega Spotify P2P'dan voz kechdi">
+P2P 2008-yilda ajoyib qaror edi: startapda pul kam, CDN qimmat, va
+foydalanuvchilar asosan desktopda. 2014-yilga kelib har bir shart
+teskarisiga o‘zgardi.
+
+**Mobil.** Tinglashning katta qismi telefonga ko‘chdi. Telefon P2P
+tuguni bo‘la olmaydi: boshqalarga yuklash batareyani yeydi, foydalanuvchi
+trafigini sarflaydi (4.3), va mobil operatorlar NAT’i ortida kiruvchi
+ulanishlar deyarli imkonsiz. Ya’ni P2P faqat kamayib borayotgan
+desktop ulushiga xizmat qilgan.
+
+**CDN arzonlashdi.** 2008-yildan 2014-yilgacha tranzit va CDN narxlari
+bir necha barobar tushdi. 11 barobar tejashning dollar qiymati kichraydi.
+
+**Miqyos o‘zgardi.** Kompaniya daromadi o‘sdi; 1-qadamdagi hisob
+ko‘rsatganidek, yetkazish narxi huquq to‘lovlari yonida kichik. Tejash
+pul jihatidan ahamiyatsizlashdi, murakkablik esa qoldi.
+
+**Murakkablikning yashirin narxi.** P2P tarmog‘i — o‘zgaruvchan
+manbalardan bufer boshqaruvi, NAT orqali ulanish, trekerlar, zararli
+tugunlardan himoya, turli tarmoqlardagi sinovlar. Har bir yangi
+xususiyat (masalan, yangi kodek yoki shifrlash) P2P bilan mos bo‘lishi
+kerak edi.
+
+Umumiy dars: **arxitektura qarori o‘z davrining narxlari va
+cheklovlariga javob.** P2P 2008-yilda to‘g‘ri, 2014-yilda ortiqcha edi.
+Qarorni qayta ko‘rib chiqish vaqtini belgilaydigan savol: “bu qarorni
+yaratgan cheklov hali ham bormi?” — 1-bo‘limdagi Check’ning aynan o‘zi.
+</Deep>
+
+<Step n={6} title="Qurilma keshi: qayta tinglash tarmoqqa chiqmaydi" gain="Tinglashlarning yarmidan ko'pi tarmoqsiz" cost="Qurilma xotirasi (odatda 1-10 GB), kesh boshqaruvi">
+Har bir tinglangan trek shifrlangan holda qurilmada qoladi. Keyingi
+tinglashda — faqat kalit (u ham keshlanishi mumkin) va mahalliy fayl.
+
+Kesh siyosati odatiy **LRU** (eng uzoq ishlatilmaganini chiqarish),
+lekin musiqa uchun juda samarali, chunki tinglash tarixining **takrorlanish
+darajasi** yuqori. 7-bo‘limda buni hisoblaymiz: bir necha GB kesh
+tinglashlarning yarmidan ko‘pini qoplaydi.
+
+Keshning muhim xususiyati: u **2-qadamga tayanadi**. Fayllar o‘zgarmas
+va shifrlangan, shuning uchun keshni “yangilash” yoki “bekor qilish”
+muammosi yo‘q (Twitter darsidagi kesh bekor qilish qiyinchiliklari bu
+yerda deyarli yo‘q). Huquq o‘zgarsa (trek katalogdan olib tashlandi),
+kalit berilmaydi — keshdagi fayl foydasiz bo‘lib qoladi.
+</Step>
+
+<Step n={7} title="Keyingi trekni oldindan yuklash" gain="Treklar orasida 0 ms pauza, keyingi trek darhol" cost="Ba'zan hech qachon eshitilmaydigan baytlar yuklanadi">
+Joriy trek tugashidan oldin pleyer navbatdagi trekni yuklab, dekoderni
+tayyorlab qo‘yadi. Albom yoki pleylistda “navbatdagi” aniq ma’lum;
+aralash rejimda (shuffle) ham tartib oldindan aniqlanadi.
+
+Bu 4.2-dagi muammoning yagona haqiqiy yechimi: tarmoq qanchalik tez
+bo‘lmasin, keyingi trek **joriysi tugaguncha** qurilmada bo‘lishi kerak.
+Keyin gapless ijro (2.2 Deep) — faqat namunalarni tutashtirish.
+
+Narxi — isrof: foydalanuvchi pleylistni o‘chirsa yoki boshqa trekka
+o‘tsa, oldindan yuklangan baytlar behuda. Qachon boshlash va qancha
+yuklash — 6.3-bo‘limdagi iqtisodiy hisob.
+</Step>
+
+<Step n={8} title="Oflayn rejim — litsenziyalar bilan" gain="Samolyotda, metroda, chet elda — tarmoqsiz ijro" cost="Kalitlarni qurilmada saqlash, muddatli litsenziyalar, kechikkan hodisalar">
+Foydalanuvchi pleylistni “yuklab olish”ni bossa, barcha treklar
+shifrlangan holda qurilmaga yuklanadi, va ular uchun **muddatli
+kalitlar** ham saqlanadi. Muddat — taxminan 30 kun: shu davrda ilova
+kamida bir marta onlayn bo‘lishi kerak (obuna hali faolligini
+tasdiqlash uchun).
+
+Nega muddat? Chunki litsenziya shartnomasi odatda “faqat faol obunachi
+tinglay oladi” deydi. Obunani bekor qilgan foydalanuvchining qurilmasidagi
+fayllar abadiy ishlamasligi kerak. Muddatli kalit — bu qoidaning
+**tarmoqsiz** ijrosi: tarmoq bo‘lmasa ham kalit o‘z-o‘zidan eskiradi.
+
+Oflayn rejimning ikkinchi, yashirinroq narxi — **hisob**: tinglashlar
+qurilmada yig‘iladi va faqat keyingi onlayn paytda yuboriladi. Ya’ni
+ba’zi hodisalar kunlar yoki haftalar kechikib keladi. 8.4-bo‘lim bu
+kechikishni buxgalteriya qanday hazm qilishini ko‘rsatadi.
+</Step>
+
+<Step n={9} title="Tinglash hodisalari — pleyerdan, identifikator bilan" gain="Oflayn, keshdan va qayta urinishli tinglashlar to'g'ri sanaladi" cost="Katta hodisalar oqimi va dedublikatsiya">
+4.4-dagi Check xulosasi: tinglashni pleyer biladi. Demak pleyer har
+bir tinglash uchun hodisa yaratadi:
+
+```json
+{ "event_id": "c1f2...-uuid",         // mijozda, hodisa yaratilganda
+  "user": "u123", "device": "d7",
+  "track": "t456", "file_quality": 160,
+  "context": "playlist:p789",
+  "ms_played": 187000, "reason_end": "trackdone",
+  "started_at_client": "2026-03-01T08:12:03Z",
+  "offline": false }
+```
+
+Hodisa avval qurilmadagi **doimiy navbatga** (diskka) yoziladi, keyin
+serverga yuboriladi; server tasdiqlaguncha navbatda qoladi. Tarmoq
+uzilsa, ilova yopilsa yoki telefon bir hafta oflayn bo‘lsa — hodisa
+yo‘qolmaydi, faqat kechikadi.
+
+Bu **kamida bir marta** (at-least-once) yetkazish: tasdiq yo‘qolsa,
+mijoz hodisani qayta yuboradi, va server uni ikki marta oladi. Shuning
+uchun `event_id` **mijozda** yaratiladi — qayta yuborishda o‘zgarmaydi,
+va server takrorni tanib, tashlab yuboradi. Bu WhatsApp darsidagi xabar
+identifikatori va Slack’dagi `client_msg_id` bilan bir xil naqsh.
+
+<Calc title="Hodisalar oqimi hajmi" result="Faqat tinglash hodisalari ~0.5 M/s, ~20 TB/kun; barcha hodisalar bilan bir necha barobar ko'p">{`Tinglashlar: ~99 000/s (1.3)
+Har tinglashga ~5 hodisa (boshlandi, 30 s o'tdi, pauza/davom, tugadi/o'tkazildi)
+  99 000 x 5 = ~500 000 hodisa/s
+
+Hodisa hajmi ~500 bayt (JSON, siqilmagan)
+  500 000 x 500 = 250 MB/s = ~21.6 TB/kun
+
+Siqilgan va ustunli formatda (Parquet kabi) saqlashda ~5-10x kichik:
+  ~2-4 TB/kun, yiliga ~1 PB
+
+Taqqoslash: butun audio katalogi ~4.5 PB (1-qadam).
+Bir necha yillik XOM hodisalar katalogdan kattaroq.`}</Calc>
+
+Oxirgi qator kutilmagan: musiqa kompaniyasida **hodisalar** musiqaning
+o‘zidan ko‘p joy egallaydi. Va ular o‘chirib bo‘lmaydigan ma’lumot —
+audit, qayta hisoblash va tavsiyalar uchun.
+</Step>
+
+<Step n={10} title="Tinglashlar kitobi: xom hodisalardan 'stream'gacha" gain="Har bir to'lov raqami qayta hisoblanadi va tekshiriladi" cost="Natija real vaqtda emas — soatlar yoki kunlar kechikish">
+Xom hodisalar to‘g‘ridan-to‘g‘ri hisoblagichga qo‘shilmaydi. Ular
+o‘zgarmas jurnalga yoziladi, va undan **davriy** (masalan, kunlik)
+paketli ishlov “hisoblanadigan tinglash” (stream) ro‘yxatini chiqaradi:
+
+```
+xom hodisalar (o'zgarmas, event_time bo'yicha bo'limlangan)
+   |
+   v  1. Dedublikatsiya: event_id bo'yicha
+   v  2. Qoida: ms_played >= 30 000 -> hisoblanadigan tinglash
+   v  3. Firibgarlik filtri: shubhali akkauntlar, bot naqshlari (12-bo'lim)
+   v  4. Agregat: (trek, mamlakat, obuna turi, kun) -> son
+   |
+   v
+tinglashlar kitobi (versiyalangan) -> oylik royalti hisoboti
+```
+
+Bu Reddit darsidagi “ovozlar jurnali + hisoblangan agregat” naqshining
+buxgalteriya darajasidagi ko‘rinishi. Farq ikkita. Birinchisi — natija
+**versiyalanadi**: firibgarlik filtri yaxshilansa yoki xato topilsa,
+o‘tgan oy qayta hisoblanadi va farq keyingi hisobotda tuzatiladi.
+Ikkinchisi — **kechikish qabul qilinadi**: san’atkor profilidagi son
+real vaqtda emas, pul esa oyiga bir marta hisoblanadi. Bu kechikish
+aniqlikka almashtirilgan.
+
+Nega real vaqtda emas? Chunki 3-qadam (firibgarlik) **kontekst** talab
+qiladi: bitta hodisani ko‘rib, uning botdan ekanini bilib bo‘lmaydi —
+akkauntning kunlik naqshini, qurilmalar tarmog‘ini, boshqa akkauntlar
+bilan o‘xshashligini ko‘rish kerak. Bu paketli ishlovning tabiiy
+vazifasi.
+</Step>
+
+<Deep title="Pleylist — hujjat emas, o'zgarishlar jurnali">
+Pleylist oddiy ro‘yxatga o‘xshaydi, lekin uch talab uni murakkablashtiradi:
+**birgalikda tahrirlash** (bir nechta odam), **oflayn tahrirlash**
+(samolyotda qo‘shilgan trek keyin sinxronlanadi) va **ko‘p qurilma**
+(telefonda o‘chirilgan trek kompyuterda ham yo‘qolishi kerak).
+
+Butun ro‘yxatni “oxirgi yozgan yutadi” tarzida saqlash ikki tahrirni
+yo‘qotadi:
+
+```
+Boshlang'ich (versiya 5): [A, B, C]
+Telefon (oflayn):  D qo'shdi      -> [A, B, C, D]
+Kompyuter:         B ni o'chirdi  -> [A, C]       (versiya 6, serverda)
+Telefon onlayn:    [A, B, C, D] ni yozadi -> B qaytib keldi, o'chirish yo'qoldi
+```
+
+Spotify’ning tavsiflangan yondashuvi Git’ga o‘xshaydi: pleylist —
+**operatsiyalar ketma-ketligi** (qo‘shish, o‘chirish, ko‘chirish),
+har biri qaysi versiyaga nisbatan qilinganini biladi. Server kechikkan
+operatsiyani yangi versiyalar ustiga **qayta qo‘llaydi**:
+
+```
+Telefon yuboradi: "v5 ga nisbatan: 3-pozitsiyaga D qo'sh"
+Server: v6 = v5 + "B ni o'chir"
+  -> D ni v6 ga moslashtiradi: B o'chgani uchun pozitsiya 3 -> 2
+  -> v7 = [A, C, D]   (ikkala tahrir saqlandi)
+```
+
+Bu Google Docs darsida batafsil ko‘riladigan “operatsion
+transformatsiya” g‘oyasining sodda ko‘rinishi. Pleylist uchun u
+osonroq, chunki operatsiyalar kam va ziddiyatlar kamdan-kam: bitta
+trekni ikki kishi bir vaqtda ko‘chirishi — nodir holat, va uni “oxirgisi
+yutadi” bilan hal qilish qabul qilinadi.
+
+Umumiy naqsh — tinglashlar kitobi bilan bir xil: **holatni emas,
+o‘zgarishlarni saqlash**. Holat istalgan paytda o‘zgarishlardan
+qayta quriladi, teskarisi esa yo‘q.
+</Deep>
+
+<Step n={11} title="Hamkorlikdagi filtrlash — matritsani siqish" gain="Tavsiya so'rovi milliardlab qatordan ikki vektorga" cost="Haftalik og'ir hisoblash; yangi trek va yangi foydalanuvchi uchun ishlamaydi">
+4.5-dagi muammo: har so‘rovda butun tarixni ko‘rish. Yechim — tarixni
+**bir marta** siqish. Barcha tinglashlar ulkan matritsa sifatida
+tasavvur qilinadi: qatorlar — foydalanuvchilar, ustunlar — treklar,
+katakda — necha marta tinglangani. Matritsa deyarli bo‘sh (har
+foydalanuvchi 100 M trekdan bir necha mingini tinglagan).
+
+Matritsa faktorizatsiyasi uni ikki kichik matritsaga ajratadi: har
+foydalanuvchi uchun `k` ta son (masalan, 100), har trek uchun ham `k`
+ta son, shunday qilib ularning skalyar ko‘paytmasi “bu foydalanuvchi
+bu trekni qanchalik yoqtiradi” ni bashorat qiladi.
+
+<Calc title="Matritsa va uning faktorlari" result="Matritsa 6e16 katak (imkonsiz); faktorlar ~280 GB — bitta serverning xotirasiga sig'adi">{`To'liq matritsa:
+  600 M foydalanuvchi x 100 M trek = 6e16 katak
+  Hatto 1 bit/katak: 7.5 PB — va 99.99% nol
+
+Nol bo'lmagan kataklar (haqiqiy ma'lumot):
+  600 M x ~2 000 turli trek = 1.2e12 juftlik (~10-20 TB)
+
+Faktorlar, k = 100, float32 (4 bayt):
+  Foydalanuvchilar: 600e6 x 100 x 4 = 240 GB
+  Treklar:          100e6 x 100 x 4 =  40 GB
+  Jami: ~280 GB
+
+Bitta bashorat: 100 ta ko'paytma + qo'shish = ~100 ns`}</Calc>
+
+Siqish darajasiga qarang: 1.2 trillion juftlikdan 280 GB — va natija
+**yangi** ma’lumot ham beradi: foydalanuvchi hech qachon tinglamagan
+trek uchun ham bashorat (ikki vektorning ko‘paytmasi). Faktorlar
+foydalanuvchilarni va treklarni **umumiy fazoga** joylashtiradi:
+o‘xshash treklar yaqin, va foydalanuvchi o‘zi yoqtiradigan treklar
+yaqinida.
+
+Tinglash — **yashirin** signal (implicit feedback): foydalanuvchi
+“yoqtiraman” demagan, shunchaki tinglagan. Bu klassik usulni
+o‘zgartiradi — 9.1-bo‘limda batafsil.
+</Step>
+
+<Step n={12} title="Taxminiy yaqin qo'shnilar indeksi" gain="Yuz million trek ichidan eng yaqinlarini millisekundlarda topish" cost="Natija taxminiy; indeksni qurish va yangilash vaqti">
+11-qadamdan keyin savol: foydalanuvchi vektoriga **eng yaqin** 500 ta
+trek qaysilar? To‘g‘ridan-to‘g‘ri yo‘l — har bir trek bilan ko‘paytma.
+
+<Calc title="To'liq qidiruv va taxminiy indeks" result="To'liq: ~1 s bitta so'rovga; taxminiy: ~1-5 ms, 99%+ natija bir xil">{`TO'LIQ QIDIRUV (brute force):
+  100 M trek x 100 o'lchov = 1e10 ko'paytma-qo'shish
+  Bitta yadro, SIMD bilan ~10-20 mlrd/s -> ~0.5-1 s
+  600 M foydalanuvchi, haftada 1 marta: 600e6 x 0.75 s = 450 M yadro-soniya
+    = 125 000 yadro-soat/hafta = ~750 yadro doimiy band
+
+TAXMINIY INDEKS (daraxtlar yoki graf):
+  Har so'rov ~2 000-10 000 nomzodni ko'radi (butun katalog emas)
+  10 000 x 100 = 1e6 amal -> ~0.1 ms + xotiraga murojaatlar -> ~1-5 ms
+  ~500-1 000 barobar tez
+
+Narx: eng yaqin 500 tadan ~5-10 tasi o'tkazib yuborilishi mumkin
+  (tavsiya uchun deyarli ahamiyatsiz — "eng yaxshi" o'zi taxminiy)`}</Calc>
+
+Spotify bu vazifa uchun **Annoy** kutubxonasini yaratgan va 2013-yilda
+ochiq kodga chiqargan: vektorlar fazosi tasodifiy tekisliklar bilan
+qayta-qayta ikkiga bo‘linadi, va daraxt bo‘ylab tushish qidiruvni
+kichik qismga toraytiradi. Keyinchalik (2023) grafga asoslangan
+**Voyager** kutubxonasi chiqarilgan. Batafsil — 9.2.
+
+Asosiy savdo — **aniqlikni tezlikka almashtirish**, va bu yerda u deyarli
+bepul: tavsiyada “haqiqiy eng yaqin 500” degan tushunchaning o‘zi yo‘q,
+chunki vektorlarning o‘zi taxminiy bashorat.
+</Step>
+
+<Step n={13} title="Haftalik shaxsiy pleylist — oldindan hisoblangan" gain="Har foydalanuvchiga 30 ta yangi trek, so'rov paytida nol hisoblash" cost="Bir hafta davomida eskirgan; hammaga hisoblanadi — ochmaydiganlarga ham">
+2015-yilda chiqqan **Discover Weekly** har dushanba har foydalanuvchiga
+u hali eshitmagan 30 ta trekni beradi. U so‘rov paytida emas,
+**oldindan**, butun foydalanuvchilar uchun paketli ishlovda hisoblanadi.
+
+<Calc title="Hammaga haftalik pleylist tayyorlash" result="~1 000-2 000 yadro-soat va ~150 GB natija — butun kompaniya uchun kichik ish">{`Har foydalanuvchi uchun:
+  ANN qidiruv (12-qadam), ~500 nomzod:     ~5 ms
+  Filtrlash (tinglanganlar, rad etilganlar, bitta ijrochidan ko'p): ~2 ms
+  Qayta tartiblash (qo'shimcha model, xilma-xillik):    ~3 ms
+  Jami: ~10 ms
+
+600 M x 10 ms = 6 M yadro-soniya = ~1 700 yadro-soat/hafta
+  1 000 yadroli klasterda: ~1.7 soat
+
+Natija: 600 M x 30 trek x 8 bayt (ID) = 144 GB
+  -> kalit-qiymat omboriga yuklanadi: "u123 -> [30 ta ID]"
+Dushanba kuni pleylistni ochish: bitta kalit o'qish`}</Calc>
+
+Bu Twitter darsidagi yozishda fan-out bilan bir xil savdo: ishni
+**o‘qish yo‘lidan yozish yo‘liga** ko‘chirish. Farq — bu yerda “yozish”
+bir haftada bir marta, va natija o‘zgarmas: bir hafta davomida
+pleylist bir xil. Bu **mahsulot xususiyati** sifatida taqdim etilgan
+(“dushanbagacha kuting”) — texnik cheklov foydaga aylantirilgan.
+
+Narxi: pleylistni ochmaydigan foydalanuvchilar uchun ham hisoblanadi.
+Lekin hisoblash shunchalik arzonki (yiliga ~90 000 yadro-soat, bulutda
+bir necha ming dollar), “kim ochadi” ni bashorat qilish
+murakkabligi o‘zini oqlamaydi.
+</Step>
+
+<Step n={14} title="Yangi trek uchun audio model" gain="Hech kim tinglamagan trek ham birinchi kundan tavsiya qilinadi" cost="Audio bo'yicha model — o'qitish va har yangi trekka qo'llash">
+11-qadamning asosiy zaif joyi — **sovuq start**: yangi trekning
+tinglash tarixi yo‘q, demak vektori ham yo‘q, demak u hech kimga tavsiya
+qilinmaydi, demak tinglanmaydi — yopiq doira. Kuniga ~100 000 yangi
+trek (1.3) — katalogning eng tez o‘sayotgan qismi aynan shu doirada.
+
+Yechim — trekning vektorini **audioning o‘zidan** bashorat qilish.
+Model (spektrogramma ustida konvolyutsion tarmoq) mashhur treklarda
+o‘qitiladi: kirish — audio, maqsad — 11-qadamdagi haqiqiy vektor.
+O‘qitilgandan keyin u yangi trek uchun ham vektor beradi, va trek
+darhol umumiy fazoga tushadi.
+
+```
+Mashhur trek:  audio -> model -> v_bashorat   ~   v_haqiqiy (tinglashlardan)
+               o'qitish: |v_bashorat - v_haqiqiy| ni kamaytirish
+
+Yangi trek:    audio -> model -> v_bashorat -> ANN indeksiga
+               ~1000 tinglashdan keyin: haqiqiy vektorga almashtiriladi
+```
+
+Bu g‘oyani 2014-yilda Spotify’da stajirovka o‘tagan Sander Dieleman
+blogida mashhur qilgan. Hisob-kitob jihatidan u arzon: kuniga 100 000
+trek × bir necha soniya GPU vaqti — bir necha GPU-soat.
+
+Narxi — sifat: audio o‘xshashlik **xulq-atvor o‘xshashligi emas**. Ikki
+trek bir xil eshitilishi mumkin, lekin turli auditoriyaga ega (til,
+mintaqa, madaniy kontekst). Shuning uchun audio vektori faqat
+**boshlang‘ich** taxmin, va tinglashlar to‘planishi bilan almashtiriladi.
+</Step>
+
+<Check q="O'n to'rt qadamdan qaysilari foydalanuvchi uchun ko'rinmas, lekin qolganlarining hammasi ularga tayanadi?">
+Ikkitasi: **2-qadam** (shifrlangan, o‘zgarmas fayllar + alohida kalit)
+va **9-qadam** (mijozda yaratilgan hodisa identifikatori).
+
+**2-qadam** dan keyin fayl — shunchaki shifrlangan baytlar, va uni
+istalgan joyda xavfsiz saqlash mumkin: CDN (2), P2P tarmog‘ida begona
+kompyuterda (5), qurilma keshida (6), oflayn (8). Kalit bo‘lmasa, hech
+biri ishlamaydi. Huquq tekshiruvi faqat bitta kichik nuqtada — kalit
+berishda. Aks holda har bir kesh qatlami o‘z huquq tekshiruviga muhtoj
+bo‘lardi.
+
+**9-qadam** dan keyin hodisa istalgan marta qayta yuborilishi mumkin,
+va bu **xavfsiz**: dublikatlar bir xil identifikator bilan keladi.
+Oflayn rejim (8), kechikkan yuborishlar, qayta urinishlar, tinglashlar
+kitobi (10) — hammasi shunga tayanadi.
+
+Umumiy naqsh: ikkalasi ham **ma’lumotga identifikatsiya va himoyani
+biriktiradi**, uni tashiydigan yo‘lga emas. Shunda yo‘l ishonchsiz
+bo‘lishi mumkin (ommaviy kesh, uziladigan tarmoq) — to‘g‘rilik baribir
+saqlanadi.
+</Check>
+
+## 6. Tez boshlash va oldindan yuklash
+
+YouTube darsida pleyerning asosiy qarori “qaysi sifat” edi. Bu yerda
+asosiy qaror **“qachon va nimani oldindan”**: trek kichik, sifat
+tanlovi oddiy, lekin 250 ms va 0 ms talablari faqat foydalanuvchi
+bosishidan **oldin** ish qilish orqali bajariladi.
+
+### 6.1 Boshlanish byudjeti
+
+<Flow nodes={["Bosish", "Metama'lumot + kalit (doimiy ulanish)", "Birinchi 32 KB (CDN yoki kesh)", "Dekoder", "Audio chiqish buferi", "Tovush"]} caption="Sovuq boshlanish yo'li: har bir bo'g'in 250 ms byudjetdan ulush oladi" />
+
+<Calc title="250 ms byudjeti qayerga sarflanadi" result="Sovuq holatda ~145-245 ms; trek keshda bo'lsa ~60 ms — byudjetning asosiy qismi tarmoq aylanishlari">{`Faraz: Wi-Fi yoki yaxshi 4G, RTT 40 ms, doimiy ulanish ochiq (5-bo'lim, 3-qadam)
+
+SOVUQ (trek qurilmada yo'q):
+  Metama'lumot + kalit, parallel, 1 RTT + server:   40 + 20 =  60 ms
+  CDN ulanishi (oldindan ochiq bo'lsa 0, aks holda +2 RTT):  0-80 ms
+  Birinchi 32 KB: 1 RTT + 32 KB / 2.5 MB/s:         40 + 13 =  53 ms
+  Dekoder ishga tushishi:                                      ~10 ms
+  Audio chiqish buferi (OS, qurilma):                     ~20-40 ms
+  ---------------------------------------------------------------
+  Jami: ~145-245 ms
+
+ISSIQ (trek keshda, kalit keshda):
+  Diskdan o'qish ~5 ms + dekoder 10 ms + audio bufer 20-40 ms = ~35-55 ms
+
+OLDINDAN YUKLANGAN (6.3): dekoder allaqachon ishlayapti -> ~0 ms`}</Calc>
+
+Uch holat uch xil arxitektura strategiyasiga mos keladi, va ular
+**qatlamlar** sifatida ishlaydi. Sovuq holat — tarmoq muhandisligi:
+doimiy ulanishlar, yaqin CDN, kichik birinchi so‘rov. Issiq holat —
+kesh siyosati (7-bo‘lim). Oldindan yuklangan holat — bashorat.
+
+Eng muhim kuzatish: sovuq holatda ham **baytlarning o‘zi** byudjetning
+atigi ~5% i (13 ms). Qolgani — aylanishlar va qurilma. Shuning uchun
+sifatni pasaytirish (YouTube’dagi asosiy vosita) bu yerda boshlanishni
+deyarli tezlashtirmaydi: 32 KB o‘rniga 12 KB — 8 ms tejash. Musiqa
+uchun past sifatdan boshlash foydasiz, yuqori sifatdan boshlash esa
+bepul.
+
+<Callout type="info" title="Sekin tarmoqda manzara boshqa">
+3G da (RTT 150 ms, 1 Mbit/s) xuddi shu hisob ~550-700 ms beradi, va
+bu yerda baytlar ulushi oshadi: 32 KB — 256 ms. Shuning uchun mobil
+tarmoqda pleyer boshlang‘ich so‘rovni kichikroq qiladi va pastroq
+darajani tanlaydi (5-bo‘lim, 1-qadam). Lekin baribir eng katta foyda
+aylanishlar sonini kamaytirishdan: har tejalgan RTT — 150 ms.
+</Callout>
+
+### 6.2 Foydalanuvchi bosishidan oldin
+
+Sovuq boshlanishni yo‘qotishning yagona yo‘li — foydalanuvchi **nimani
+bosishini** oldindan taxmin qilish. Bir necha arzon signal bor:
+
+| Signal | Bashorat | Oldindan nima qilinadi |
+| --- | --- | --- |
+| Albom yoki pleylist ochildi | Birinchi trek yoki eng mashhuri bosiladi | Metama’lumot + kalit, birinchi KB’lar |
+| Barmoq trek ustida (desktop: sichqoncha) | Aynan shu trek | CDN ulanishi, birinchi so‘rov |
+| Ijro navbati | Keyingi trek aniq | Butun trek (6.3) |
+| Kunning vaqti va odat | “Ertalabki pleylist” | Tungi Wi-Fi’da yuklab qo‘yish |
+
+Har bir qator — bashorat aniqligi va isrof orasidagi savdo. Birinchi
+qatorda ko‘p nomzod bor, shuning uchun faqat **arzon** tayyorgarlik
+(kilobaytlar). Uchinchi qatorda nomzod bitta va ehtimoli yuqori —
+butun trek yuklanadi.
+
+<Calc title="Ko'rinib turgan treklarning boshini oldindan yuklash" result="Albom ochilganda ~160 KB — va bosilgan trek 'issiq' holatdan boshlanadi">{`Albom sahifasi ochildi, ekranda 10 trek.
+Har biri uchun: metama'lumot + kalit (~1 KB) + birinchi 16 KB audio
+  10 x 17 KB = 170 KB
+
+Isrof: foydalanuvchi ulardan bittasini bossa, 9 x 17 = 153 KB behuda
+  (taqqoslang: bitta trek 160 kbit/s da 4.2 MB -> isrof 3.6%)
+
+Foyda: bosilgan trek uchun 145-245 ms -> ~50-80 ms
+  (birinchi baytlar qurilmada; qolganini ijro davomida yuklash kifoya)`}</Calc>
+
+Hisobdagi nisbat muhim: isrof — bitta trekning **3–4 foizi**, foyda
+esa boshlanish vaqtining **uchdan ikki qismi**. Bu “arzon spekulyatsiya”
+— faqat to‘g‘ri bo‘lish ehtimoli yuqori emas, balki **xato bo‘lish
+narxi past** bo‘lgani uchun qilinadi.
+
+### 6.3 Keyingi trek: qachon va qancha
+
+Navbatdagi trekni oldindan yuklash (5-bo‘lim, 7-qadam) ikki savolni
+qo‘yadi: qachon boshlash (kech bo‘lsa — pauza) va qancha yuklash (ko‘p
+bo‘lsa — isrof).
+
+<Calc title="Oldindan yuklashni qachon boshlash kerak" result="Boshini ~10 s oldin olish yetarli; butun trekni oxirgi daqiqada emas, ijro davomida sekin">{`Keyingi trek: 160 kbit/s, 3.5 daqiqa = 4.2 MB
+Pauzasiz boshlash uchun kerak: trekning boshi + dekoder
+  (qolgani ijro davomida yuklanadi — 1 Mbit/s tarmoq ham
+   160 kbit/s ni real vaqtdan ~6x tez beradi)
+
+Boshi = 10 s audio = 200 KB
+  Wi-Fi (20 Mbit/s):  200 KB -> 0.08 s
+  3G (1 Mbit/s):      200 KB -> 1.6 s + RTT'lar -> ~2.5 s
+  Yomon 3G (300 kbit/s): 200 KB -> 5.3 s -> ~6 s
+
+Xavfsizlik zaxirasi bilan: joriy trek tugashiga ~10-30 s qolganda boshlash
+  - Yetarli vaqt eng yomon tarmoqda ham
+  - Foydalanuvchi joriy trekni o'tkazib yuborish ehtimoli bu paytda kichik`}</Calc>
+
+Hisobning ikkinchi qatori asosiy g‘oya: **pauzasizlik uchun butun trek
+emas, faqat boshi kerak.** Qolgani ijro paytida keladi, chunki eng
+sekin mobil tarmoq ham 160 kbit/s audio’dan tez. Bu YouTube’dan tub
+farq: video bitreyti ko‘pincha tarmoq tezligiga yaqin, shuning uchun
+u yerda bufer doim tahdid ostida; musiqa esa tarmoqqa nisbatan “yengil”.
+
+Endi isrof. Foydalanuvchilar treklarni ko‘p o‘tkazib yuboradi.
+
+<Calc title="Oldindan yuklashning kutilgan isrofi" result="Boshini oldindan olish — ~30-80 KB isrof; butun trek — ~0.6-1.7 MB, ~20 barobar ko'p">{`Faraz: navbatdagi trek haqiqatan o'ynaladi p ehtimol bilan
+  Albom/pleylist ketma-ket: p = ~0.85
+  Radio/avtomatik tavsiya:  p = ~0.6
+  (qolgani: foydalanuvchi boshqa narsa bosdi, ilovani yopdi)
+
+A) Faqat boshini (200 KB):
+  Isrof = (1 - p) x 200 KB
+  p = 0.85: 30 KB;   p = 0.6: 80 KB
+
+B) Butun trekni (4.2 MB) oxirgi 30 s da:
+  p = 0.85: 0.15 x 4.2 MB = 0.63 MB
+  p = 0.6:  0.4  x 4.2 MB = 1.7 MB
+
+B) ning isrofi A) dan ~20 barobar ko'p, pauza ehtimoli esa bir xil (~0)`}</Calc>
+
+Demak optimal strategiya ikki bosqichli: **boshini oldindan, qolganini
+ijro boshlangach**. Bu Wi-Fi’da va mobil tarmoqda farq qiladi: Wi-Fi’da
+isrof deyarli bepul, va butun trekni yuklab radioni uxlatish batareya
+uchun foydali (4.3); mobil tarmoqda esa trafik pullik va A) afzal.
+Pleyer shuning uchun **tarmoq turiga qarab** turli siyosat ishlatadi —
+bitta “to‘g‘ri” javob yo‘q.
+
+<Deep title="O'tkazib yuborish — isrof hisobidagi asosiy o'zgaruvchi">
+Oldindan yuklash iqtisodi to‘liq `p` ga — navbatdagi trek haqiqatan
+eshitilish ehtimoliga — bog‘liq. Bu raqam kutilganidan past.
+
+Paul Lamere’ning 2014-yilgi tahliliga ko‘ra (Spotify’ning Echo Nest
+jamoasidan), o‘rtacha tinglovchi treklarning **~24 foizini birinchi
+5 soniyada** o‘tkazib yuboradi, va deyarli **yarmini** oxirigacha
+eshitmaydi. O‘tkazish odatlari yoshga, qurilmaga va kontekstga qarab
+keskin farq qiladi: yosh foydalanuvchilar ko‘p o‘tkazadi, albomni
+ketma-ket tinglash esa kam o‘tkazishga olib keladi.
+
+Bu raqamlar arxitekturada uch joyda paydo bo‘ladi:
+
+**Oldindan yuklash.** Agar navbatdagi trek 24% ehtimol bilan 5
+soniyada o‘tkazilsa, uning **faqat boshini** yuklash ikki barobar
+foydali: 5 soniyadan keyin o‘tkazilgan trekning qolgan 4 MB’i hech
+qachon kerak bo‘lmaydi.
+
+**Hisob.** 30 soniyalik qoida (8.3) aynan shu taqsimotdan kelib
+chiqadi: 5 soniyadagi o‘tkazish — “bu qo‘shiqni istamayman”, 30
+soniyadan keyin esa — tinglash.
+
+**Tavsiya.** Tez o‘tkazish — eng kuchli **salbiy** signal (9.1). Uni
+hisobga olmagan model foydalanuvchiga yoqmagan narsani yana tavsiya
+qiladi, chunki “tinglandi” hodisasini ko‘radi.
+
+Ya’ni bitta xulq-atvor o‘lchovi — o‘tkazish vaqti — tizimning uchta
+turli qismini belgilaydi. Bu mahsulot tahlili va arxitektura qanchalik
+bog‘liqligining yaxshi misoli.
+</Deep>
+
+<Check q="Nega musiqa pleyeri YouTube'dagi kabi murakkab ABR algoritmiga muhtoj emas?">
+Chunki ABR hal qiladigan muammo — **bitreyt tarmoq tezligiga yaqin**
+bo‘lganda buferni ushlab turish — bu yerda deyarli yo‘q.
+
+YouTube’da 1080p ~5 Mbit/s, va ko‘p mobil tarmoqlar aynan shu
+atrofda. Tarmoqning har bir tebranishi buferga ta’sir qiladi, va
+pleyer har 4 soniyada qaror qilishi kerak.
+
+Musiqada 160 kbit/s — eng sekin 3G tarmoqdan ham ~6 barobar kam.
+Trek odatda ijro boshlangandan bir necha soniya ichida **to‘liq**
+yuklanadi, va bufer darhol trekning oxirigacha yetadi. Tebranish
+buferni deyarli hech qachon bo‘shatmaydi.
+
+Shuning uchun murakkablik boshqa joyga ko‘chadi: **qaysi trekni**
+oldindan yuklash (bashorat) va **qachon** (6.3). YouTube’ning savoli —
+“bu videoning keyingi 4 soniyasi qaysi sifatda?”, Spotify’ning savoli
+— “keyingi 4 daqiqada qaysi trek?”. Bir xil “oldinga qarab yuklash”
+g‘oyasi, turli o‘lchovda.
+</Check>
+
+## 7. Qurilma keshi va oflayn rejim
+
+5-qadamdagi 2010-yilgi o‘lchov (tinglashlarning 55% i mahalliy keshdan)
+tasodif emas. Musiqa tinglash — **takrorlanadigan** xulq-atvor, va bu
+eng arzon “CDN” ni beradi: foydalanuvchining o‘z qurilmasini.
+
+### 7.1 Nega kesh musiqada bunchalik samarali
+
+<Calc title="Bir foydalanuvchining oylik tinglash naqshi" result="~2 GB kesh oylik tinglashlarning ~60% ini qoplaydi">{`Faraz: kuniga ~1.5 soat = ~26 trek/kun, oyiga ~780 tinglash
+
+Taxminiy taqsimot (odatiy faol tinglovchi):
+  Sevimli ~150 trek (har biri oyiga ~3 marta):   ~450 tinglash (58%)
+  Boshqa ~330 trek (oyiga 1 martadan):            ~330 tinglash (42%)
+  Oyiga jami turli treklar: ~480
+
+Kesh kerak: 150 sevimli x 4.2 MB (160 kbit/s) = 630 MB
+  + so'nggi tinglanganlar zaxirasi                   -> ~1-2 GB
+
+Urish darajasi: sevimlilarning birinchi tinglashi bir marta tarmoqdan,
+  qolgan ~300 tasi keshdan -> 300 / 780 = ~38% faqat shu oyda;
+  sevimlilar oldingi oylardan keshda bo'lsa -> 450 / 780 = ~58%
+
+Solishtiring: YouTube'da bitta foydalanuvchi bir videoni qayta
+ko'rishi kamdan-kam — qurilma keshi deyarli foydasiz.`}</Calc>
+
+Hisobning oxirgi qatori ikki media platformaning eng katta farqi.
+Video — **bir martalik iste’mol** (yangiliklar, bloglar), va uning keshi
+**umumiy** bo‘lishi kerak (ko‘p odam bir videoni ko‘radi — YouTube’ning
+provayder ichidagi keshlari). Musiqa — **takroriy iste’mol**, va uning
+eng samarali keshi **shaxsiy**: har foydalanuvchining sevimlilari
+boshqacha, lekin har biri o‘zinikini o‘nlab marta tinglaydi.
+
+Bu farq tarmoq trafigining tuzilishini ham o‘zgartiradi. YouTube’da
+CDN urish darajasi hal qiluvchi — har bir o‘tkazib yuborish asosiy
+omborga yo‘l. Spotify’da CDN’ga kelgan so‘rovlarning o‘zi allaqachon
+“filtrlangan”: qayta tinglashlar qurilmada qolgan, CDN’ga asosan
+**birinchi** tinglashlar keladi — yangi relizlar, tavsiyalar, radio.
+
+### 7.2 Kesh siyosati: LRU va uning chegaralari
+
+| Kesh hajmi | Taxminiy urish darajasi | Izoh |
+| --- | --- | --- |
+| 250 MB | ~30% | Faqat eng sevimlilar |
+| 1 GB | ~50% | Odatiy standart |
+| 2–5 GB | ~55–65% | Qolgan tinglashlar ko‘pincha birinchi marta |
+| 10 GB+ | ~65–70% | Yangi narsalar keshlab bo‘lmaydi |
+
+Jadval taxminiy, lekin shakli xarakterli: **tez to‘yinish**. Keshni
+ikki barobar oshirish birinchi qadamlarda sezilarli foyda beradi,
+keyin esa deyarli hech narsa. Sabab — tinglashlarning ~40% i **yangi**
+treklar (tavsiyalar, yangi relizlar), va ularni hech qanday kesh
+oldindan bilmaydi. Bu 6.2-dagi bashoratli yuklashning vazifasi.
+
+Keshda **ikki turli** ob’ekt borligi ham muhim:
+
+**Kesh fayllari** — tizim o‘zi boshqaradi, LRU bilan chiqaradi,
+foydalanuvchi ko‘rmaydi.
+
+**Yuklab olinganlar** (oflayn) — foydalanuvchi aniq so‘ragan, tizim
+ularni **hech qachon** o‘z-o‘zidan chiqarmaydi.
+
+Ikkalasi bir xil diskda, lekin chiqarish siyosati turlicha. Keng
+tarqalgan xato — ularni bitta LRU’ga qo‘yish: foydalanuvchi samolyotga
+chiqishdan oldin yuklagan pleylist, bir necha kun tinglanmagani uchun,
+yangi keshlangan treklar tomonidan “chiqarib yuboriladi”.
+
+<Deep title="Kesh — bu shifrlangan baytlar, kalitlar esa alohida">
+Qurilma keshida fayllar 2-qadamdagi kabi **shifrlangan** holda saqlanadi.
+Kalitlar alohida, himoyalangan joyda (va ko‘pincha xotirada), qisqa
+muddat bilan.
+
+Nega faylni bir marta ochib, ochiq holda saqlab qo‘ymaslik? Ikki sabab.
+
+**Huquq.** Ochiq fayl — nusxalab tarqatish mumkin bo‘lgan MP3/Ogg.
+Litsenziya shartnomalari buni taqiqlaydi, va musiqa yorliqlari
+platformaning himoya choralarini tekshiradi.
+
+**Bekor qilish.** Trek katalogdan olib tashlanishi mumkin (huquq
+muddati tugadi, san’atkor o‘z asarini olib ketdi). Shifrlangan keshda
+bu bitta harakat: kalit berish to‘xtatiladi, va barcha qurilmalardagi
+nusxalar bir zumda foydasiz bo‘ladi — hech bir faylni o‘chirish kerak
+emas. Ochiq keshda esa har bir qurilmaga “bu faylni o‘chir” buyrug‘ini
+yetkazish kerak, va oflayn qurilma uni hech qachon olmasligi mumkin.
+
+Bu umumiy naqsh — **kriptografik o‘chirish** (crypto-shredding):
+ma’lumotni emas, kalitni yo‘q qilish. WhatsApp darsida xuddi shu g‘oya
+“o‘chib ketuvchi xabarlar” uchun uchragan edi, va S3 darsida ma’lumotni
+kafolatli o‘chirish uchun yana uchraydi.
+</Deep>
+
+### 7.3 Oflayn: tarmoqsiz litsenziya
+
+Oflayn rejimda ikkita muammo birlashadi: **huquqni tarmoqsiz tekshirish**
+va **hisobni kechiktirish**.
+
+<Calc title="Oflayn yuklash chegaralari" result="10 000 trek — ~42 GB (160 kbit/s) yoki ~84 GB (320 kbit/s)">{`Spotify cheklovi (taxminan): qurilma boshiga 10 000 trek, 5 ta qurilma
+
+  10 000 x 4.2 MB (160 kbit/s) = 42 GB
+  10 000 x 8.4 MB (320 kbit/s) = 84 GB
+  10 000 x ~23 MB (yo'qotishsiz) = 230 GB  <- ko'p telefonga sig'maydi
+
+Litsenziya: har qurilma ~30 kunda kamida bir marta onlayn bo'lishi kerak
+  Kalit muddati tugasa -> fayllar qoladi, lekin o'ynamaydi
+  Onlayn bo'lganda -> obuna tekshiriladi, kalitlar yangilanadi`}</Calc>
+
+10 000 trek chegarasi texnik emas, **shartnomaviy**: litsenziyalar
+qurilmadagi nusxalar sonini cheklaydi. 30 kunlik muddat esa ikki
+xavf orasidagi murosa: qisqa muddat (1 kun) sayohatchini jazolaydi,
+uzoq muddat (1 yil) esa obunani bekor qilgan foydalanuvchiga bir yil
+bepul musiqa beradi.
+
+Hisob tomoni yanada nozik. Oflayn tinglashlar qurilmada navbatda
+turadi (9-qadam) va faqat keyingi onlayn paytda yuboriladi. Ya’ni
+tinglashlar kitobi (10-qadam) **kechikkan** hodisalarni qabul qilishi
+kerak — ba’zan oy yopilgandan keyin. Bu 8.4-bo‘limning mavzusi.
+
+<Check q="Kesh urish darajasi 55% bo'lsa, nega CDN trafigi faqat ~2 barobar emas, balki undan ham ko'proq kamayishi mumkin?">
+Chunki kesh **o‘zi urgan so‘rovlarni** emas, balki eng **qimmat** trafikni
+ham kamaytiradi — va 55% ning ta’siri faqat sonda emas.
+
+Birinchidan, keshdan kelgan tinglashlar ko‘pincha **sevimli** treklar —
+foydalanuvchi ularni yuqori sifatda (320 kbit/s) tinglashni afzal ko‘radi.
+Ular keshda bo‘lgani uchun yuqori sifat tarmoqqa hech narsa qo‘shmaydi.
+
+Ikkinchidan, kesh **oldindan yuklash isrofini** ham kamaytiradi: navbatdagi
+trek keshda bo‘lsa, uni oldindan yuklashga hojat yo‘q (6.3).
+
+Uchinchidan — va eng muhimi — CDN’ga qolgan so‘rovlar **tarqoq emas**:
+yangi relizlar va tavsiyalar ko‘p foydalanuvchida bir xil (hamma yangi
+albomni bir haftada tinglaydi). Ya’ni qurilma keshi shaxsiy, qaytariladigan
+qismni oladi, CDN keshi esa umumiy, yangi qismni — ikkalasi ham o‘z
+qismida yuqori urish darajasiga ega. Qatlamli kesh har bir qatlam
+**o‘ziga xos** takrorlanishni ushlaganda eng samarali.
+</Check>
+
+## 8. Tinglashlarni hisoblash va royalti
+
+Bu bo‘lim darsning eng noodatiy qismi: muhandislik tizimi, uning
+chiqishi esa **pul**. Avval pul qayerdan kelib, qayerga ketishini
+tushunamiz — chunki tizimning har bir talabi shu oqimdan kelib chiqadi.
+
+### 8.1 Bitta tinglash qancha turadi
+
+<Calc title="Tinglash boshiga o'rtacha to'lov" result="~0.003 dollar — lekin bu o'rtacha; mamlakat va obuna turiga qarab bir necha barobar farq">{`Daromad (2024, taxminan):          ~16-17 mlrd dollar/yil
+Huquq egalariga to'lov (Spotify e'loni, 2024): ~10 mlrd dollar
+  -> daromadning ~60% dan ko'prog'i
+
+Tinglashlar: ~8.6 mlrd/kun x 365 = ~3.1 trln/yil (1.3)
+  10e9 / 3.1e12 = ~0.0032 dollar = ~0.32 sent
+
+San'atkor uchun:
+  1 M tinglash -> ~3 200 dollar (yorliq, noshir, distributor ulushi OLDIN)
+  Yorliq shartnomasi bo'yicha san'atkorga odatda 15-50% -> 500-1 600 dollar`}</Calc>
+
+“Bir tinglash — X sent” degan jumla aslida noto‘g‘ri, va bu farq
+tizim dizaynini belgilaydi. Spotify tinglash boshiga **narx to‘lamaydi**.
+U har oy har bir bozor (mamlakat, obuna turi) bo‘yicha **fond** hosil
+qiladi — daromadning kelishilgan ulushi — va fondni o‘sha bozordagi
+tinglashlar **ulushiga** qarab taqsimlaydi. “Tinglash narxi” — shunchaki
+fondni tinglashlar soniga bo‘lish natijasi.
+
+| Omil | Nima uchun tinglash “qiymati” o‘zgaradi |
+| --- | --- |
+| Mamlakat | Obuna narxi turlicha (masalan, Shveytsariyada Hindistondan bir necha barobar qimmat) |
+| Obuna turi | Premium obunachining tinglashi reklamali bepul tinglashdan qimmatroq fonddan |
+| Oy | Fond va tinglashlar soni har oy o‘zgaradi |
+| Umumiy tinglashlar | Hamma ko‘proq tinglasa, har bir tinglash **arzonlashadi** |
+
+Oxirgi qator eng qarama-qarshi: fond qat’iy, shuning uchun **boshqalarning**
+tinglashi sizning tinglashingiz qiymatini kamaytiradi. Bu keyingi
+bo‘limning — va firibgarlik muammosining (12-bo‘lim) — asosi.
+
+### 8.2 Pro-rata va foydalanuvchi-markazli model
+
+Fondni taqsimlashning ikki usuli bor, va ular bir xil ma’lumotdan turli
+natija beradi.
+
+<Calc title="Ikki foydalanuvchi, ikki model" result="Pro-rata: A san'atkori 13.86 dollar, B san'atkori 0.14. Foydalanuvchi-markazli: har biri 7 dollar">{`Bozor: 2 ta Premium obunachi, har biri 10 dollar/oy
+Fond (huquq egalari ulushi, soddalashtirib ~70%): 2 x 7 = 14 dollar
+
+Ali:   oyiga 1 000 tinglash, faqat X san'atkori (fonda 24/7 ijro)
+Vali:  oyiga    10 tinglash, faqat Y san'atkori (hafta oxiri tinglaydi)
+
+PRO-RATA (umumiy ulush):
+  Jami: 1 010 tinglash
+  X: 14 x 1 000 / 1 010 = 13.86 dollar
+  Y: 14 x    10 / 1 010 =  0.14 dollar
+  -> Valining 7 dollarining deyarli hammasi X ga ketdi
+
+FOYDALANUVCHI-MARKAZLI (har kimning puli o'z tinglaganiga):
+  Alining 7 dollari -> X: 7 dollar
+  Valining 7 dollari -> Y: 7 dollar`}</Calc>
+
+Hisob tijorat bahsi ko‘rinadi, lekin uning muhandislik tomoni ham bor.
+
+<Versus
+  left={{ title: "Pro-rata (bozor ulushi)", points: [
+    "Hisob: har (bozor, trek) uchun son, keyin bitta bo'lish",
+    "Agregat: ~100 M trek x ~180 bozor qatori",
+    "Foydalanuvchi darajasidagi ma'lumot hisobda kerak emas",
+    "Ko'p tinglaydiganlar (va botlar) boshqalarning pulini oladi",
+    "Tarixiy standart — ko'pchilik platformalarda",
+  ] }}
+  right={{ title: "Foydalanuvchi-markazli", points: [
+    "Hisob: har (foydalanuvchi, trek) uchun ulush",
+    "Agregat: ~600 M foydalanuvchi x o'rtacha ~500 trek qatori",
+    "Har foydalanuvchining obuna to'lovi va tinglashlari birlashtiriladi",
+    "Bot faqat o'z obunasining pulini 'o'g'irlay' oladi",
+    "Tajribada: Deezer 2023-yildan 'artist-centric' aralash modelni joriy qilgan",
+  ] }}
+/>
+
+<Calc title="Ikki modelning hisob hajmi" result="Pro-rata ~20 mlrd qator bilan; foydalanuvchi-markazli ~300 mlrd qator — ~15 barobar katta join">{`Oyiga tinglashlar: ~260 mlrd (8.6 mlrd x 30)
+
+PRO-RATA:
+  GROUP BY (bozor, trek): 260 mlrd hodisa -> ~20 mlrd qatordan kam
+    (ko'p trek ko'p bozorda tinglanmaydi)
+  Keyin: har bozor fondi / bozor jami -> kichik jadval bilan join
+
+FOYDALANUVCHI-MARKAZLI:
+  GROUP BY (foydalanuvchi, trek): 260 mlrd -> ~300 mlrd qator
+    (600 M x ~500 turli trek/oy)
+  + har foydalanuvchining to'lovi, chegirmasi, oila rejasi ulushi
+  + har foydalanuvchi uchun ulushlarni normallashtirish
+  Keyin trek bo'yicha qayta yig'ish
+
+Ikkalasi ham paketli ishlov uchun oddiy — lekin ikkinchisi foydalanuvchi
+darajasidagi to'lov ma'lumotini royalti tizimiga olib kiradi (maxfiylik!).`}</Calc>
+
+Muhandislik xulosasi: foydalanuvchi-markazli model **imkonsiz emas**,
+lekin tizim chegarasini o‘zgartiradi. Pro-rata’da royalti tizimi faqat
+anonim agregatlarni ko‘radi; foydalanuvchi-markazlida esa har bir
+obunachining to‘lov tarixi va tinglashlari birlashtiriladi — bu
+maxfiylik talablari, auditorlarga beriladigan ma’lumot va xato narxini
+o‘zgartiradi.
+
+### 8.3 Qoidalar: tinglash qachon “hisoblanadi”
+
+Xom hodisadan hisoblanadigan tinglashgacha bir nechta qoida bor, va
+har biri kodda filtr.
+
+| Qoida | Qiymat | Maqsad |
+| --- | --- | --- |
+| Minimal davomiylik | 30 soniya | “Istamayman” o‘tkazishlarni chiqarish (6.3 Deep) |
+| Minimal yillik tinglashlar (2024-yildan) | Trek oxirgi 12 oyda ≥ 1 000 | Mayda to‘lovlarni yo‘qotish, spamga qarshi |
+| Shovqin/tabiat treklari (2024-yildan) | Minimal uzunlik ~2 daqiqa | 31 soniyalik treklarga bo‘lib yuborishga qarshi |
+| Sun’iy tinglashlar | Yorliq yoki distributorga jarima | Bot xizmatlarini sotib olishni qimmatlashtirish |
+
+<Calc title="1 000 tinglash chegarasining ta'siri" result="Treklarning katta qismi chegaradan past, lekin ular tinglashlarning ~0.5% i">{`Spotify e'loni (2023): ~99.5% tinglashlar yiliga 1 000 dan ko'p
+tinglangan treklarga to'g'ri keladi.
+
+Chegaradan pastdagi trek: yiliga < 1 000 tinglash
+  < 1 000 x 0.0032 = < 3.2 dollar/yil
+  Distributor va bank to'lovi ko'pincha bundan qimmat (to'lov
+  hech qachon san'atkorga yetib bormagan)
+
+Pastdagi treklarning jami ulushi: ~0.5% x 10 mlrd = ~50 M dollar/yil
+  -> endi chegaradan yuqoridagi treklar o'rtasida taqsimlanadi`}</Calc>
+
+Bu qoidalarning har biri arxitekturada iz qoldiradi. 30 soniya qoidasi
+— pleyer `ms_played` ni aniq o‘lchashi kerak (pauzalar, sakrashlar
+hisobga olinadi). 1 000 chegarasi — trekning **yillik** tinglashlarini
+bilish kerak, ya’ni oylik hisob o‘tgan 11 oyning ma’lumotiga bog‘liq
+(oylik hisobni mustaqil qayta ishlash endi mumkin emas). Shovqin
+treklarining minimal uzunligi — metama’lumotda trek turi (tasnif —
+ko‘pincha model bilan).
+
+<Callout type="ogoh" title="Qoida o'zgarsa, eski oylar nima bo'ladi?">
+Qoidalar vaqt o‘tishi bilan o‘zgaradi (2024-yildagi o‘zgarishlar
+yaxshi misol). Tinglashlar kitobi shuning uchun **qaysi qoidalar
+versiyasi** bilan hisoblanganini saqlashi kerak. Mart oyining hisoboti
+har doim mart oyidagi qoidalar bilan qayta tiklanishi kerak — hatto
+kod bugun boshqacha bo‘lsa ham. Amalda bu qoidalar kodini versiyalash
+va har bir hisobotga versiya raqamini yozish demakdir. Aks holda
+auditor “nega mart raqami o‘zgardi?” deb so‘raganda javob yo‘q.
+</Callout>
+
+### 8.4 Hodisalar quvuri va kechikkan hodisalar
+
+<Flow nodes={["Pleyer navbati (diskda)", "Kirish shlyuzi", "Hodisalar shinasi", "Xom jurnal (soatlik bo'limlar)", "Dedublikatsiya + qoidalar", "Tinglashlar kitobi", "Oylik hisobot"]} caption="Har bosqich keyingisiga faqat qo'shadi; hech bir bosqich xom yozuvni o'zgartirmaydi" />
+
+Spotify o‘z hodisalar yetkazish tizimini 2016-yilda texnik blogida
+batafsil tasvirlagan: dastlab Kafka asosida, keyin Google Cloud
+Pub/Sub’ga ko‘chirilgan, xom hodisalar esa soatlik bo‘limlarga yoziladi.
+Asosiy talab — **hech bir hodisa yo‘qolmasligi**, hatto ma’lumot
+markazi o‘chsa ham.
+
+Soatlik bo‘limlar bitta nozik savol tug‘diradi: bo‘lim **qachon yopiladi**?
+“08:00–09:00” bo‘limini qayta ishlash uchun shu soatga tegishli barcha
+hodisalar kelgan bo‘lishi kerak. Lekin oflayn qurilma bu soatdagi
+hodisani bir hafta keyin yuborishi mumkin.
+
+<Calc title="Kechikkan hodisalar qancha" result="Hodisalarning ~98% i bir soat ichida; ~0.05% i bir haftadan keyin — lekin bu ~4 M tinglash/kun">{`Faraz (taxminiy taqsimot):
+  Onlayn tinglashlar (~95%): soniyalar ichida yetadi
+  Oflayn tinglashlar (~5%):  keyingi onlayn paytda
+    ~60% bir soat ichida (metro, qisqa uzilish)
+    ~35% bir kun ichida (samolyot, kechasi)
+    ~4% bir hafta ichida
+    ~1% bir haftadan keyin (sayohat, uzoq oflayn)
+
+Bir soatdan keyin kelganlar: 5% x 40% = 2%
+Bir haftadan keyin:          5% x 1%  = 0.05%
+
+8.6 mlrd tinglash/kun x 0.05% = ~4.3 M tinglash/kun
+Oylik qiymati: 4.3 M x 30 x 0.0032 = ~410 000 dollar — e'tiborsiz qoldirib bo'lmaydi`}</Calc>
+
+Yechim — ikki xil vaqtni ajratish, va oylik hisobni **qayta ochiladigan**
+qilish:
+
+```
+event_time      — tinglash haqiqatan qachon bo'lgan (mijoz soati)
+arrival_time    — hodisa serverga qachon kelgan
+
+Xom jurnal arrival_time bo'yicha yoziladi (faqat qo'shish, hech qachon
+eski bo'limga yozilmaydi — u allaqachon qayta ishlangan bo'lishi mumkin).
+
+Oylik hisob (masalan, mart):
+  1. Mart yopilishi: aprel 5 da, event_time martga tegishli barcha
+     hodisalar bo'yicha -> hisobot v1
+  2. Aprel 5 dan keyin kelgan mart hodisalari -> "tuzatish" to'plami
+  3. Keyingi oy hisobotida: "mart tuzatishi: +X tinglash" qatori
+```
+
+Bu klassik buxgalteriya: **yopilgan davr o‘zgartirilmaydi, tuzatish
+keyingi davrga yoziladi**. Ma’lumot muhandisligida bu “voqea vaqti va
+qayta ishlash vaqti” muammosi deb ataladi, va oqimli tizimlardagi
+“watermark” tushunchasi aynan shu savolga javob beradi: “bu vaqtgacha
+bo‘lgan hodisalar deyarli hammasi keldi” degan taxmin.
+
+Mijoz soati yana bir muammo: telefon soati noto‘g‘ri bo‘lishi mumkin
+(yoki ataylab o‘zgartirilgan). Shuning uchun hodisada ikkala vaqt ham
+yoziladi, va mijoz soati server soatidan juda farq qilsa, hodisa
+tuzatiladi yoki shubhali deb belgilanadi.
+
+<Deep title="'Aynan bir marta' — bu kafolat emas, bu natija">
+Tarqoq tizimlarda “aynan bir marta yetkazish” (exactly-once delivery)
+degan so‘z tez-tez uchraydi. Tarmoqda bu **imkonsiz**: yuboruvchi
+tasdiq olmasa, qabul qiluvchi xabarni olganmi yoki yo‘qmi — bila
+olmaydi. Qayta yuborsa — dublikat xavfi; yubormasa — yo‘qotish xavfi.
+
+Amalda qilinadigan narsa: **kamida bir marta yetkazish + idempotent
+qayta ishlash = aynan bir marta natija**. Hodisa ko‘p marta kelishi
+mumkin, lekin kitobga bir marta ta’sir qiladi.
+
+```
+Dedublikatsiya oynasi qancha katta?
+
+Faraz: 8.6 mlrd tinglash/kun, event_id = 16 bayt
+  Bir kunlik ID'lar:   8.6e9 x 16 = 138 GB
+  30 kunlik oyna:      ~4.1 TB     <- xotirada ushlash qimmat
+
+Bloom filtri (1% yolg'on musbat, ~9.6 bit/element):
+  30 kun: 8.6e9 x 30 x 9.6 / 8 = ~310 GB
+  Lekin 1% yolg'on musbat = haqiqiy hodisalarning 1% i "dublikat"
+  deb tashlanadi — 4.4-dagi hisobda bu ~100 M dollar/yil!
+
+Paketli yechim: bo'lim ichida event_id bo'yicha GROUP BY
+  Aniq, arzon (saralash) — lekin faqat bitta ishlov ichida
+```
+
+Oxirgi qatorlar muhim tanlovni ko‘rsatadi. Onlayn tizimlarda (kesh,
+hisoblagich) Bloom filtri ajoyib — 1% xato hech narsa emas. Buxgalteriyada
+esa 1% xato — yuz million dollar. Shuning uchun tinglashlar kitobi
+**aniq** dedublikatsiya qiladi, paketli ishlovda saralash orqali: kechikkan
+hodisa kelsa, u o‘sha **event_time** oynasidagi barcha ID’lar bilan
+solishtiriladi (8.4-dagi tuzatish to‘plami).
+
+Bu Reddit darsidagi ovozlar hisobi bilan tub farq: u yerda taxminiy
+hisoblagich yetarli edi. Bir xil texnika (Bloom filtri) bir tizimda
+to‘g‘ri, boshqasida xato — va farqni faqat **xatoning narxi** belgilaydi.
+</Deep>
+
+<Check q="Tinglashlar kitobi nega real vaqtdagi hisoblagich (masalan, Redis INCR) ustiga qurilmaydi, garchi bu ancha oddiy bo'lsa ham?">
+Chunki hisoblagich **natijani** saqlaydi, kitob esa **dalilni**.
+To‘rtta talab faqat dalil bilan bajariladi.
+
+**Qayta hisoblash.** Firibgarlik filtri yaxshilandi — o‘tgan oyni yangi
+filtr bilan qayta hisoblash kerak. Hisoblagichda faqat son bor; qaysi
+tinglashlar bot edi — bilib bo‘lmaydi.
+
+**Audit.** Yorliq “nega mening trekim 1.2 M emas, 1.1 M?” deb so‘raydi.
+Javob — tinglashlar ro‘yxati va qaysi qoida qaysilarini chiqarganini
+ko‘rsatish. Hisoblagich faqat “1.1 M” deydi.
+
+**Kechikkan hodisalar.** Oflayn tinglash bir hafta keyin keldi — u qaysi
+oyga tegishli? Hisoblagich faqat “hozir” ni biladi.
+
+**Dublikatlar.** INCR idempotent emas: qayta yuborilgan hodisa ikki
+marta qo‘shiladi. Dedublikatsiya uchun ID’larni saqlash kerak — ya’ni
+baribir hodisalarni saqlash kerak.
+
+Real vaqtdagi hisoblagich baribir foydali — san’atkor ilovasidagi
+“bugun ~12 000 tinglash” uchun. Lekin u **ko‘rsatish** uchun, pul
+uchun emas. Ikki tizim, ikki aniqlik darajasi — Reddit darsidagi
+“ko‘rsatish uchun hisoblagich, haqiqat uchun jurnal” naqshining
+qat’iy ko‘rinishi.
+</Check>
+
+## 9. Tavsiyalar: yuz million trekdan o‘ttiztasi
+
+Spotify’da tavsiya — qo‘shimcha xususiyat emas, balki tinglashning
+katta qismi manbai: haftalik pleylistlar, radio, “keyingi trek”,
+bosh sahifa. Va 6-bo‘limda ko‘rganimizdek, bashorat aniqligi yetkazish
+narxiga ham ta’sir qiladi. Bu bo‘lim 11–14-qadamlarning ichiga kiradi.
+
+### 9.1 Yashirin signal: tinglash — “yoqdi” emas
+
+Klassik tavsiya tizimlari (masalan, kino reytingi) **aniq** baholar bilan
+ishlaydi: foydalanuvchi 1 dan 5 gacha baho berdi. Spotify’da aniq baho
+deyarli yo‘q; bor narsa — **xulq-atvor**: tingladi, o‘tkazdi, saqladi,
+pleylistga qo‘shdi, qayta tingladi.
+
+| Signal | Kuchi | Yo‘nalish | Muammo |
+| --- | --- | --- | --- |
+| Tinglash (30 s+) | O‘rta | + | Fonda o‘ynagan bo‘lishi mumkin |
+| Ko‘p marta qayta tinglash | Kuchli | + | — |
+| Kutubxonaga saqlash | Kuchli | + | Kam uchraydi |
+| Pleylistga qo‘shish | Juda kuchli | + | Kam uchraydi |
+| 5 soniyada o‘tkazish | Kuchli | − | Kayfiyat, kontekst |
+| Hech qachon tinglamagan | Noma’lum | ? | Bilmaydimi yoki yoqmaydimi? |
+
+Oxirgi qator yashirin signalning asosiy qiyinchiligi: **nol — javob
+emas**. Foydalanuvchi trekni tinglamagan bo‘lsa, bu uni yoqtirmaganini
+emas, ko‘pincha shunchaki **bilmasligini** bildiradi. Aniq baholarda
+bo‘sh katak “noma’lum” deb tashlab yuboriladi; yashirin signalda esa
+har bir bo‘sh katak zaif salbiy signal sifatida hisobga olinadi, lekin
+past **ishonch** bilan.
+
+2008-yildagi Hu, Koren va Volinsky maqolasi aynan shu g‘oyani
+rasmiylashtirgan:
+
+```
+r(u,i) = foydalanuvchi u trek i ni necha marta tingladi
+
+Afzallik:  p(u,i) = 1, agar r > 0, aks holda 0
+Ishonch:   c(u,i) = 1 + alfa * r(u,i)      (alfa ~ 10-40)
+
+Maqsad: barcha (u,i) juftliklari bo'yicha, NOLLAR HAM:
+  minimallashtir  SUM c(u,i) * (p(u,i) - x_u . y_i)^2  + regulyarizatsiya
+
+  x_u — foydalanuvchi vektori (k son), y_i — trek vektori (k son)
+```
+
+Nozik joy: yig‘indi **barcha** 6e16 juftlik bo‘yicha (11-qadam) — nollar
+ham. To‘g‘ridan-to‘g‘ri hisoblash imkonsiz. Maqoladagi hiyla: nollar
+uchun ishonch bir xil (c = 1), shuning uchun ularning hissasi bitta
+k×k matritsaga (barcha trek vektorlari yig‘indisiga) siqiladi, va har
+iteratsiyada faqat **nol bo‘lmagan** kataklar ko‘riladi.
+
+<Calc title="Bitta haftalik o'qitish" result="Iteratsiya ~1.2e16 amal, 10 iteratsiya ~700 yadro-soat — bir necha soatda klasterda">{`Usul: almashinuvchi eng kichik kvadratlar (ALS)
+  Treklar qotirilgan -> har foydalanuvchi uchun k x k tenglama yechiladi
+  Foydalanuvchilar qotirilgan -> har trek uchun
+  Navbatma-navbat, ~10 iteratsiya
+
+Bitta iteratsiya:
+  Nol bo'lmagan juftliklar: 1.2e12 (11-qadam)
+  Har biri uchun k^2 = 10 000 amal -> 1.2e16
+  Tenglamalarni yechish: (600 M + 100 M) x k^3 = 7e8 x 1e6 = 7e14 (kichik)
+
+10 iteratsiya: ~1.2e17 amal
+  Yadro ~50 GFLOP/s (SIMD, amaliy): 1.2e17 / 5e10 = 2.4e6 yadro-soniya
+  = ~670 yadro-soat -> 1 000 yadroda ~40 daqiqa (+ ma'lumot ko'chirish)`}</Calc>
+
+Hisob ko‘rsatadiki, butun foydalanuvchilar bazasi uchun modelni **har
+hafta noldan** o‘qitish mumkin — bu YouTube’dagi bitta mashhur videoni
+AV1 ga kodlashdan ham kamroq resurs. Qimmat qism o‘qitish emas, balki
+**ma’lumot**: 1.2 trillion juftlikni har hafta xom hodisalardan yig‘ish
+(9-qadamdagi petabaytlab jurnal).
+
+### 9.2 Yaqin qo‘shnilarni tez topish
+
+12-qadamdagi Annoy qanday ishlaydi? G‘oya oddiy: fazoni **tasodifiy
+tekisliklar** bilan qayta-qayta ikkiga bo‘lish.
+
+```
+Daraxt qurish (bir marta):
+  1. Tasodifiy ikki nuqtani tanla, ularning o'rtasidan tekislik o'tkaz
+  2. Barcha nuqtalarni "chap" va "o'ng" ga ajrat
+  3. Har tomonda takrorla, bargda ~100 nuqta qolguncha
+
+Qidiruv (so'rov vektori q):
+  Ildizdan tush: har tugunda q tekislikning qaysi tomonida?
+  Bargdagi ~100 nuqta — nomzodlar
+  Muammo: eng yaqin qo'shni tekislikning NARIGI tomonida bo'lishi mumkin
+  Yechim: ko'p (masalan, 50) mustaqil daraxt + chegaraga yaqin
+          tomonlarni ham tekshirish (ustuvorlik navbati)
+```
+
+<Calc title="Annoy indeksi: o'lcham va qidiruv" result="Daraxt chuqurligi ~20, har so'rov ~5 000-10 000 nomzod, indeks ~45-60 GB">{`N = 100 M trek, bargda ~100 nuqta
+  Chuqurlik: log2(100e6 / 100) = log2(1e6) = ~20 daraja
+
+Bitta daraxt: ~1 M barg, ~1 M ichki tugun (har biri tekislik: k son)
+  Ichki tugunlar: 1e6 x 100 x 4 bayt = 400 MB
+50 daraxt: ~20 GB + vektorlarning o'zi 40 GB (11-qadam) = ~60 GB
+  (Annoy bargda vektorni emas, ID ni saqlaydi; aniq hajm sozlamaga bog'liq)
+
+Qidiruv: 50 daraxt x ~100-200 nomzod = 5 000-10 000 nomzod
+  Har biri bilan aniq masofa: 10 000 x 100 = 1e6 amal -> ~1 ms
+  (to'liq qidiruvdan 10 000 barobar kam amal)`}</Calc>
+
+Annoy’ning muhim amaliy xususiyati — indeks **faylga yoziladi va
+xotiraga “mmap” qilinadi**. Ya’ni bitta serverda o‘nlab jarayon bir
+xil indeksni ko‘chirmasdan bo‘lishadi, va yangi indeks shunchaki yangi
+fayl sifatida tarqatiladi. Bu 13-qadamdagi haftalik paketli jarayonga
+mos keladi: indeks bir marta quriladi, minglab serverga nusxalanadi.
+
+Keyinchalik soha **graflarga** asoslangan usullarga (HNSW) o‘tdi:
+har nuqta o‘zining yaqin qo‘shnilariga bog‘langan, va qidiruv graf
+bo‘ylab “ochko‘z” yurish. Ular bir xil aniqlikda odatda tezroq.
+Spotify’ning 2023-yildagi Voyager kutubxonasi shu turdagi.
+
+### 9.3 Ikki bosqich: nomzodlar va tartiblash
+
+Vektorlar orasidagi masofa yaxshi **birinchi filtr**, lekin yakuniy
+tanlov uchun yetarli emas. Haqiqiy tizim YouTube darsidagi tavsiyalar kabi
+ikki bosqichli (YouTube, 9-bo‘lim).
+
+```
+1. NOMZODLAR (bir necha manba, har biri ~100-500 ta):
+   - ANN: foydalanuvchi vektoriga yaqin treklar
+   - Pleylistlarda birga uchraydigan treklar (inson tanlovi!)
+   - Sevimli ijrochilarning yangi relizlari
+   - Audio model bo'yicha yangi treklar (14-qadam)
+
+2. FILTRLASH:
+   - Allaqachon tinglangan (Discover Weekly uchun: HECH QACHON)
+   - Yoqtirmaslik belgisi qo'yilgan ijrochilar
+   - Mintaqada litsenziyasi yo'q treklar
+
+3. TARTIBLASH (katta model, ko'p belgi):
+   - Kontekst: kun vaqti, qurilma, oxirgi tinglashlar
+   - Trek: mashhurlik, yangilik, o'tkazish darajasi
+   - Xilma-xillik: bitta ijrochidan ko'pi bilan 1-2 ta
+```
+
+Ikkinchi nomzod manbai — **pleylistlarda birga uchrash** — alohida
+e’tiborga loyiq. Foydalanuvchilar yaratgan yuz millionlab pleylist —
+insonlar tomonidan qo‘lda tuzilgan “bu treklar bir-biriga mos” degan
+signal. Discover Weekly tavsiflarida aynan shu signal markaziy o‘rinda:
+tizim sizning sevimli treklaringiz qaysi pleylistlarda uchrashini va
+o‘sha pleylistlarda yana nima borligini ko‘radi.
+
+<Versus
+  left={{ title: "Oldindan hisoblangan (paketli)", points: [
+    "Discover Weekly, Release Radar, kunlik mikslar",
+    "Haftada/kunda bir marta, hammaga",
+    "So'rov paytida: bitta kalit o'qish (~1 ms)",
+    "Katta modellar va ko'p manba — vaqt cheklovi yo'q",
+    "Bugungi sessiya kontekstini bilmaydi",
+  ] }}
+  right={{ title: "So'rov paytida (onlayn)", points: [
+    "Radio, avtomatik davom ('autoplay'), qidiruv",
+    "Har so'rovda, faqat so'raganga",
+    "Kechikish byudjeti: ~50-100 ms",
+    "Tartiblash modeli kichikroq, nomzodlar oldindan tayyor",
+    "Oxirgi daqiqalardagi o'tkazishlarni hisobga oladi",
+  ] }}
+/>
+
+Ikki usul raqobatdosh emas, **qatlamlar**: og‘ir ish (vektorlar,
+indekslar, nomzodlar ro‘yxati) paketli ravishda oldindan qilinadi,
+yengil ish (kontekst bo‘yicha qayta tartiblash) so‘rov paytida. Bu
+YouTube darsidagi “bir marta to‘lab, ko‘p marta foydalanish” naqshining
+tavsiyalardagi ko‘rinishi.
+
+### 9.4 Sovuq start va o‘rganish
+
+Uch xil “sovuq” holat bor, va har birining yechimi boshqa.
+
+**Yangi trek** — 14-qadamdagi audio model: vektorni tinglashlarsiz
+bashorat qilish.
+
+**Yangi foydalanuvchi** — hali tinglash tarixi yo‘q. Ro‘yxatdan
+o‘tishda bir nechta sevimli ijrochini tanlash so‘raladi: ularning
+vektorlari o‘rtachasi — boshlang‘ich foydalanuvchi vektori. Birinchi
+kunlardagi har bir tinglash uni tez aniqlashtiradi.
+
+**Yangi tavsiya turi yoki bo‘lim** — bosh sahifada qaysi “javon”
+(masalan, “Siz uchun yangi relizlar”, “Ertalabki kayfiyat”) qayerda
+turishi kerak? Bu yerda **o‘rganish va foydalanish** muvozanati
+kerak: faqat hozir eng yaxshi ishlayotganini ko‘rsatsangiz, boshqa
+variantlar haqida hech qachon ma’lumot to‘plamaysiz. Spotify 2018-yilda
+bosh sahifa uchun “ko‘p qo‘lli bandit” yondashuvini (BaRT) tasvirlagan:
+vaqtning kichik qismida tasodifiy variant ko‘rsatiladi, va natija
+modelni yangilaydi.
+
+<Deep title="Tavsiya tizimining o'z-o'zini kuchaytirish halqasi">
+Tavsiya tizimi o‘z o‘qitish ma’lumotini **o‘zi yaratadi**. Bu jiddiy
+muammoga olib keladi.
+
+```
+Hafta 1: model trek A ni ko'p tavsiya qiladi (u mashhur)
+         -> A ko'p tinglanadi
+Hafta 2: model yangi ma'lumotda o'qitiladi: A yanada mashhur
+         -> A yanada ko'p tavsiya qilinadi
+Hafta N: katalogning kichik qismi tavsiyalarning katta qismini oladi
+```
+
+Bu **mashhurlik egriligi** (popularity bias). Oqibatlari ikki tomonlama:
+foydalanuvchi uchun tavsiyalar bir xillashadi (“hamma bir xil 50
+qo‘shiqni eshitadi”), san’atkorlar uchun esa uzun dum (7-bo‘lim
+YouTube’da) yanada “uzun” bo‘ladi — yangi san’atkorlar ko‘rinmaydi.
+
+Yumshatish usullari:
+
+**Ta’sir ehtimolini hisobga olish.** Trek tavsiya qilingani **uchun**
+tinglangan bo‘lsa, bu signal kamroq og‘irlik bilan olinadi. Buning
+uchun har tinglash hodisasida uning **manbai** (context: tavsiya,
+qidiruv, o‘z pleylisti) yozilishi kerak — 9-qadamdagi hodisada
+`context` maydoni aynan shuning uchun.
+
+**Majburiy xilma-xillik.** Tartiblashda bitta ijrochidan yoki bitta
+mashhurlik darajasidan ko‘pi bilan N ta trek.
+
+**O‘rganish.** Tavsiyalarning kichik qismini ataylab kam ma’lum
+treklarga berish (9.4 — bandit).
+
+Arxitektura saboqi: **hodisani yozganda uning sababini ham yozing.**
+“Trek tinglandi” — bir fakt; “trek tavsiyadan keyin tinglandi” —
+boshqa fakt. Keyin ularni ajratib bo‘lmaydi.
+</Deep>
+
+<Check q="Nega Discover Weekly'da allaqachon tinglangan trekni ko'rsatish 'xato', radio'da esa normal?">
+Chunki ikki mahsulot **turli vazifani** bajaradi, va vazifa filtr
+qoidasini belgilaydi.
+
+**Discover Weekly** — kashfiyot. Uning qiymati “siz bilmagan, lekin
+yoqadigan”. Allaqachon tinglangan trek bu vazifada nol qiymat: siz uni
+bilasiz. Shuning uchun filtr qat’iy — foydalanuvchining **butun**
+tinglash tarixi bo‘yicha. Texnik jihatdan bu og‘ir: har foydalanuvchi
+uchun minglab trek ID’si to‘plami va nomzodlarni u bilan kesishtirish —
+paketli ishlovda oson, so‘rov paytida qimmat. Bu yana bir sabab nega
+Discover Weekly oldindan hisoblanadi.
+
+**Radio** — kayfiyatni davom ettirish. Uning qiymati “shu kabi yana”.
+Tanish trek bu yerda **ijobiy**: u kayfiyatni mustahkamlaydi. Filtr
+yumshoq — faqat “oxirgi soatda eshitilgan” (takrorlanishni oldini olish).
+
+Umumiy dars: tavsiya tizimida “to‘g‘ri” javob mahsulotdan tashqarida
+yo‘q. Bir xil model, bir xil vektorlar — lekin filtr va tartiblash
+qoidalari mahsulot vazifasidan kelib chiqadi. Shuning uchun arxitektura
+nomzodlar va vektorlarni **umumiy**, filtrlar va tartiblashni esa
+**mahsulotga xos** qiladi.
+</Check>
+
+## 10. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Mijoz", boxes: ["Pleyer va dekoder", "Oldindan yuklash", "Shifrlangan kesh", "Oflayn kalitlar", "Hodisalar navbati (diskda)"], note: "Tizimning eng aqlli qismi: bashorat, kesh va hisobning birinchi bo'g'ini shu yerda." },
+    { name: "Chekka", boxes: ["CDN (shifrlangan audio)", "Kirish shlyuzlari"], note: "Audio baytlari hech qachon ilova serverlaridan o'tmaydi." },
+    { name: "Boshqaruv tekisligi", boxes: ["Metama'lumot", "Kalit xizmati", "Pleylistlar", "Qurilmalar holati (Connect)", "Qidiruv"], note: "Kilobaytlar, lekin har bir tinglashning 'ruxsat' qismi." },
+    { name: "Hodisalar", boxes: ["Hodisalar shinasi", "Xom jurnal (soatlik)", "Dedublikatsiya va qoidalar", "Tinglashlar kitobi"], note: "Faqat qo'shiladi; hech narsa o'zgartirilmaydi." },
+    { name: "Paketli hisob", boxes: ["Royalti hisoboti", "Firibgarlik modellari", "Faktorizatsiya (ALS)", "ANN indekslari", "Haftalik pleylistlar"], note: "Og'ir ish oldindan — natija kalit-qiymat omboriga." },
+    { name: "Qabul qilish", boxes: ["Distributorlardan yuklash", "Kodlash (barcha darajalar)", "Balandlik o'lchovi", "Audio model vektori"], note: "Kuniga ~100 000 trek, ~10 yadro (1.3)." },
+  ]}
+/>
+
+Diagrammaning YouTube’dagidan eng katta farqi — **birinchi qatlam**.
+YouTube’da mijoz asosan ABR qarorini qilgan; bu yerda mijoz tizimning
+to‘rtta asosiy vazifasida ishtirok etadi: bashorat (oldindan yuklash),
+saqlash (kesh, oflayn), huquq (kalitlarni boshqarish) va hisob
+(hodisalarni yaratish va yo‘qotmaslik). Musiqa ilovasi — “yupqa
+mijoz” emas, balki **tarqoq tizimning to‘laqonli tuguni**.
+
+Ikkinchi farq — **to‘rtinchi va beshinchi qatlamlar** hajmi. YouTube’da
+eng katta infratuzilma chekkada (keshlar) va qayta ishlashda (transkodlash)
+edi. Bu yerda eng katta ma’lumot hajmi hodisalar jurnalida (9-qadam:
+yiliga ~1 PB, katalogdan kattaroq), eng ko‘p hisoblash esa paketli
+ishlovda (royalti, tavsiyalar). Qabul qilish qatlami — ~10 yadro — deyarli
+ko‘rinmas.
+
+<Callout type="ogoh" title="Millionlab mijoz — o'nlab versiya">
+Kuchli mijozning yashirin narxi: dunyoda bir vaqtda ilovaning o‘nlab
+versiyasi ishlaydi — yangilanmagan telefonlar, aqlli karnaylar,
+avtomobil tizimlari (ular yillar davomida yangilanmasligi mumkin).
+Har bir versiya o‘z formatida hodisa yuboradi va o‘z protokolida
+so‘raydi. Shuning uchun hodisalar sxemasi **faqat kengaytiriladi**
+(yangi maydon qo‘shish mumkin, eskisini o‘zgartirish yoki o‘chirish
+mumkin emas), va har hodisada mijoz versiyasi yoziladi. Aks holda
+eski karnaydan kelgan tinglashlar bir kun jimgina hisobdan tushib
+qoladi — va buni 15.2-dagi ketma-ketlik raqamlari ham ko‘rsatmaydi,
+chunki hodisalar yetib kelgan, faqat noto‘g‘ri o‘qilgan.
+</Callout>
+
+<Flow nodes={["Distributor yuklaydi", "Kodlash + balandlik + audio vektor", "CDN va katalog", "Tinglash hodisasi", "Tinglashlar kitobi", "Royalti hisoboti", "Distributor to'lov oladi"]} caption="Trekning hayot aylanasi: yuklashdan to'lovgacha — halqa yopiladi" />
+
+<Timeline
+  rows={[
+    { when: "2008", what: "Ishga tushish: desktop, P2P, doimiy ulanish", why: "CDN qimmat, foydalanuvchilar desktopda. Median boshlanish ~265 ms (2010 o'lchovi)." },
+    { when: "2009-2013", what: "Mobil ilovalar va oflayn rejim", why: "Tinglash telefonga ko'chadi. Muddatli kalitlar, kechikkan hodisalar muammosi paydo bo'ladi." },
+    { when: "2013", what: "Annoy ochiq kodga chiqadi", why: "Vektorli tavsiyalar va tez qo'shni qidiruvi — 12-qadam." },
+    { when: "2014", what: "Echo Nest sotib olinadi; P2P'dan voz kechiladi", why: "Musiqa tahlili jamoasi keladi. CDN arzonlashgan, mobil ustun (5-qadam Deep)." },
+    { when: "2015", what: "Discover Weekly", why: "Oldindan hisoblangan shaxsiy pleylist — tavsiyalar mahsulot markaziga chiqadi." },
+    { when: "2016-2018", what: "O'z ma'lumot markazlaridan Google Cloud'ga ko'chish", why: "Hodisalar quvuri Kafka'dan Pub/Sub'ga; paketli ishlov bulutda." },
+    { when: "2024", what: "Royalti qoidalari o'zgaradi: 1 000 tinglash chegarasi", why: "Mayda to'lovlar va spam treklarga qarshi (8.3)." },
+    { when: "2025", what: "Yo'qotishsiz (FLAC) sifat", why: "Trafikning bir qismi ~6 barobar og'irlashadi — lekin faqat tanlaganlar uchun." },
+  ]}
+/>
+
+Tarix bitta tendensiyani ko‘rsatadi: **yetkazish muammolari soddalashgan,
+ma’lumot muammolari murakkablashgan**. 2008-yilda eng qiyin narsa
+tovushni tez va arzon yetkazish edi (P2P, maxsus protokol). Bugun bu
+standart vositalar bilan hal bo‘ladi (CDN, HTTP/3). Qiyinlik esa
+hodisalarga, tavsiyalarga va hisobga ko‘chgan.
+
+<Deep title="Spotify Connect: pleyer qayerda, boshqaruv qayerda">
+Telefonda “Qurilmalar” tugmasini bosib, ijroni kompyuter yoki aqlli
+karnayga o‘tkazish mumkin; telefon esa pult bo‘lib qoladi. Bu oddiy
+ko‘rinadi, lekin arxitekturada qiziq ajratishni talab qiladi.
+
+**Ijro holati** — qaysi trek, qaysi pozitsiya, navbat, ovoz — endi
+bitta qurilmaga tegishli emas. U **serverda** foydalanuvchining
+“sessiya holati” sifatida saqlanadi, va barcha qurilmalar unga obuna:
+
+```
+Holat (serverda, foydalanuvchi boshiga bitta):
+  { faol_qurilma: "karnay-7", trek: "t456", pozitsiya_ms: 81200,
+    pozitsiya_vaqti: 1709280723000, navbat: [...], versiya: 118 }
+
+Telefon: "pauza" -> server: versiya 119, holat yangilanadi
+         -> barcha qurilmalarga push (doimiy ulanish orqali)
+Karnay:  pauza qiladi; telefon ekrani yangilanadi
+```
+
+Ikki nozik joy. Birinchisi — **pozitsiya** doim o‘zgaradi, uni har
+soniyada yuborish isrof. Shuning uchun `pozitsiya_ms` va
+`pozitsiya_vaqti` birga saqlanadi: har qurilma hozirgi pozitsiyani
+o‘zi hisoblaydi (`pozitsiya_ms + (hozir - pozitsiya_vaqti)`). Bu
+Slack darsidagi “holatni emas, holat qoidasini yuborish” g‘oyasiga
+o‘xshaydi.
+
+Ikkinchisi — **ziddiyat**: telefon “keyingi trek” ni, kompyuter
+“pauza” ni bir vaqtda bosdi. `versiya` maydoni optimistik qulf kabi
+ishlaydi: eski versiyaga asoslangan buyruq rad etiladi yoki qayta
+qo‘llanadi. Musiqa ijrosi uchun “oxirgisi yutadi” odatda qabul
+qilinadi — ziddiyat kamdan-kam va narxi past.
+
+Muhimi: hodisalar va royalti uchun tinglashni **audioni ijro etgan**
+qurilma yuboradi (karnay), buyruq bergan qurilma (telefon) emas.
+Aks holda bitta tinglash ikki marta sanalishi mumkin.
+</Deep>
+
+## 11. Ishonchlilik
+
+### 11.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Foydalanuvchi nimani ko‘radi | Himoya |
+| --- | --- | --- |
+| CDN tuguni ishlamaydi | Hech narsa (boshqa tugun) | Ko‘p CDN, mijozda muqobil URL |
+| Kalit xizmati ishlamaydi | Yangi treklar o‘ynamaydi; kesh ishlaydi | Kalitlarni keshlash, uzoqroq muddat |
+| Metama’lumot API sekin | Sahifalar sekin ochiladi | Mijoz keshi, eskirgan ma’lumot bilan ishlash |
+| Tavsiya xizmati ishlamaydi | Bosh sahifa oddiyroq | Oxirgi hisoblangan natija, mashhurlar ro‘yxati |
+| Hodisalar shinasi ishlamaydi | Hech narsa | Mijoz navbatda saqlaydi, keyin yuboradi |
+| Butun backend ishlamaydi | Faqat keshdagi va yuklab olinganlar o‘ynaydi | Oflayn rejim — o‘z-o‘zidan |
+
+Jadvalning ikkinchi ustuniga qarang: ko‘p qatorlarda foydalanuvchi
+**deyarli hech narsa sezmaydi**. Sabab — 10-bo‘limdagi kuchli mijoz.
+Mijozda kesh, kalitlar, navbat va oflayn rejim bor, shuning uchun
+backendning ko‘p nosozliklari faqat **yangi** narsalarga ta’sir qiladi.
+Oxirgi qator eng yaxshi misol: to‘liq uzilish paytida ham foydalanuvchi
+sevimli qo‘shiqlarini tinglayveradi, chunki oflayn rejim — alohida
+xususiyat emas, balki odatdagi ishlashning bir holati.
+
+### 11.2 Degradatsiya tartibi
+
+Tizimni qismlarga bo‘lib, har birining **ahamiyatini** belgilash —
+ishonchlilikning asosiy qarori. Spotify uchun tartib taxminan shunday:
+
+```
+1. Ijro (hozirgi va keyingi trek)      — oxirgi o'chadigan
+2. Hodisalarni saqlash (yo'qotmaslik)   — kechikishi mumkin, yo'qolishi mumkin emas
+3. Kutubxona va pleylistlar            — eskirgan holatda o'qish mumkin
+4. Qidiruv                              — oddiylashtirilgan versiya
+5. Tavsiyalar                           — oxirgi natija yoki mashhurlar
+6. Ijtimoiy funksiyalar, statistika    — birinchi o'chadigan
+```
+
+Ikkinchi qator alohida: hodisalar **tez** bo‘lishi shart emas, lekin
+**yo‘qolmasligi** shart. Bu odatiy ishonchlilik talablaridan farq
+qiladi (odatda “tez yoki umuman yo‘q”). Shuning uchun hodisalar tizimi
+kechikishga emas, bardoshlilikka optimallashtirilgan: diskdagi navbat,
+qayta urinish, dedublikatsiya.
+
+<Calc title="Bir soatlik uzilishdan keyingi hodisalar to'lqini" result="1 soat to'plangan ~1.8 mlrd hodisa; tasodifiy kechikish bilan 1 soatda — oddiy yukdan 2x; kechikishsiz — 60x">{`Oddiy oqim: ~500 000 hodisa/s (9-qadam)
+1 soat uzilish: mijozlarda to'plangan = 500 000 x 3 600 = 1.8 mlrd hodisa
+
+Backend tiklanganda, agar hamma DARHOL yuborsa (1 daqiqa ichida):
+  1.8e9 / 60 s = 30 M hodisa/s + oddiy 0.5 M = ~60x yuk -> yana yiqiladi
+
+Tasodifiy kechikish (jitter) bilan 60 daqiqaga tarqatilsa:
+  1.8e9 / 3 600 s = 0.5 M/s + oddiy 0.5 M = ~2x yuk -> chidaydi
+
+Hodisalar yo'qolmaydi, faqat kechikadi — 8.4-dagi mexanizm buni hazm qiladi.`}</Calc>
+
+Bu Slack darsidagi “qayta ulanish bo‘roni” ning hodisalar versiyasi,
+va yechim ham bir xil: **mijozda tasodifiy kechikish** (jitter) va
+serverdan “sekinroq yubor” signali. Farq — bu yerda hodisalar shoshilinch
+emas, shuning uchun ularni soatlab tarqatish mumkin.
+
+<Deep title="Bulut ichidagi umumiy bog'liqlik">
+Spotify 2016–2018-yillarda o‘z ma’lumot markazlaridan Google Cloud’ga
+ko‘chdi. Bu ko‘p infratuzilma ishini olib tashladi, lekin yangi xavf
+turini qo‘shdi: **provayderning umumiy xizmatlari**.
+
+2022-yil mart oyida Spotify (va boshqa bir qator xizmatlar) global
+uzilishni boshdan kechirdi; ommaviy xabarlarda u bulut provayderining
+tarmoq trafigini boshqarish xizmatidagi muammo bilan bog‘langan.
+Spotify’ning o‘z kodi to‘g‘ri ishlagan — lekin uning xizmatlari bir-birini
+topa olmagan.
+
+Bu hodisaning umumiy saboqi Slack darsidagi “konfiguratsiya o‘zgarishi —
+eng xavfli deploy” bilan bir xil, lekin boshqa o‘lchovda: xavf sizning
+kodingizda emas, **siz nazorat qilmaydigan umumiy qatlamda**. Himoya
+usullari:
+
+**Keshlanadigan konfiguratsiya.** Xizmat manzillari va marshrutlash
+qoidalari mahalliy keshlanadi: boshqaruv tizimi ishlamasa, oxirgi
+ma’lum holat bilan ishlash davom etadi (“statik barqarorlik”).
+
+**Mijozdagi degradatsiya.** 11.1-jadvalning oxirgi qatori — backend
+umuman ishlamasa ham, kesh va oflayn ijro davom etadi. Uzilish paytida
+ham ko‘p foydalanuvchi sevimli qo‘shiqlarini tinglayverdi.
+
+**Bog‘liqliklar xaritasi.** Qaysi xizmat qaysi umumiy komponentga
+bog‘liq — oldindan bilish. Ko‘pincha “mustaqil” deb o‘ylangan ikki
+tizim bitta DNS, bitta sertifikat yoki bitta marshrutlash xizmatiga
+bog‘liq bo‘lib chiqadi.
+</Deep>
+
+<Callout type="maslahat" title="Mijozni ishonchlilik qatlami sifatida loyihalash">
+Ko‘p tizimlarda mijoz backendning “ko‘zgusi” — backend ishlamasa, u
+ham ishlamaydi. Musiqa ilovasida mijoz **backendsiz ishlashni** biladi:
+kesh, oflayn kalitlar, hodisalar navbati. Bu tasodif emas — oflayn
+rejim uchun qurilgan narsalar ishonchlilik uchun bepul qo‘shimcha
+bo‘lib chiqadi. O‘z tizimingizda so‘rang: “agar backend bir soat
+ishlamasa, mijoz nima qila oladi?” Javob “hech narsa” bo‘lsa, eng
+arzon ishonchlilik qatlami ishlatilmayapti.
+</Callout>
+
+## 12. Xavfsizlik va firibgarlik
+
+Musiqa platformasining hujum yuzasi ikki tomonlama: kimdir **musiqani
+o‘g‘irlamoqchi** (nusxalash), kimdir esa **pulni o‘g‘irlamoqchi**
+(soxta tinglashlar). Ikkinchisi ancha katta muammo.
+
+### 12.1 Nusxalashdan himoya: mukammal emas, qimmat
+
+2-qadamdan beri audio fayllar shifrlangan, kalitlar esa alohida
+beriladi. Mijoz kalitni oladi, faylni ochadi, dekodlaydi va ovozni
+chiqaradi. Buning ichida zaif joy aniq: **ovoz chiqishi**. Dekodlangan
+PCM qurilmaning audio tizimiga yetishi kerak, va u yerdan uni yozib
+olish mumkin (“analog teshik”). Hech qanday shifrlash buni yopmaydi.
+
+Demak himoyaning maqsadi — nusxalashni **imkonsiz** qilish emas, balki
+**musiqa sotib olishdan qimmatroq** qilish:
+
+| Qatlam | Nimadan himoya qiladi |
+| --- | --- |
+| Shifrlangan fayllar (CDN va keshda) | Keshdan oddiy fayl ko‘chirish |
+| Kalitlar faqat obunachiga, muddatli | Obunasiz yoki bekor qilingan akkaunt |
+| Mijoz kodini chalkashtirish | Kalitni oson ajratib olish |
+| Qurilmalar va yuklab olish chegarasi | Bitta akkaunt bilan ommaviy yuklash |
+| Tinglash naqshlarini kuzatish | Butun katalogni “tinglab” yozib olish |
+
+Oxirgi qator qiziq: butun katalogni ovoz chiqishidan yozib olish
+**real vaqtda** bo‘ladi — 100 M trek × 3.5 daqiqa = ~670 yil. Bir necha
+ming akkaunt bilan ham bu yillar va sezilarli naqsh. Ya’ni katalog
+hajmining o‘zi himoya qatlami.
+
+<Callout type="ogoh" title="Himoya xarajati foydalanuvchiga tushmasligi kerak">
+Har bir himoya qatlami halol foydalanuvchiga ham ta’sir qiladi: muddatli
+kalitlar — 30 kunlik onlayn talabi, qurilmalar chegarasi — oilaviy
+foydalanishda noqulaylik, chalkashtirilgan kod — sekinroq ilova.
+Qatlamni qo‘shishdan oldin hisoblang: u qancha nusxalashni to‘xtatadi,
+va qancha halol foydalanuvchini bezovta qiladi? Tarix ko‘rsatadiki,
+qonuniy xizmatni **qulayroq** qilish qaroqchilikka qarshi eng samarali
+chora bo‘lgan — himoyani kuchaytirish emas.
+</Callout>
+
+### 12.2 Soxta tinglashlar: bot iqtisodi
+
+8-bo‘limdagi pro-rata modeli bir xavfli rag‘batni yaratadi: **tinglash
+pulga aylanadi**, va pul umumiy fonddan olinadi.
+
+<Calc title="Bitta bot akkauntining iqtisodi" result="Oyiga ~12 dollar xarajat, ~280 dollar 'daromad' — 20x+ foyda, qoidalarsiz">{`Bot: Premium akkaunt, ~12 dollar/oy
+Strategiya: o'zingizning 31 soniyalik treklaringizni 24/7 aylantirish
+
+  1 daqiqada: ~2 tinglash (har biri 30 s chegarasidan o'tadi)
+  Oyiga: 2 x 60 x 24 x 30 = 86 400 tinglash
+  x 0.0032 dollar = ~276 dollar/oy
+
+  Foyda: 276 / 12 = ~23 barobar
+
+1 000 bot akkaunt (arzon telefonlar fermasi yoki emulyatorlar):
+  ~276 000 dollar/oy — boshqa san'atkorlarning fondidan`}</Calc>
+
+Hisob nega 2024-yildagi qoidalar (8.3) aynan shunday ekanini tushuntiradi:
+**qisqa treklar** — shovqin treklari uchun minimal uzunlik; **ko‘p mayda
+treklar** — 1 000 tinglash chegarasi; **sotib olingan tinglashlar** —
+yorliqqa jarima. Har bir qoida bot iqtisodining bitta o‘zgaruvchisini
+buzadi.
+
+Qoidalardan tashqari — **aniqlash**. Bu paketli ishlovning vazifasi
+(10-qadam), chunki bitta hodisa hech narsa demaydi:
+
+| Belgi | Normal foydalanuvchi | Bot |
+| --- | --- | --- |
+| Kunlik tinglash vaqti | 1–4 soat, uyqu tanaffusi bilan | 20–24 soat, tanaffussiz |
+| Treklar xilma-xilligi | Yuzlab ijrochi | Bir necha ijrochi, doim bir xil |
+| O‘tkazishlar | ~25% birinchi soniyalarda | Deyarli yo‘q yoki aniq 31 s da |
+| Qurilma va tarmoq | Bitta-ikkita telefon, uy Wi-Fi | Yuzlab akkaunt bitta IP bloki yoki bulut |
+| Ijrochi auditoriyasi | Ko‘p mustaqil tinglovchi | Oz akkaunt, har biri ming martalab |
+
+Oxirgi qator eng kuchli signal, chunki u **ijrochi** darajasida:
+bitta akkauntni emas, trekning butun tinglovchilar grafini ko‘radi.
+Haqiqiy mashhur trek minglab turli odam tomonidan bir necha martadan
+tinglanadi; soxta mashhur trek esa oz akkaunt tomonidan minglab marta.
+
+<Deep title="Sukunat albomi va sun'iy intellekt treklari">
+Ikki haqiqiy hodisa pro-rata modelining zaif joylarini yaxshi ko‘rsatadi.
+
+**Sleepify (2014).** Vulfpeck guruhi o‘n ta **jim** trekdan iborat albom
+chiqardi, har biri ~31 soniya, va muxlislarini uni uxlayotganda
+takror-takror qo‘yib qo‘yishga chaqirdi. Guruh yig‘ilgan pulga bepul
+konsert turi qilishni va’da qildi. Taxminan ikki oy ichida albom ~20 000
+dollar atrofida yig‘di va olib tashlandi. Texnik jihatdan hech narsa
+buzilmagan: haqiqiy odamlar, haqiqiy akkauntlar, 30 soniyadan uzun
+tinglash. Muammo — **qoida** “tinglash” ni eshitish niyati bilan
+emas, davomiylik bilan belgilagan edi.
+
+**Sun’iy intellekt treklari va botlar (2024).** AQShda bir musiqachi
+sun’iy intellekt yordamida yuz minglab trek yaratib, ularni minglab bot
+akkaunt orqali bir necha yil davomida tinglatganlikda ayblandi —
+ayblov hujjatiga ko‘ra platformalardan umumiy ~10 M dollar royalti
+olingan. Bu yerda asosiy hiyla — **tarqatish**: bitta trekni million
+marta emas, har bir trekni bir necha ming marta tinglatish. Shunda
+hech bir trek “shubhali mashhur” ko‘rinmaydi.
+
+Ikkinchi holat 12.2-jadvaldagi oxirgi qatorni ham aylanib o‘tadi:
+trek darajasida hammasi normal ko‘rinadi. Aniqlash **akkaunt grafi**
+darajasiga ko‘chishi kerak: qaysi akkauntlar bir xil treklar to‘plamini
+tinglaydi, bir xil naqsh bilan, bir xil tarmoqlardan. Bu grafdagi
+jamoalarni qidirish — klassik paketli tahlil vazifasi.
+
+Umumiy dars: **pul to‘lanadigan har qanday metrika hujum ob’ektiga
+aylanadi.** Qoida qancha oddiy bo‘lsa (30 soniya), uni aylanib o‘tish
+shuncha oson. Himoya — bitta qoida emas, qatlamlar: qoidalar,
+aniqlash, iqtisodiy jazolar.
+</Deep>
+
+<Check q="Nega foydalanuvchi-markazli model soxta tinglashlarga qarshi pro-rata'dan tabiiy ravishda chidamliroq?">
+Chunki u botning **maksimal o‘g‘irligini** cheklaydi.
+
+**Pro-rata’da** bot akkaunt umumiy fonddan ulush oladi. 12.2-dagi
+hisob: 12 dollarlik akkaunt ~276 dollar oladi — ya’ni boshqa 20+
+obunachining pulini. Bot qancha ko‘p tinglasa, shuncha ko‘p oladi,
+yuqori chegara yo‘q.
+
+**Foydalanuvchi-markazlida** har akkauntning to‘lovi faqat **o‘zi
+tinglaganlarga** taqsimlanadi. Bot akkaunt 12 dollar to‘laydi va
+o‘z treklariga ~8 dollar (70%) yo‘naltiradi. Kun bo‘yi tinglash
+hech narsani o‘zgartirmaydi — ulush baribir o‘z obunasining 100% i.
+Botlar fermasi zararga ishlaydi.
+
+Lekin bu to‘liq himoya emas: o‘g‘irlangan yoki bepul akkauntlar
+(reklama daromadidan ulush), yoki haqiqiy foydalanuvchilarning
+akkauntlarini buzib, ularning pleylistiga trek qo‘shish hali ham
+mumkin. Va model o‘zgarishi 8.2-dagi muhandislik narxini (15 barobar
+katta hisob, foydalanuvchi darajasidagi to‘lov ma’lumoti) talab qiladi.
+
+Muhandislik saboqi: **iqtisodiy dizayn xavfsizlik dizaynining bir
+qismi.** Ba’zan eng yaxshi himoya — aniqlash algoritmi emas, balki
+hujumni foydasiz qiladigan qoida.
+</Check>
+
+## 13. Iqtisod: bir obunachi qancha turadi
+
+YouTube darsida iqtisod savoli “bir soat tomosha qancha turadi” edi, va
+javob asosan **baytlar**: trafik, saqlash, kodlash. Spotify’da xuddi
+shu savol butunlay boshqa javob beradi.
+
+<Calc title="Bir Premium obunachining oylik iqtisodi" result="Huquq to'lovlari ~3.5 dollar, infratuzilma ~0.05-0.1 dollar — 35-70 barobar farq">{`DAROMAD (taxminan, 2024):
+  Premium ARPU (o'rtacha oylik daromad obunachi boshiga): ~5.3 dollar
+    (mamlakatlar, oila va talaba rejalari, chegirmalar aralashmasi)
+
+HUQUQ EGALARI:
+  ~65-70% -> ~3.5 dollar
+
+YETKAZISH (bir obunachi):
+  Oyiga ~45 soat x ~58 MB/soat (128 kbit/s) = ~2.6 GB
+  Kesh ~50% -> tarmoq orqali ~1.3 GB
+  CDN, katta hajmdagi narx ~0.003-0.005 dollar/GB -> ~0.005 dollar
+
+SAQLASH: 4.5 PB / 600 M foydalanuvchi = 7.5 MB -> ~0.0002 dollar
+
+HODISALAR: 780 tinglash x 5 x 500 bayt = ~2 MB/oy -> deyarli nol
+
+TAVSIYALAR: ALS + ANN + haftalik pleylist, 600 M ga bo'lingan -> deyarli nol
+
+BUTUN BULUT VA XIZMATLAR (taxmin: yiliga bir necha yuz million dollar):
+  ~450 M dollar / 600 M / 12 = ~0.06 dollar/oy`}</Calc>
+
+Bu jadval butun darsning eng muhim raqami. Infratuzilma — obunachi
+daromadining **~1–2 foizi**; huquq to‘lovlari — **~65–70 foizi**.
+YouTube’da trafikni 30% tejash (AV1) millionlab dollar edi; bu yerda
+trafikni **nolga** tushirish ham daromadning 0.1% ini beradi.
+
+Bundan uch muhandislik xulosasi kelib chiqadi.
+
+**Birinchi: infratuzilmani tejash — ikkinchi darajali.** P2P’dan voz
+kechish (5-qadam Deep), barcha formatlarni hamma trek uchun saqlash
+(1-qadam), Discover Weekly’ni hammaga hisoblash (13-qadam) — hammasi
+“isrof” ko‘rinadi, lekin iqtisodda sezilmaydi. Soddalik va tezlik
+baytlardan qimmatroq.
+
+**Ikkinchi: hisob aniqligi — birinchi darajali.** 4.4-dagi hisob:
+1% xato — ~100 M dollar noto‘g‘ri taqsimlangan. Bu butun infratuzilma
+byudjetining sezilarli qismi. Tinglashlar kitobiga (10-qadam) sarflangan
+har bir muhandis-yil infratuzilmani optimallashtirishdan ko‘ra ko‘proq
+qiymat beradi.
+
+**Uchinchi: foydalanuvchini ushlab qolish — hamma narsadan muhim.**
+Keyingi hisob buni ko‘rsatadi.
+
+<Calc title="Ketib qolishni 1% ga kamaytirish va infratuzilmani 10% ga arzonlashtirish" result="Ikkalasi ham yiliga ~45-50 M dollar — lekin birinchisi yil sayin to'planadi">{`Premium obunachilar: ~260 M (taxminan)
+Oylik ARPU: 5.3 dollar; huquq to'lovlaridan keyin qolgan ulush ~30%
+
+A) Yillik ketib qolish 1 foiz punktga kamaydi:
+  2.6 M obunachi ko'proq qoladi
+  2.6e6 x 5.3 x 12 x 0.30 = ~50 M dollar/yil yalpi foyda
+  + ular keyingi yillarda ham qoladi -> ta'sir TO'PLANADI
+
+B) Butun bulut xarajatini 10% ga kamaytirish:
+  450 M x 0.10 = 45 M dollar/yil
+  Bir martalik daraja o'zgarishi, keyin yana o'sadi`}</Calc>
+
+Raqamlar taqqoslanadigan, lekin tabiatan farq qiladi. Tavsiyalar sifati,
+boshlanish tezligi, pauzasiz ijro — foydalanuvchi qolishiga ta’sir
+qiladigan hamma narsa — **daromad tomonida** ishlaydi, va uning ta’siri
+yildan yilga to‘planadi. Shuning uchun Spotify’ning muhandislik
+investitsiyalari asosan tavsiyalar va mahsulot tajribasiga
+yo‘naltirilgan, infratuzilma tejashiga emas.
+
+<Callout type="maslahat" title="Xarajatlar tuzilmasini birinchi kuni hisoblang">
+Tizimni loyihalashdan oldin bitta jadval tuzing: bir foydalanuvchi
+(yoki bir operatsiya) uchun daromad va har bir xarajat moddasi. Qaysi
+modda eng katta? YouTube’da — trafik, shuning uchun kodek va kesh
+qarorlari muhim. Spotify’da — huquq to‘lovlari, shuning uchun hisob
+aniqligi va foydalanuvchi qiymati muhim. ChatGPT darsida — GPU vaqti.
+Bir xil “media platformasi” turli xarajat tuzilmasi bilan butunlay
+turli arxitektura ustuvorliklarini talab qiladi.
+</Callout>
+
+<Deep title="Bepul tarif: reklama har tinglashni qoplaydimi?">
+Spotify foydalanuvchilarining katta qismi (taxminan 60%) — reklamali
+bepul tarifda. Ularning iqtisodi Premium’dan tubdan farq qiladi.
+
+```
+Reklama daromadi (taxminan, 2024): ~2 mlrd dollar/yil
+Bepul foydalanuvchilar: ~400 M
+  -> ~5 dollar/yil = ~0.4 dollar/oy foydalanuvchi boshiga
+
+Premium: ~5.3 dollar/oy -> ~13 barobar ko'p
+
+Xarajat tomoni:
+  Huquq to'lovlari — reklama daromadining ulushi (ham ~60-70%)
+  Yetkazish — bir xil trafik, faqat sifat pastroq (160 kbit/s gacha)
+  -> infratuzilma bepul foydalanuvchida ARPU ning ~10-15% i
+```
+
+Bu hisob bepul tarifning bir qancha “noqulay” qoidalarini tushuntiradi.
+**Past sifat** — trafik xarajatini kamaytiradi va Premium’ga sabab
+beradi. **Mobil ilovada cheklovlar** (masalan, ba’zi rejimlarda faqat
+aralash ijro, o‘tkazishlar soni cheklovi) — qiymatni kamaytirib,
+obunaga undaydi. **Oflayn yo‘q** — muddatli kalitlarni boshqarish
+va qurilma xotirasi faqat to‘lovchilar uchun.
+
+Muhandislik nuqtai nazaridan qiziq tomoni: bir xil tizim ikki xil
+iqtisodiy rejimda ishlaydi, va ular orasidagi farqlar kodda **siyosat**
+sifatida ifodalanadi — sifat chegarasi, o‘tkazishlar hisoblagichi,
+xususiyat bayroqlari. Bu 9.4-dagi “mahsulotga xos filtrlar” g‘oyasining
+biznes darajasidagi ko‘rinishi.
+</Deep>
+
+## 14. Sig‘im rejalashtirish
+
+O‘rtacha kun (1.3) tizim uchun qiyin emas. Qiyin kunlar — hamma
+**bir xil narsani bir vaqtda** xohlaganda. Musiqada ikkita bunday
+hodisa bor: katta reliz va yil yakuni.
+
+### 14.1 Katta albom relizi
+
+<Calc title="Yarim tunda chiqqan mashhur albom" result="Trafik o'sishi o'rtacha kunning ~30% i; asosiy bosim — bitta sahifa va 13 ta faylga">{`Faraz: juda mashhur ijrochi, 13 trekli albom
+  Birinchi soatda ~5 M tinglovchi bir vaqtda (butun dunyoda emas,
+  bitta vaqt mintaqasida yarim tun)
+
+TRAFIK:
+  5 M x 160 kbit/s = 800 Gbit/s
+  O'rtacha umumiy: ~2.7 Tbit/s (1.3) -> +30%, lekin bitta mintaqada
+
+OB'EKTLAR:
+  13 trek x 4 sifat darajasi = ~52 fayl
+  Har fayl bir vaqtda ~100 000+ mijozga -> CDN uchun eng yaxshi holat
+  (bitta ob'ekt, ko'p so'rov — kesh urish darajasi ~100%)
+
+METAMA'LUMOT:
+  Albom sahifasi: birinchi 5 daqiqada 5 M ochilish
+  5e6 / 300 s = ~17 000 so'rov/s BITTA kalitga -> "issiq kalit"
+
+HODISALAR:
+  5 M x 5 hodisa / 210 s = ~120 000 hodisa/s qo'shimcha (+24%)`}</Calc>
+
+Hisob ko‘rsatadiki, katta reliz **baytlar** jihatidan qiyin emas —
+aksincha, CDN uchun ideal: oz ob’ekt, ko‘p so‘rov. Qiyin joy —
+**metama’lumot**: bitta albom sahifasiga sekundiga o‘n minglab so‘rov
+bitta ma’lumotlar bazasi kalitiga tushadi. Bu Twitter darsidagi
+mashhur foydalanuvchi va Reddit’dagi viral post bilan bir xil “issiq
+kalit” muammosi, va yechim ham bir xil: ko‘p qatlamli kesh, so‘rovlarni
+birlashtirish, va javobni oldindan tayyorlash.
+
+<Timeline
+  rows={[
+    { when: "T - 14 kun", what: "Distributor fayllarni yuklaydi, embargo belgilanadi", why: "Katalogda bor, lekin hech kimga ko'rinmaydi. Kodlash, balandlik, audio vektor — hammasi tinch paytda." },
+    { when: "T - 2 kun", what: "Shifrlangan fayllar CDN'ga oldindan joylanadi", why: "Xavfsiz, chunki fayllar shifrlangan: kalit reliz vaqtigacha berilmaydi (5-bo'lim, 2-qadam)." },
+    { when: "T - 1 soat", what: "Albom sahifasi keshlarga isitiladi", why: "Issiq kalit ma'lumotlar bazasiga yetmasligi uchun. Obunachilar ro'yxati uchun bildirishnomalar navbatga." },
+    { when: "T = 00:00 mahalliy", what: "Kalit xizmati albomni 'ochiq' deb biladi", why: "Reliz har vaqt mintaqasida mahalliy yarim tunda — yuk dunyo bo'ylab 24 soatga tarqaladi." },
+    { when: "T + 1 soat", what: "Cho'qqi: sahifa, kalitlar, hodisalar", why: "Audio baytlari CDN'dan deyarli 100% urish bilan. Kuzatuv: boshlanish vaqti p90, kalit xizmati xatolari." },
+    { when: "T + 1 kun", what: "Real vaqtdagi hisoblagich rekordni ko'rsatadi", why: "Taxminiy son — ommaviy e'lon uchun. Haqiqiy son tinglashlar kitobida, keyinroq (8.4)." },
+    { when: "T + 3-7 kun", what: "Yangi relizlar pleylistlari va tavsiyalar", why: "Albom treklari vektorlari endi haqiqiy tinglashlardan (14-qadam: audio vektor almashtiriladi)." },
+  ]}
+/>
+
+Ikkinchi qator — butun darsdagi eng chiroyli naqshlardan biri: fayllar
+**relizdan oldin** tarqatiladi, chunki shifrlash ularni kalitsiz
+foydasiz qiladi. Ya’ni “reliz” — bu fayllarni ko‘chirish emas, balki
+**bitta kalitni ochish**. Eng og‘ir operatsiya (petabaytlarni tarqatish)
+tinch vaqtga ko‘chiriladi, eng xavfli moment esa bitta kichik o‘zgarishga
+aylanadi.
+
+To‘rtinchi qator ham muhim: global relizlar odatda juma kuni **mahalliy**
+yarim tunda. Bu biznes qarori, lekin uning sig‘im oqibati katta: bir
+vaqtda butun dunyo o‘rniga har soatda bitta mintaqa. Yuk 24 ta kichik
+to‘lqinga bo‘linadi.
+
+### 14.2 Yil yakuni: hamma o‘z statistikasini bir kunda
+
+Har dekabrda Spotify har bir foydalanuvchiga uning yillik tinglash
+statistikasini (Wrapped) ko‘rsatadi: eng ko‘p tinglangan ijrochilar,
+treklar, daqiqalar. Hisoblash jihatidan bu — butun yillik hodisalar
+jurnali ustidan bitta katta agregat.
+
+<Calc title="Wrapped: hisoblash va ishga tushirish kuni" result="Hisob — bitta katta paketli ishlov (~1 PB); ishga tushirish kuni — ~150 M ta kalit o'qish, statik fayllar bilan">{`HISOB (oldindan, noyabrda):
+  Yillik tinglashlar: ~3.1 trln (1.3)
+  Xom hodisalar: yiliga ~1 PB siqilgan (9-qadam)
+  Agregat: (foydalanuvchi, ijrochi) va (foydalanuvchi, trek) bo'yicha
+    600 M x ~500 ijrochi = ~300 mlrd qator -> har foydalanuvchi uchun top-5
+  Natija: 600 M x ~2 KB = ~1.2 TB -> kalit-qiymat omboriga
+
+ISHGA TUSHIRISH KUNI:
+  Birinchi 24 soatda ~150 M foydalanuvchi ochadi (faraz)
+  150e6 / 86 400 = ~1 700/s o'rtacha, cho'qqida ~10x -> ~17 000/s
+  Har ochilish: bitta kalit o'qish (~2 KB) + animatsiya resurslari (CDN)
+  Ulashish rasmlari: mijozda yaratiladi -> serverda hisob yo'q`}</Calc>
+
+Hisobning birinchi yarmi Discover Weekly (13-qadam) bilan bir xil
+naqsh — faqat yillik miqyosda. Ikkinchi yarmi esa muhim qarorni
+ko‘rsatadi: ishga tushirish kuni server **hech narsa hisoblamaydi**.
+Hamma narsa oldindan tayyor, va ulashish uchun rasmlar ham mijozda
+yaratiladi. Aks holda eng mashhur kun eng og‘ir hisoblash kuniga
+aylanardi.
+
+<Deep title="Nega Wrapped dekabr oxirini hisobga olmaydi">
+Wrapped odatda noyabr oxiri yoki dekabr boshida chiqadi, va uning
+ma’lumotlari yilning **oxirigacha emas** — taxminan oktyabr oxiri yoki
+noyabr boshigacha. Ko‘p foydalanuvchi buni g‘alati deb biladi. Sabab —
+paketli tizimning vaqt jadvali.
+
+```
+Ma'lumot kesilishi:  ~noyabr boshi
+Xom hodisalar yig'ilishi va kechikkanlar:  + ~1 hafta (8.4)
+Dedublikatsiya, firibgarlik filtri:        + bir necha kun
+Agregatlar va top-ro'yxatlar:              + bir necha kun
+Sifat tekshiruvi (g'alati natijalar, bo'sh profillar, tarjimalar): + 1-2 hafta
+Resurslarni tayyorlash, CDN'ga joylash:    + bir necha kun
+Ishga tushirish:     ~dekabr boshi
+```
+
+Har bosqich qisqartirilishi mumkin, lekin bitta shart bor: **ishga
+tushirish sanasi qat’iy**, marketing kampaniyasi unga bog‘langan. Qat’iy
+sana va o‘zgaruvchan ishlov vaqti — ma’lumotni ertaroq kesish kerak.
+
+Muqobil — real vaqtdagi statistika (har kuni yangilanadigan) —
+texnik jihatdan mumkin, lekin ikki narsani yo‘qotadi: **bir kunlik
+hodisa** (hamma bir vaqtda ulashadi, ijtimoiy tarmoqlarda to‘lqin)
+va **sifat nazorati** (g‘alati natijalarni odam ko‘rib chiqishi).
+Mahsulot qarori paketli arxitekturani belgilaydi, va paketli
+arxitektura mahsulotning ko‘rinadigan xususiyatini (kesilish sanasi)
+belgilaydi.
+</Deep>
+
+<Callout type="info" title="Sig'im muammosi — o'rtacha emas, bir xillik">
+Ikkala hodisada ham umumiy yuk o‘rtacha kundan unchalik ko‘p emas
+(+30%). Muammo — **bir xillik**: millionlab odam bir xil ob’ektni
+(albom sahifasi, Wrapped resurslari) bir xil daqiqada so‘raydi.
+Buning yechimi kattaroq server emas, balki uch vosita: **oldindan
+tayyorlash** (hisoblash va tarqatishni tinch vaqtga), **keshlash**
+(bir xil ob’ekt — bitta nusxa) va **vaqt bo‘yicha tarqatish** (mahalliy
+yarim tun, jitter).
+</Callout>
+
+## 15. Kuzatuv: tovush va hisob sifati
+
+YouTube’da kuzatuvning markazida QoE edi: boshlanish, buferlash,
+bitreyt. Spotify’da uning analogi bor, lekin ikkinchi, butunlay boshqa
+turdagi kuzatuv ham kerak: **hisobning to‘g‘riligi**.
+
+### 15.1 Ijro metrikalari
+
+| Metrika | Nima o‘lchanadi | Odatiy maqsad |
+| --- | --- | --- |
+| Tovushgacha vaqt | Bosishdan birinchi tovushgacha, p50 / p90 / p99 | 250 ms / 1 s / 3 s |
+| Uzilishlar | Ijro vaqtining necha foizi to‘xtashda | 0.1% dan kam |
+| Gapless muvaffaqiyati | Ketma-ket ijroda pauzasiz o‘tishlar ulushi | 99%+ |
+| Keshdan ijro | Tinglashlarning necha foizi tarmoqsiz | ~50%+ (7.1) |
+| Oldindan yuklash aniqligi | Yuklangan keyingi treklarning necha foizi o‘ynaldi | p ga yaqin (6.3) |
+| Kalit xatolari | Kalit olinmagani uchun o‘ynamagan treklar | Nolga yaqin |
+
+Bu metrikalar **mijozda** o‘lchanadi va hodisalar bilan yuboriladi —
+server ularni ko‘rmaydi (keshdan ijro, gapless o‘tish — umuman tarmoqqa
+chiqmaydi). Ya’ni ijro kuzatuvi o‘zi hodisalar quvuriga tayanadi, va
+quvur ishlamasa, kuzatuv ham ko‘r.
+
+Har metrika **bo‘laklarga ajratib** ko‘riladi: platforma (iOS, Android,
+desktop, karnay), ilova versiyasi, mamlakat, tarmoq turi, keshdan yoki
+tarmoqdan. O‘rtacha raqam hech narsa demaydi: yangi Android versiyasi
+bitta modelda gapless’ni buzsa, umumiy 99% da buni ko‘rmaysiz.
+
+<Calc title="Nega p50 yetarli emas" result="p50 250 ms bo'lsa ham, p99 3 s — kuniga ~86 M sekin boshlanish">{`Kuniga ~8.6 mlrd tinglash (1.3)
+Ulardan ~50% i "sovuq" yoki "issiq" boshlanish (qolgani — oldindan yuklangan)
+
+p99 = eng sekin 1%:
+  8.6e9 x 1% = 86 M tinglash kuniga 3+ soniya kutish bilan
+
+Agar bu 1% bir xil foydalanuvchilarga tushsa (yomon tarmoq, eski telefon):
+  ~5% foydalanuvchi har 5 tinglashdan birida 3+ s kutadi
+  -> ular uchun mahsulot "sekin"`}</Calc>
+
+### 15.2 Hisob metrikalari
+
+Ikkinchi turdagi kuzatuv savoli: **hodisalar yo‘qolyaptimi?** Bu oddiy
+savol emas, chunki yo‘qolgan hodisa — ko‘rinmas: u kelmagan, demak
+uni sanab bo‘lmaydi.
+
+<Deep title="Yo'qolgan hodisani qanday sanash mumkin: ketma-ketlik raqamlari">
+Hodisa yo‘qolganini bilish uchun **nima kelishi kerakligini** bilish
+kerak. Eng oddiy usul — har qurilmada hodisalarga ketma-ket raqam
+berish:
+
+```
+Qurilma d7:  hodisa #1041, #1042, #1043, #1044, ...
+             (raqam diskda saqlanadi, ilova qayta ishga tushsa ham davom etadi)
+
+Server, soatlik tekshiruv:
+  d7 dan kelganlar: #1041, #1042, #1044, #1045
+  Bo'shliq: #1043 yo'q
+  -> kechikkanmi? (oflayn) yoki yo'qolganmi?
+  -> 7 kundan keyin ham kelmasa: "yo'qolgan" deb hisoblanadi
+
+Metrika: yo'qolish darajasi = bo'shliqlar / (oxirgi raqam - birinchi raqam)
+  Maqsad: 0.01% dan kam (1.2)
+```
+
+Bu TCP’dagi ketma-ketlik raqamlari va Kafka’dagi offset’lar bilan bir
+xil g‘oya: **tartib raqami yo‘qotishni ko‘rinadigan qiladi**. Qo‘shimcha
+foyda — dublikatlarni ham aniqlaydi: bir xil raqam ikki marta kelsa,
+bu qayta yuborish.
+
+Nozik joylar: ilova qayta o‘rnatilsa, raqam noldan boshlanadi (yangi
+qurilma identifikatori kerak); qurilmaning soati noto‘g‘ri bo‘lsa ham
+raqam to‘g‘ri — shuning uchun tartib uchun vaqtdan ishonchliroq. Va
+eng muhimi: bu metrika **quvurning har bosqichida** o‘lchanadi (shlyuz,
+shina, xom jurnal, kitob) — yo‘qotish qayerda sodir bo‘layotganini
+aniqlash uchun.
+</Deep>
+
+Qo‘shimcha ravishda, hisob tizimi **mustaqil tekshiruvlar** bilan
+kuzatiladi: bir xil ma’lumot ikki yo‘l bilan hisoblanadi va
+solishtiriladi (masalan, real vaqtdagi taxminiy hisoblagich va kunlik
+kitob; ular 1–2% dan ko‘p farq qilsa — ogohlantirish). Bu
+buxgalteriyadagi “ikki yoqlama yozuv” ning muhandislik ko‘rinishi.
+
+<Callout type="xato" title="Firibgarlik filtri ham kuzatilishi kerak">
+Firibgarlik filtri (10-qadam) — hisobning eng xavfli qismi, chunki u
+**haqiqiy** tinglashlarni ham olib tashlashi mumkin. Yangi model bitta
+mamlakatda, masalan, maktab tarmog‘idan tinglayotgan o‘quvchilarni
+“bot fermasi” deb belgilasa, o‘sha mamlakat san’atkorlari pul yo‘qotadi,
+va buni hech kim darhol sezmaydi. Shuning uchun filtrning o‘zi kuzatiladi:
+har kuni qancha tinglash chiqarildi, qaysi mamlakat, qaysi ijrochilar
+bo‘yicha — va keskin o‘zgarishlar odam tomonidan ko‘rib chiqiladi.
+</Callout>
+
+<Check q="Nega ijro metrikalarini (tovushgacha vaqt, gapless) serverdagi loglardan o'lchab bo'lmaydi?">
+Chunki o‘lchanadigan hodisalarning ko‘pi **serverga umuman yetmaydi**
+yoki server ularning faqat bir qismini ko‘radi.
+
+**Keshdan ijro** — tarmoq so‘rovi yo‘q, server hech narsa ko‘rmaydi.
+Tinglashlarning ~50% i shu (7.1).
+
+**Oldindan yuklangan trek** — server fayl yuborilganini ko‘radi, lekin
+u qachon o‘ynalganini (yoki umuman o‘ynalganini) bilmaydi.
+
+**Tovushgacha vaqt** — server so‘rovga javob berish vaqtini biladi
+(masalan, 20 ms), lekin mijozdagi DNS, TLS, dekoder va audio tizim
+vaqtini bilmaydi. 6.1-dagi hisob: server vaqti butun byudjetning
+~10% i.
+
+**Gapless** — umuman mijozning ichki hodisasi: ikki dekodlangan
+oqimning tutashuvi.
+
+Demak ijro kuzatuvi **mijoz telemetriyasi** bo‘lishi shart. Va bu uni
+hisob hodisalari bilan bir xil quvurga — bir xil talablar bilan
+(yo‘qolmaslik, dedublikatsiya, kechikkan kelish) — qo‘yadi. Spotify’da
+kuzatuv va buxgalteriya **bitta ma’lumot yo‘lini** bo‘lishadi.
+</Check>
+
+## 16. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "HTTP so'rovlarini tinglash deb sanash", pro: "Oddiy: server allaqachon log yozadi", con: "Keshdan va oflayn tinglashlar yo'qoladi, oldindan yuklash va qayta urinish ortiqcha sanaladi (4.4)" },
+    { choice: "Tinglashlarni real vaqtdagi hisoblagichga yozish", pro: "Raqam darhol, tizim oddiy", con: "Qayta hisoblash, audit, kechikkan hodisalar va dedublikatsiya imkonsiz (8.4 Check)" },
+    { choice: "Kesh va yuklab olinganlarni bitta LRU'da", pro: "Bitta kesh mexanizmi", con: "Foydalanuvchi samolyot uchun yuklagan pleylist o'z-o'zidan o'chadi (7.2)" },
+    { choice: "Keyingi trekni to'liq, erta yuklash", pro: "Pauza xavfi nol", con: "Mobil tarmoqda ~20x ko'p isrof — boshi yetarli edi (6.3)" },
+    { choice: "Dedublikatsiyada Bloom filtri", pro: "Xotirada ixcham, tez", con: "1% yolg'on musbat — yiliga ~100 M dollar haqiqiy tinglash tashlanadi (8.4 Deep)" },
+  ]}
+/>
+
+**Birinchi qator** jozibali, chunki server loglari allaqachon bor va
+har bir so‘rovni yozadi. Lekin 4.4-dagi Check ko‘rsatganidek, kesh
+qanchalik yaxshi ishlasa, server shunchalik **kam** tinglash ko‘radi.
+Bu antinaqshning eng yomon xususiyati: u optimallashtirish bilan
+**yomonlashadi**. Kesh urish darajasini 40% dan 60% ga ko‘tarsangiz,
+server ko‘radigan tinglashlar uchdan bir qismga kamayadi — va san’atkorlarning daromadi
+sababsiz tushadi.
+
+**Ikkinchi qator** kichik miqyosda to‘g‘ri va tez tuyuladi: `INCR`
+atomar, tez, va son darhol ko‘rinadi. Muammo birinchi audit so‘rovida
+yoki birinchi firibgarlik holatida ochiladi: qaysi tinglashlar
+chiqarilishi kerak? Hisoblagichda bu ma’lumot yo‘q. Tuzatish — butun
+arxitekturani qayta qurish, chunki xom ma’lumot hech qachon saqlanmagan.
+
+**Uchinchi qator** texnik jihatdan kichik, lekin foydalanuvchi uchun
+eng og‘riqli: oflayn rejimning **butun ma’nosi** — “tarmoqsiz ishlaydi”
+va’dasi — buziladi, va buni foydalanuvchi aynan tarmoq yo‘q paytda
+(samolyotda) bilib qoladi. Ikkita chiqarish siyosati — ikkita alohida
+hisob.
+
+**To‘rtinchi qator** Wi-Fi’da test qilinganda muammosiz ko‘rinadi:
+isrof bepul. Mobil tarmoqda esa u trafik hisobida paydo bo‘ladi, va
+foydalanuvchi “ilova juda ko‘p trafik yeydi” deb yozadi. Siyosat
+tarmoq turiga bog‘liq bo‘lishi kerak.
+
+**Beshinchi qator** — texnikaning noto‘g‘ri kontekstga ko‘chirilishi.
+Bloom filtri Reddit’dagi “ko‘rilgan postlar” yoki kesh uchun ajoyib;
+buxgalteriyada esa uning yolg‘on musbatlari — pul. Xato narxini
+hisoblamasdan texnika tanlash — eng keng tarqalgan dizayn xatosi.
+
+<Callout type="xato" title="Oltinchi antinaqsh: oflayn tinglashlarni 'eskirgan' deb tashlash">
+“Bir haftadan eski hodisalar — ehtimol xato yoki hiyla, tashlab
+yuboramiz” — quvurni soddalashtiradi va oylik hisobni o‘z vaqtida
+yopishga yordam beradi. Lekin 8.4-dagi hisob: bu kuniga millionlab
+haqiqiy tinglash, va ular tasodifiy emas — ko‘p sayohat qiladigan,
+internet kam bo‘lgan mintaqalardagi foydalanuvchilar. Tashlash ma’lum
+san’atkorlar va mintaqalarni **tizimli** jazolaydi. To‘g‘ri yo‘l —
+kechikkan hodisalarni qabul qilib, tuzatish sifatida keyingi davrga
+yozish, va ishonchsizlarini (soat juda farq qiladi, qurilma shubhali)
+alohida qoidalar bilan tekshirish.
+</Callout>
+
+## 17. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Barcha formatlarni har trek uchun saqlash", pro: "Oddiy, har qurilma darhol to'g'ri formatni oladi", con: "Saqlash ~5-10x — lekin daromadning ahamiyatsiz qismi" },
+    { choice: "Paketli royalti hisobi", pro: "Aniq, qayta hisoblanadi, audit uchun", con: "Raqamlar soatlar yoki kunlar kechikadi" },
+    { choice: "Oldindan hisoblangan tavsiyalar", pro: "So'rov paytida ~1 ms, katta modellar mumkin", con: "Bir hafta eskirgan, ochmaydiganlarga ham hisoblanadi" },
+    { choice: "Kuchli mijoz (kesh, kalit, navbat)", pro: "Tez, oflayn, backend nosozliklariga chidamli", con: "Murakkab mijoz kodi, ko'p platforma, eski versiyalar" },
+    { choice: "Shifrlangan fayllar + alohida kalitlar", pro: "Fayllar istalgan joyda xavfsiz; reliz — bitta kalitni ochish", con: "Har ijroda kalit bosqichi, kalit xizmati — muhim bog'liqlik" },
+    { choice: "Oflayn uchun muddatli litsenziyalar", pro: "Tarmoqsiz ishlaydi, obuna qoidasi saqlanadi", con: "Kechikkan hodisalar, 30 kunlik onlayn talabi" },
+  ]}
+/>
+
+Jadvalni ikki guruhga ajratib o‘qing. Birinchi uchta qator — **vaqt
+va aniqlik** savdosi: natijani oldindan yoki keyinroq hisoblash
+evaziga aniqlik va arzonlik. Keyingi uchtasi — **mijoz va server**
+o‘rtasida mas’uliyat taqsimoti: mijozga ko‘proq ishonish evaziga
+tezlik va chidamlilik, lekin murakkablik va yangi hisob muammolari.
+
+Ikkala guruhning umumiy xulosasi: musiqa platformasida infratuzilma
+arzon (13-bo‘lim), shuning uchun savdolar deyarli hech qachon “pul
+va sifat” emas. Ular **“hozir va to‘g‘ri”**, **“oddiy va chidamli”**
+o‘rtasida. Bu YouTube’dan tub farq, u yerda deyarli har qarorning
+bir tomonida dollar turgan edi.
+
+<Callout type="ogoh" title="Qaysi metrikani optimallashtiryapsiz?">
+Musiqa platformasida to‘rtta raqobatdosh maqsad bor:
+
+**Tovushgacha vaqt va uzluksizlik** — maksimallashtirsangiz, ko‘proq
+oldindan yuklaysiz va ko‘proq keshlaysiz — va **trafik, batareya va
+xotirani** qurbon qilasiz.
+
+**Hisob aniqligi** — maksimallashtirsangiz, paketli ishlov, qat’iy
+dedublikatsiya, kechikkan hodisalarni kutish — va **tezkorlikni**
+(san’atkor raqamni kechikib ko‘radi) qurbon qilasiz.
+
+**Tavsiya sifati** — maksimallashtirsangiz, ko‘proq ma’lumot, ko‘proq
+kontekst, ko‘proq model — va **maxfiylik va xilma-xillikni** qurbon
+qilish xavfi bor (9.4 Deep).
+
+**Firibgarlikka qarshi qat’iylik** — maksimallashtirsangiz, qat’iy
+filtrlar — va **haqiqiy tinglashlarni** (va san’atkorlar pulini)
+qurbon qilasiz (15.2 Callout).
+
+Odatiy tartib: **hisob aniqligi > tovushgacha vaqt > tavsiya sifati**,
+chunki birinchisi — qonuniy va shartnomaviy majburiyat, ikkinchisi —
+har kungi tajriba, uchinchisi — o‘sish. Tartibni bilish har bir
+ziddiyatli qarorni (masalan, “hodisalar quvurini tezlashtirish uchun
+dedublikatsiyani yumshatamizmi?”) darhol hal qiladi: yo‘q.
+</Callout>
+
+<Check q="Jadvaldagi qaysi savdoni kichik startap boshqacha hal qilishi kerak, va nega?">
+**Paketli royalti hisobi** — lekin teskari yo‘nalishda emas, balki
+soddaroq shaklda. Startapda kuniga bir necha ming tinglash bor; butun
+oylik xom hodisalar bitta ma’lumotlar bazasi jadvaliga sig‘adi, va
+“paketli ishlov” — oyiga bir marta ishlaydigan bitta SQL so‘rovi.
+Lekin **xom hodisalarni saqlash** va **mijozda yaratilgan event_id**
+qarorlari birinchi kundanoq kerak: ular arzon, va keyin qo‘shib
+bo‘lmaydi (o‘tgan oylarning dalili yo‘qolgan bo‘ladi).
+
+Aksincha, **oldindan hisoblangan tavsiyalar** startap uchun ortiqcha:
+foydalanuvchilar kam, so‘rov paytida oddiy hisob (mashhurlar + sevimli
+ijrochilarning yangi treklari) yetarli, va haftalik quvur qurish
+vaqtni mahsulotdan oladi.
+
+Umumiy qoida: **qaytarib bo‘lmaydigan qarorlarni erta, qaytariladiganlarini
+kech qiling.** Xom ma’lumotni saqlamaslik — qaytarib bo‘lmaydi;
+tavsiyalarni oldindan hisoblamaslik — istalgan paytda o‘zgartiriladi.
+</Check>
+
+## 18. Intervyu savollari
+
+### 18.1 Mexanizm
+
+<QA q="CD sifatidagi audio necha kbit/s va psixoakustik kodek uni qanday siqadi?">
+44 100 namuna/s × 16 bit × 2 kanal = ~1 411 kbit/s; 3.5 daqiqalik trek
+~37 MB. Kodek signalni ~20–40 ms li bloklarga bo‘lib, chastota tarkibiga
+aylantiradi (MDCT), va har chastota guruhiga quloq modeli bo‘yicha bit
+taqsimlaydi: baland tovush yonidagi past tovushlar (niqoblash), eshitish
+chegarasidagi chastotalar va stereo kanallar o‘rtasidagi o‘xshashlik
+uchun kam yoki nol bit. Natija — 160 kbit/s da ~9 barobar siqish,
+ko‘pchilik tinglovchi farqni sezmaydi.
+</QA>
+
+<QA q="Gapless ijro nima va nega u tarmoq tezligi bilan hal bo'lmaydi?">
+Blokli kodeklar fayl boshiga “ishga tushirish” namunalari (AAC’da odatda
+2 112 ta, ~48 ms) va oxiriga to‘ldiruvchi qo‘shadi. Hech narsa qilinmasa,
+treklar orasida ~50–70 ms pauza eshitiladi. Yechim — metama’lumotdagi
+“N ta boshidan, M ta oxiridan kes” ko‘rsatmasi va ikki oqimni namuna
+aniqligida tutashtirish. Buning uchun keyingi trek joriysi tugashidan
+**oldin** dekodlangan bo‘lishi kerak — RTT’ning o‘zi 48 ms dan ko‘p,
+shuning uchun faqat oldindan yuklash ishlaydi.
+</QA>
+
+<QA q="Balandlikni tenglashtirish qanday ishlaydi va nega fayl qayta kodlanmaydi?">
+Har trekning idrok qilinadigan balandligi (LUFS) yuklashda bir marta
+o‘lchanadi, maqsad (~−14 LUFS) bilan farqi kuchaytirish koeffitsienti
+sifatida metama’lumotga yoziladi, va pleyer dekodlangan namunalarni
+shunga ko‘paytiradi. Qayta kodlash yo‘qotishli kodekni ikkinchi marta
+qo‘llash bo‘lardi (sifat yo‘qoladi), foydalanuvchi tanlovini (o‘chirish,
+boshqa daraja) va albom rejimini (butun albomga bitta koeffitsient)
+imkonsiz qilardi. Asl ma’lumotni saqlab, talqinini metama’lumotda
+saqlash — umumiy qoida.
+</QA>
+
+<QA q="Bosishdan tovushgacha 250 ms ni qanday ta'minlaysiz?">
+Byudjetni ajrating: vaqtning katta qismi aylanishlar (DNS, TCP, TLS,
+so‘rov), baytlar esa atigi ~5%. Shuning uchun: ilova ochilganda doimiy
+ulanish (yoki HTTP/2–3), metama’lumot va kalitni parallel so‘rash,
+birinchi 16–32 KB ni eng yaqin manbadan olish, dekoderni birinchi
+baytlar kelishi bilan ishga tushirish. Keyin qatlamlar: keshdagi trek
+~50 ms, oldindan yuklangan — ~0 ms. Ko‘rinib turgan treklarning boshini
+arzon spekulyatsiya sifatida oldindan yuklash (6.2) sovuq holatni ham
+issiqqa aylantiradi.
+</QA>
+
+<QA q="Keyingi trekni qachon va qancha oldindan yuklash kerak?">
+Pauzasizlik uchun butun trek emas, faqat boshi (~10 s, ~200 KB) kerak,
+chunki eng sekin mobil tarmoq ham 160 kbit/s dan ancha tez — qolgani
+ijro davomida keladi. Boshini joriy trek tugashiga ~10–30 soniya
+qolganda olish eng yomon tarmoqda ham yetadi. Kutilgan isrof (1 − p) ×
+hajm: boshi uchun ~30–80 KB, butun trek uchun ~0.6–1.7 MB. Wi-Fi’da
+butun trekni yuklab radioni uxlatish batareyaga foydali; mobil
+tarmoqda faqat boshi.
+</QA>
+
+<QA q="Nega musiqa uchun murakkab ABR kerak emas?">
+ABR bitreyt tarmoq tezligiga yaqin bo‘lganda buferni saqlash uchun
+kerak. 1080p video ~5 Mbit/s — ko‘p mobil tarmoqlarga yaqin; musiqa
+160 kbit/s — eng sekin 3G’dan ham ~6 barobar kam. Trek ijro boshlanishi
+bilan bir necha soniyada to‘liq yuklanadi va bufer darhol trek oxirigacha
+yetadi. Sifat trek boshida bir marta (tarmoq turi va sozlamaga qarab)
+tanlanadi. Murakkablik “qaysi sifatda” dan “qaysi trekni oldindan”
+savoliga ko‘chadi.
+</QA>
+
+<QA q="Tinglash hodisasini idempotent qilish uchun nima kerak?">
+Identifikator **mijozda**, hodisa yaratilganda beriladi va qayta
+yuborishda o‘zgarmaydi. Hodisa avval qurilmadagi diskdagi navbatga
+yoziladi va server tasdiqlaguncha saqlanadi — kamida bir marta
+yetkazish. Server (aniqrog‘i paketli ishlov) event_id bo‘yicha
+dublikatlarni tashlaydi. Natija — “aynan bir marta” ta’sir. Server
+tomonida yaratilgan ID ishlamaydi: tasdiq yo‘qolsa, qayta yuborilgan
+hodisa yangi ID oladi va ikki marta sanaladi.
+</QA>
+
+<QA q="Pro-rata va foydalanuvchi-markazli royalti modellari muhandislik jihatidan qanday farq qiladi?">
+Pro-rata: har bozorda fond umumiy tinglashlar ulushiga qarab
+taqsimlanadi — agregat (bozor, trek) bo‘yicha, foydalanuvchi darajasi
+kerak emas. Foydalanuvchi-markazli: har obunachining to‘lovi o‘zi
+tinglaganlarga — agregat (foydalanuvchi, trek) bo‘yicha, ~15 barobar
+katta, va royalti tizimiga foydalanuvchi to‘lov ma’lumoti kiradi
+(maxfiylik, audit). Ikkinchisi botlarga tabiiy chidamli: bot faqat o‘z
+obunasining pulini yo‘naltira oladi.
+</QA>
+
+<QA q="Yashirin signal bilan matritsa faktorizatsiyasi aniq baholardan qanday farq qiladi?">
+Aniq baholarda bo‘sh katak “noma’lum” va tashlanadi. Yashirin signalda
+(tinglash soni) bo‘sh katak zaif salbiy signal — lekin past ishonch
+bilan: afzallik p = 1 agar tinglangan bo‘lsa, ishonch c = 1 + α·r.
+Maqsad **barcha** juftliklar bo‘yicha, nollar ham — to‘g‘ridan-to‘g‘ri
+6e16 katak. Hu–Koren–Volinsky hiylasi: nollarning hissasi bitta k×k
+matritsaga siqiladi, va ALS har iteratsiyada faqat nol bo‘lmagan
+~1.2e12 katakni ko‘radi.
+</QA>
+
+### 18.2 Miqyos
+
+<QA q="600 M foydalanuvchi va 100 M trek uchun vektorlar qancha joy egallaydi?">
+k = 100, float32: foydalanuvchilar 600e6 × 100 × 4 = 240 GB, treklar
+100e6 × 100 × 4 = 40 GB. Treklar vektori bitta server xotirasiga
+bemalol sig‘adi va ANN indeksi bilan (~60 GB) har tavsiya serveriga
+nusxalanadi. Foydalanuvchi vektorlari kalit-qiymat omborida
+bo‘laklanadi — har so‘rovda faqat bittasi kerak. Taqqoslash: to‘liq
+matritsa 6e16 katak, hatto bir bit bilan ham 7.5 PB.
+</QA>
+
+<QA q="Nega to'liq qidiruv o'rniga taxminiy yaqin qo'shnilar ishlatiladi?">
+To‘liq qidiruv: 100 M × 100 = 1e10 amal, bitta yadroda ~0.5–1 s bitta
+foydalanuvchiga; haftasiga hammaga ~750 yadro doimiy band. ANN (Annoy
+daraxtlari yoki HNSW graf) ~5 000–10 000 nomzodni ko‘radi — ~1–5 ms,
+~1 000 barobar tez. Narxi — eng yaqin 500 tadan bir nechtasi o‘tkazib
+yuborilishi, lekin tavsiyada bu ahamiyatsiz, chunki vektorlarning o‘zi
+taxminiy bashorat. Aniqlikni tezlikka almashtirish bu yerda deyarli
+bepul.
+</QA>
+
+<QA q="Tinglash hodisalari oqimini qanday o'lchaysiz va saqlaysiz?">
+~99 000 tinglash/s × ~5 hodisa = ~500 000 hodisa/s; ~500 bayt JSON →
+~250 MB/s, ~21 TB/kun xom. Ustunli siqilgan formatda ~2–4 TB/kun,
+yiliga ~1 PB — butun audio katalogidan (4.5 PB) bir necha yilda
+kattaroq. Shina (Kafka yoki Pub/Sub) → soatlik bo‘limlangan xom jurnal
+(ob’ekt omborida) → paketli ishlov. Xom jurnal hech qachon
+o‘zgartirilmaydi — qayta hisoblash va audit uchun.
+</QA>
+
+<QA q="Oflayn tinglashlar bir hafta kechikib kelsa, oylik hisob qanday yopiladi?">
+Ikki vaqt saqlanadi: event_time (tinglash qachon bo‘lgan) va arrival_time
+(qachon kelgan). Xom jurnal arrival_time bo‘yicha — eski bo‘limlar
+hech qachon o‘zgarmaydi. Oy belgilangan kunda (masalan, keyingi oyning
+5-kuni) event_time bo‘yicha yopiladi; undan keyin kelganlar “tuzatish”
+to‘plami sifatida keyingi hisobotga yoziladi. Bu buxgalteriya qoidasi:
+yopilgan davr o‘zgartirilmaydi. Kechikkanlar ~0.05% — lekin kuniga
+millionlab tinglash, tashlab bo‘lmaydi.
+</QA>
+
+<QA q="Discover Weekly'ni 600 M foydalanuvchi uchun qanday hisoblaysiz?">
+Paketli ravishda, haftada bir marta, hammaga: har foydalanuvchi uchun
+ANN nomzodlari va pleylistlarda birga uchrash nomzodlari, filtr (butun
+tinglash tarixi, rad etilganlar), qayta tartiblash va xilma-xillik —
+~10 ms. 600 M × 10 ms ≈ 1 700 yadro-soat — 1 000 yadroda ~2 soat.
+Natija ~144 GB kalit-qiymat omboriga; dushanba kuni ochish — bitta
+kalit o‘qish. “Kim ochadi” ni bashorat qilish hisobni tejashdan
+qimmatroq, shuning uchun hammaga hisoblanadi.
+</QA>
+
+<QA q="Katta albom relizida qaysi qism birinchi sinadi?">
+Baytlar emas: 5 M tinglovchi × 160 kbit/s = 800 Gbit/s — umumiy
+trafikning ~30%, va ~52 fayl CDN uchun ideal (bitta ob’ekt, ko‘p
+so‘rov). Birinchi sinadigan — **metama’lumot**: albom sahifasiga
+sekundiga ~17 000 so‘rov bitta kalitga. Himoya: sahifani oldindan
+keshlarga isitish, so‘rovlarni birlashtirish, fayllarni shifrlangan
+holda relizdan oldin CDN’ga joylash (reliz = kalitni ochish), va
+mahalliy yarim tun bo‘yicha reliz — yuk 24 ta kichik to‘lqinga bo‘linadi.
+</QA>
+
+<QA q="Bir soatlik backend uzilishidan keyin nima bo'ladi?">
+Foydalanuvchilar asosan sezmaydi: keshdagi va yuklab olingan treklar
+o‘ynaydi, hodisalar diskdagi navbatda to‘planadi. Xavf — tiklanish:
+1 soatda ~1.8 mlrd hodisa to‘plangan; hamma bir daqiqada yuborsa —
+oddiy yukdan ~60 barobar, backend yana yiqiladi. Mijozda tasodifiy
+kechikish (jitter) bilan bir soatga tarqatilsa — ~2 barobar, chidaydi.
+Hodisalar shoshilinch emas, shuning uchun ularni soatlab tarqatish
+mumkin; qayta ulanishlar uchun ham xuddi shu.
+</QA>
+
+<QA q="Saqlash va trafikni qancha tejash kerak?">
+Deyarli yo‘q — va buni hisob ko‘rsatadi. Butun katalog barcha
+formatlarda ~4.5 PB, oyiga ~90 000 dollar; yetkazish Premium
+obunachiga oyiga ~0.005 dollar; butun infratuzilma ~0.06 dollar
+(ARPU ning ~1%). Huquq to‘lovlari esa ~3.5 dollar (~65–70%). Trafikni
+nolga tushirish ham daromadning 0.1% i. Muhandislik vaqti hisob
+aniqligiga (1% xato ~100 M dollar) va foydalanuvchini ushlab qolishga
+(1% ketish ~50 M dollar/yil, to‘planadi) sarflanishi kerak.
+</QA>
+
+<QA q="Yo'qolgan hodisalar ulushini qanday o'lchaysiz?">
+Har qurilma hodisalarga ketma-ket raqam beradi (diskda saqlanadi).
+Server har bosqichda (shlyuz, shina, xom jurnal, kitob) bo‘shliqlarni
+sanaydi: kelmagan raqam — kechikkan yoki yo‘qolgan; belgilangan
+muddatdan (masalan, 7 kun) keyin ham kelmasa, yo‘qolgan. Metrika —
+bo‘shliqlar / kutilgan raqamlar, maqsad 0.01% dan kam. Qo‘shimcha:
+bir raqam ikki marta — dublikat. Bosqichma-bosqich o‘lchov yo‘qotish
+qayerda ekanini ko‘rsatadi.
+</QA>
+
+### 18.3 Tajriba
+
+<QA q="Spotify nega P2P'dan voz kechdi va bundan qanday umumiy saboq chiqadi?">
+2008-yilda P2P server trafigini ~11 barobar kamaytirgan (2010 o‘lchovi:
+kesh 55%, P2P 36%, server 9%) — startap uchun hal qiluvchi. 2014-yilga
+kelib: tinglash mobilga ko‘chdi (telefon P2P tuguni bo‘la olmaydi),
+CDN bir necha barobar arzonlashdi, infratuzilma xarajati huquq
+to‘lovlari yonida ahamiyatsizlashdi, murakkablik esa qoldi. Saboq:
+qaror o‘z davrining narxlari va cheklovlariga javob; davriy ravishda
+“bu qarorni yaratgan cheklov hali ham bormi?” deb so‘rash kerak.
+</QA>
+
+<QA q="Kesh urish darajasi oshsa, server loglari bo'yicha hisoblangan tinglashlarga nima bo'ladi?">
+Ular **kamayadi** — va aynan shuning uchun serverda sanash xato.
+Keshdan va oflayn ijro tarmoqqa chiqmaydi; kesh urish darajasi 40% dan
+60% ga oshsa, server ko‘radigan tinglashlar ~33% ga tushadi, garchi
+haqiqiy tinglashlar o‘zgarmagan bo‘lsa ham. Optimallashtirish bilan
+yomonlashadigan metrika — eng xavfli turdagi xato. To‘g‘ri manba —
+mijoz hodisalari, idempotent ID va doimiy navbat bilan.
+</QA>
+
+<QA q="31 soniyalik treklar bilan bot fermasiga qanday qarshi turasiz?">
+Avval iqtisodni buzish: 12 dollarlik akkaunt 24/7 aylantirib ~86 000
+tinglash, ~276 dollar oladi — 23 barobar foyda. Qoidalar bu
+o‘zgaruvchilarni buzadi: shovqin treklari uchun minimal uzunlik, yillik
+1 000 tinglash chegarasi, sotib olingan tinglashlar uchun yorliqqa jarima.
+Keyin paketli aniqlash: 20–24 soat tinglash, o‘tkazishsiz, aniq 31 s,
+yuzlab akkaunt bitta tarmoqdan, va eng kuchlisi — akkaunt grafi
+(bir xil treklar to‘plamini tinglaydigan akkauntlar jamoasi).
+</QA>
+
+<QA q="Firibgarlik filtrining yangi versiyasini qanday xavfsiz chiqarasiz?">
+Filtr haqiqiy tinglashlarni ham olib tashlashi mumkin, va zararni
+darhol hech kim sezmaydi. Shuning uchun: yangi versiyani avval
+“soya rejimida” (natijani yozadi, lekin hisobga ta’sir qilmaydi)
+bir necha hafta ishlatib, eski versiya bilan farqni mamlakat va
+ijrochi bo‘yicha ko‘rish; keskin farqlarni odam ko‘rib chiqishi;
+hisobotlarga filtr versiyasini yozish (qayta hisoblash uchun); va
+chiqarilgan tinglashlar ulushini kunlik metrika sifatida kuzatish.
+</QA>
+
+<QA q="Spotify Connect'da tinglashni qaysi qurilma yuboradi va nega?">
+Audioni haqiqatan ijro etgan qurilma (masalan, karnay), buyruq bergan
+telefon emas. Sabab — hisob: ikkalasi ham yuborsa, bir tinglash ikki
+marta sanaladi, va dedublikatsiya turli qurilmalardan kelgan turli
+event_id larni bog‘lay olmaydi. Umumiy qoida: har faktning **bitta
+egasi** bo‘lishi kerak. Ijro holati (trek, pozitsiya, navbat) esa
+serverda, versiya raqami bilan saqlanadi; pozitsiya har soniyada
+yuborilmaydi — “pozitsiya + vaqt tamg‘asi” dan har qurilma o‘zi hisoblaydi.
+</QA>
+
+<QA q="Wrapped ma'lumotlari nega yil oxirigacha emas?">
+Ishga tushirish sanasi qat’iy (marketing), paketli ishlov esa bosqichma-bosqich:
+kechikkan hodisalarni kutish (~1 hafta), dedublikatsiya va firibgarlik
+filtri, agregatlar (~300 mlrd qator), sifat tekshiruvi (1–2 hafta),
+resurslarni CDN’ga joylash. Qat’iy sana va o‘zgaruvchan ishlov vaqti —
+ma’lumotni ertaroq kesish kerak. Ishga tushirish kuni server hech narsa
+hisoblamaydi: natija kalit-qiymat omborida, ulashish rasmlari mijozda
+yaratiladi.
+</QA>
+
+<QA q="Tavsiya tizimi mashhurlarni yanada mashhur qilayotganini qanday aniqlaysiz va to'xtatasiz?">
+O‘lchash: tavsiyalarning necha foizi katalogning eng mashhur 1% idan,
+va bu ulush vaqt bilan qanday o‘zgaradi; yangi san’atkorlarning
+tavsiyalarga tushish tezligi. To‘xtatish: har tinglash hodisasida
+manbani (context) yozish va tavsiyadan kelgan tinglashlarga kamroq
+og‘irlik berish; tartiblashda majburiy xilma-xillik; tavsiyalarning
+kichik qismini o‘rganish uchun ajratish (bandit). Muhimi — manba
+maydoni hodisaga boshidan qo‘yilishi kerak, keyin qo‘shib bo‘lmaydi.
+</QA>
+
+<QA q="Kesh va oflayn yuklamalar bitta diskda — qanday boshqarasiz?">
+Ikkita alohida hisob, ikkita siyosat. Kesh — tizim boshqaradi, LRU bilan
+chiqaradi, hajmi chegaralangan (masalan, 1–10 GB). Yuklab olinganlar —
+foydalanuvchi aniq so‘ragan, hech qachon o‘z-o‘zidan chiqarilmaydi,
+faqat foydalanuvchi o‘chirsa yoki litsenziya muddati tugasa (va u
+holda ham fayl qoladi, faqat kalit yangilanishi kerak). Joy tugasa —
+faqat kesh qisqaradi. Bir LRU’da birlashtirish oflayn va’dasini aynan
+tarmoq yo‘q paytda buzadi.
+</QA>
+
+<QA q="Katalogdan olib tashlangan trekni barcha qurilmalardan qanday 'o'chirasiz'?">
+Fayllarni o‘chirmaysiz — kalitni berishni to‘xtatasiz. Fayllar
+shifrlangan, kalitlar muddatli; kalit xizmati trekni “mavjud emas”
+deb bilgach, onlayn qurilmalar darhol ijro eta olmaydi, oflayn
+qurilmalar esa kalit muddati tugaganda (~30 kun ichida). Bu
+kriptografik o‘chirish: millionlab qurilmaga “o‘chir” buyrug‘ini
+yetkazish (va oflayn qurilmalar uni olmasligi) muammosi yo‘q. Keshdagi
+fayl keyinchalik LRU bilan o‘z-o‘zidan chiqib ketadi.
+</QA>
+
+## 19. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/spotify/` da:
+`gen.py` — bir oylik sintetik hodisalar oqimi (dublikatlar, oflayn
+kechikishlar, soat xatolari, botlar, yo‘qolgan hodisalar bilan),
+`check.py` — tayyor tekshiruvlar, `pipeline.py` esa TODO bilan skelet.
+Faqat Python standart kutubxonasi.
+
+<Task title="1-daraja: audio o'lchovlari o'z qo'lingiz bilan">
+Bitta qo‘shiqni (masalan, WAV yoki FLAC) oling va ffmpeg bilan (yoki
+`pip install imageio-ffmpeg`) uni 24, 96, 160 va 320 kbit/s ga
+siqing. Har fayl hajmini o‘lchang va 2.2-dagi jadval bilan solishtiring.
+Keyin `ffmpeg -i fayl -af ebur128 -f null -` bilan har bir faylning
+integral balandligini (LUFS) o‘lchang va −14 LUFS gacha kerakli
+kuchaytirishni hisoblang.
+
+**Tekshiruv mezoni:** (1) hajmlar 2.2-dagi hisobdan 10% dan ko‘p farq
+qilmaydi (farq bo‘lsa — sababini toping: konteyner, metama’lumot,
+o‘zgaruvchan bitreyt); (2) to‘rtala faylning LUFS qiymati deyarli
+bir xil — ya’ni balandlik siqish darajasiga bog‘liq emas, va nega bu
+2.3-dagi “bir marta o‘lchash” qarorini asoslashini bir abzasda
+tushuntiring.
+</Task>
+
+<Task title="2-daraja: tinglashlar kitobi (asosiy topshiriq)">
+`pipeline.py` dagi to‘qqizta funksiyani yozing: dedublikatsiya,
+karantin, oy va yopilish, 30 soniya qoidasi, trek bo‘yicha sanash,
+botlarni aniqlash, yo‘qotish bahosi va ikki royalti modeli. `python
+gen.py` bir marta, keyin `python check.py`.
+
+**Tekshiruv mezoni:** `Jami: 15/15 OK`. Tinglashlar soni **trek
+bo‘yicha aniq** mos kelishi kerak — bitta chegaradagi xato buni
+buzadi. Botlarni aniqlashda sokin botlar ko‘p tinglaydigan odamlardan
+kam tinglaydi, ya’ni hajm chegarasi yetmaydi. Oxirgi jadvaldagi
+firibgar ulushini (pro-rata va foydalanuvchi-markazli, filtr
+bilan va filtrsiz) 12.2-dagi Check bilan solishtiring va farqni
+o‘z raqamlaringiz bilan tushuntiring.
+</Task>
+
+<Task title="3-daraja: oldindan yuklash simulyatori">
+Tinglash sessiyalarini modellashtiring: har trek 3.5 daqiqa, 160 kbit/s;
+o‘tkazishlar 6.3 Deep’dagi taqsimot bo‘yicha (24% birinchi 5 soniyada,
+~50% oxirigacha emas). Uch strategiyani solishtiring: (A) oldindan
+yuklash yo‘q, (B) keyingi trekning boshini (10 s) tugashiga 20 s
+qolganda, (C) butun keyingi trekni tugashiga 30 s qolganda. Uch tarmoq:
+Wi-Fi (20 Mbit/s, RTT 30 ms), 4G (5 Mbit/s, 60 ms), 3G (1 Mbit/s, 150 ms).
+
+**Tekshiruv mezoni:** har strategiya va tarmoq uchun jadval — treklar
+orasidagi o‘rtacha pauza (ms), pauzasiz o‘tishlar ulushi va bir soat
+tinglashga isrof qilingan MB. B strategiyasi pauza bo‘yicha C ga
+yaqin, isrof bo‘yicha esa ~20 barobar yaxshi chiqishi kerak (6.3 hisobi).
+O‘tkazish ehtimoli `p` ni 0.5 dan 0.95 gacha o‘zgartirib, qaysi `p` da
+C Wi-Fi’da oqlanishini toping.
+</Task>
+
+<Task title="4-daraja: royalti va firibgarlik iqtisodi modeli">
+Jadval yoki skript: kirish — bozorlar (obuna narxi, obunachilar,
+o‘rtacha tinglashlar), bot fermasi parametrlari (akkauntlar soni,
+akkaunt narxi, kuniga soat, trek uzunligi) va qoidalar (minimal
+davomiylik, yillik chegara, aniqlash ehtimoli). Chiqish — fermaning
+oylik foydasi va halol san’atkorlar yo‘qotgan pul, pro-rata va
+foydalanuvchi-markazli modellarda.
+
+**Tekshiruv mezoni:** (1) 12.2-dagi hisobni (≈23 barobar foyda)
+takrorlang; (2) aniqlash ehtimoli qanday bo‘lganda pro-rata’da ferma
+zararga ishlay boshlashini toping (zararsizlik nuqtasi); (3)
+foydalanuvchi-markazli modelda aniqlashsiz ham ferma zararda ekanini
+ko‘rsating. Xulosa: qaysi qoida (uzunlik, chegara, jarima) ferma
+iqtisodiga eng kuchli ta’sir qiladi — sezgirlik grafigi bilan.
+</Task>
+
+## 20. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| PCM | Siqilmagan raqamli audio: namunalar ketma-ketligi |
+| Namuna olish chastotasi | Soniyadagi o‘lchovlar soni (CD: 44.1 kHz) |
+| Psixoakustik model | Quloq nimani eshitmasligini bashorat qiluvchi model |
+| Niqoblash | Baland tovush yaqin chastota yoki vaqtdagi past tovushni “yopishi” |
+| Gapless ijro | Treklar orasida pauzasiz, namuna aniqligida o‘tish |
+| LUFS | Idrok qilinadigan balandlik birligi |
+| Balandlikni tenglashtirish | Treklarni bir xil idrok balandligiga keltiruvchi kuchaytirish |
+| Kirish nuqtasi (access point) | Mijozning doimiy ulanishi ulanadigan server |
+| P2P | Tinglovchilar bir-biriga fayl bo‘laklarini tarqatadigan tarmoq |
+| Oldindan yuklash | Keyingi trekni joriysi tugashidan oldin yuklash |
+| Muddatli litsenziya | Oflayn ijro uchun ma’lum vaqt amal qiladigan kalit |
+| Kriptografik o‘chirish | Ma’lumotni emas, uning kalitini yo‘q qilish |
+| Tinglash hodisasi | Pleyer yaratgan “trek X, N ms eshitildi” yozuvi |
+| Idempotentlik | Bir amalni ko‘p marta bajarish bir marta bajarish bilan teng |
+| Event time / arrival time | Hodisa sodir bo‘lgan va serverga kelgan vaqt |
+| Pro-rata | Fondni umumiy tinglashlar ulushiga qarab taqsimlash |
+| Foydalanuvchi-markazli model | Har obunachining to‘lovi faqat o‘zi tinglaganlarga |
+| Yashirin signal | Aniq baho emas, xulq-atvordan olingan signal (tinglash, o‘tkazish) |
+| Matritsa faktorizatsiyasi | Foydalanuvchi–trek matritsasini ikki kichik vektorlar to‘plamiga ajratish |
+| ALS | Almashinuvchi eng kichik kvadratlar — faktorizatsiya usuli |
+| ANN | Taxminiy eng yaqin qo‘shnilar qidiruvi |
+| Sovuq start | Tarixi yo‘q yangi trek yoki foydalanuvchi muammosi |
+| Mashhurlik egriligi | Tavsiya tizimi mashhurlarni yanada mashhur qilishi |
+
+## 21. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| CD audio | 44.1 kHz, 16 bit, 2 kanal, ~1 411 kbit/s | Red Book standarti, hisoblab chiqilgan |
+| Median boshlanish kechikishi | ~265 ms | Kreitz va Niemelä, IEEE P2P 2010 |
+| Tinglash baytlari manbasi | Kesh 55.4%, P2P 35.8%, server 8.8% | Kreitz va Niemelä, 2010 |
+| AAC kodlovchi kechikishi | 2 112 namuna | Apple texnik hujjatlari (iTunes kodlovchisi) |
+| Balandlik maqsadi | ~−14 LUFS | Spotify for Artists hujjatlari |
+| Huquq egalariga yillik to‘lov | ~10 mlrd dollar (2024) | Spotify “Loud & Clear” hisoboti (2025) |
+| 1 000 tinglash chegarasi | 2024-yildan; ~99.5% tinglashlar chegaradan yuqori | Spotify for Artists e’loni (2023) |
+| Minimal hisob davomiyligi | 30 soniya | Spotify for Artists hujjatlari |
+| Oflayn cheklovlar | ~10 000 trek, 5 qurilma, ~30 kun | Spotify yordam markazi |
+| O‘tkazishlar | ~24% birinchi 5 s da, ~49% oxirigacha emas | Paul Lamere, “The Skip” (2014) |
+| Yashirin signal faktorizatsiyasi | c = 1 + α·r | Hu, Koren, Volinsky, ICDM 2008 |
+| Annoy / Voyager | 2013 / 2023 | Spotify ochiq kod repozitoriylari |
+| Audio asosida sovuq start | 2014 | Sander Dieleman blogi; van den Oord va boshq., NeurIPS 2013 |
+| Bosh sahifa banditlari (BaRT) | 2018 | McInerney va boshq., RecSys 2018 |
+| Hodisalar yetkazish tizimi | Kafka → Pub/Sub | Spotify muhandislik blogi (2016) |
+| Sleepify | 2014, ~20 000 dollar | Musiqa matbuoti xabarlari |
+| 2-daraja natijalari | 15/15, firibgar ulushi jadvali | `docs/amaliyot/spotify/`, referens implementatsiya |
+
+Kunlik tinglash soatlari, faol tinglovchilar soni, o‘rtacha bitreyt,
+kesh urish darajalari, hodisa hajmlari, bulut xarajatlari, ARPU,
+kechikkan hodisalar taqsimoti, reliz va Wrapped yuklamalari —
+**illyustratsiya uchun taxminiy** raqamlar. Ular tartib jihatidan
+ishonchli, lekin aniq emas. Darsning asosiy xulosalari (infratuzilma
+huquq to‘lovlaridan o‘nlab barobar arzon; hisob xatosi — yuz millionlab
+dollar) bu raqamlarning ikki-uch barobarlik xatosiga ham chidamli.
+
+## 22. Manbalar
+
+- Gunnar Kreitz, Fredrik Niemelä (2010), “Spotify — Large Scale, Low
+  Latency, P2P Music-on-Demand Streaming”, IEEE P2P
+- Yifan Hu, Yehuda Koren, Chris Volinsky (2008), “Collaborative
+  Filtering for Implicit Feedback Datasets”, ICDM
+- Christopher Johnson (2014), “Logistic Matrix Factorization for
+  Implicit Feedback Data”
+- Aäron van den Oord, Sander Dieleman, Benjamin Schrauwen (2013),
+  “Deep content-based music recommendation”, NeurIPS
+- James McInerney va boshq. (2018), “Explore, Exploit, and Explain:
+  Personalizing Explainable Recommendations with Bandits”, RecSys
+- Spotify muhandislik blogi (2016), “Spotify’s Event Delivery — The
+  Road to the Cloud” (turkum)
+- Spotify for Artists — “Loud & Clear” hisobotlari va royalti qoidalari
+- Paul Lamere (2014), “The Skip”, Music Machinery blogi
+- Annoy va Voyager — Spotify ochiq kod kutubxonalari
+- ITU-R BS.1770 / EBU R 128 — balandlikni o‘lchash standartlari
