@@ -1,0 +1,49 @@
+/* WhatsApp skini — WhatsApp Web uslubi (rasmiy brend materiali emas) */
+[data-skin="whatsapp"] {
+  --skin-bg: #efeae2;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f0f2f5;
+  --skin-border: #d1d7db;
+  --skin-text: #111b21;
+  --skin-muted: #667781;
+  --skin-accent: #008069;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(0, 128, 105, 0.35);
+  --skin-radius: 8px;
+  --skin-font: "Segoe UI", "Helvetica Neue", Helvetica, ui-sans-serif, system-ui, sans-serif;
+  --skin-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --wa-band: #00a884;
+  --wa-bubble-out: #d9fdd3;
+  --wa-tick: #53bdeb;
+  --wa-notice: #ffeecd;
+  --wa-notice-text: #54656f;
+  --wa-unread: #25d366;
+}
+
+/* Suhbat gulqog'ozi: yengil naqsh, faqat CSS bilan */
+[data-skin="whatsapp"] .wa-wallpaper {
+  background-color: #efeae2;
+  background-image:
+    radial-gradient(circle at 20px 20px, rgba(0, 0, 0, 0.035) 2px, transparent 2.5px),
+    radial-gradient(circle at 60px 50px, rgba(0, 0, 0, 0.03) 1.5px, transparent 2px),
+    radial-gradient(circle at 40px 80px, rgba(0, 0, 0, 0.025) 3px, transparent 3.5px);
+  background-size: 80px 100px;
+}
+
+/* Sarlavhalar — suhbatdagi sana belgisi kabi markazda, oq "chip" */
+[data-skin="whatsapp"] .lesson-prose h2 {
+  display: table;
+  margin-inline: auto;
+  max-width: 92%;
+  text-align: center;
+  background: var(--skin-surface-2);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  font-size: 1.15rem;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+
+body:has([data-skin="whatsapp"]) {
+  background: #efeae2;
+}

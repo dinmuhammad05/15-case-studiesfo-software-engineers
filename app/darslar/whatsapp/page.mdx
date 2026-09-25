@@ -1,0 +1,3051 @@
+## Bu darsda nima o‘rganasiz
+
+Slack darsida biz server qanday qilib mijozga o‘zi gapirishini o‘rgandik.
+U yerda bitta jimgina faraz bor edi: **mijoz ulangan**. Noutbuk ish kuni
+davomida ochiq turadi, Wi-Fi barqaror, batareya muammo emas.
+
+WhatsApp bu farazni buzadi. Uning mijozi — telefon, va telefon **ko‘p vaqt
+oflayn**: cho‘ntakda, metroda, samolyotda, batareyani tejash rejimida,
+operatsion tizim ilovani fonda o‘ldirgan holatda. Xabar yuborilgan paytda
+qabul qiluvchi deyarli hech qachon “shu yerda” emas. Demak savol o‘zgaradi:
+**xabarni u yetib bora olmaydigan odamga qanday yetkazasiz?**
+
+Ikkinchi, undan ham chuqurroq o‘zgarish: WhatsApp serveri xabarni **o‘qiy
+olmaydi**. Uchidan-uchiga shifrlash (E2EE) tufayli server faqat shifrlangan
+baytlarni tashiydi. Bu bitta qaror arxitekturaning deyarli hamma qismiga
+ta’sir qiladi: guruhlar, ko‘p qurilma, push bildirishnomalar, zaxira nusxa,
+spam bilan kurash, hatto kuzatuv — hammasi “server hech narsani bilmaydi”
+degan cheklov ichida qurilishi kerak.
+
+Yo‘l shunday: avval shifrlashning o‘zini **noldan** — kichik sonlar bilan
+qo‘lda hisoblab — tushunamiz. Keyin nega qabul qiluvchi oflayn bo‘lganda
+oddiy kalit almashinuvi ishlamasligini va Signal protokoli buni qanday hal
+qilishini ko‘ramiz. So‘ng “saqla va uzat” (store-and-forward) navbati, uch
+xil belgi (✓, ✓✓, ko‘k ✓✓), guruhlardagi kvadratik tuzoq, ko‘p qurilma,
+va nihoyat iqtisod: nega WhatsApp tarixan juda kichik jamoa bilan juda
+katta tizimni boshqara olgan.
+
+Dars Slack darsidan keyin o‘qish uchun mo‘ljallangan — doimiy ulanish,
+jitter va quvib yetish u yerda tushuntirilgan va bu yerda faqat eslatiladi.
+Kriptografiya bo‘yicha oldindan bilim shart emas: hamma narsa maktab
+matematikasidan boshlanadi.
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+| Talab | Tafsilot |
+| --- | --- |
+| Shaxsiy xabar | Matn, rasm, ovozli xabar, fayl — ikki kishi orasida |
+| Guruh | 1 024 a’zogacha, xuddi shu funksiyalar bilan |
+| Oflayn yetkazish | Qabul qiluvchi oflayn bo‘lsa, xabar u qaytganda yetib boradi |
+| Holat belgilari | ✓ serverga yetdi, ✓✓ qurilmaga yetdi, ko‘k ✓✓ o‘qildi |
+| Uchidan-uchiga shifrlash | Server va operator xabar mazmunini o‘qiy olmaydi |
+| Ko‘p qurilma | Telefon + 4 ta bog‘langan qurilma, telefon o‘chiq bo‘lsa ham |
+| Push bildirishnoma | Ilova yopiq bo‘lsa ham yangi xabar haqida xabar berish |
+| Zaxira nusxa | Telefon yo‘qolsa, tarixni tiklash |
+
+Bu jadvalda Slack’da bo‘lgan ikki narsa **yo‘q**: serverdagi qidiruv va
+serverdagi tarix. Bu tasodif emas. Server xabarni o‘qiy olmasa, uni
+indekslay olmaydi; server xabarni yetkazib bo‘lgach o‘chirsa, tarix faqat
+telefonda qoladi. Demak E2EE talabi funksiyalar ro‘yxatini ham qisqartiradi —
+va 12-bo‘limda ko‘ramizki, aynan shu qisqarish WhatsApp’ni juda arzon
+qiladi.
+
+### 1.2 Nofunksional talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Yetkazish (ikkalasi onlayn) | p99 < 1 s, mobil tarmoqda |
+| Yetkazish (qabul qiluvchi oflayn) | U qaytgach p99 < 5 s ichida hamma navbatdagi xabarlar |
+| Yo‘qotmaslik | Server ✓ bergan xabar yo‘qolmaydi (30 kun ichida) |
+| Maxfiylik | Serverdan to‘liq ma’lumot sizib chiqsa ham xabar mazmuni ochilmaydi |
+| Batareya | Fondagi ilova batareyaning sezilarli qismini yemasligi |
+| Trafik | Sekin 2G/3G tarmoqda ham ishlashi |
+
+To‘rtinchi qatorni qayta o‘qing, chunki u butun darsning eng qat’iy talabi:
+**“serverdan to‘liq ma’lumot sizib chiqsa ham”**. Bu odatiy xavfsizlik
+talabidan tubdan farq qiladi. Odatda biz “serverni buzib bo‘lmasin” deymiz;
+bu yerda esa “server buzilgan deb faraz qilamiz, va baribir mazmun
+xavfsiz”. Bu talab kalitlar **faqat qurilmalarda** yashashini majburlaydi.
+
+Oxirgi ikki qator ham e’tiborga loyiq: ular Slack’da umuman bo‘lmagan.
+WhatsApp’ning asosiy auditoriyasi — rivojlanayotgan mamlakatlar, arzon
+telefonlar, qimmat va sekin mobil internet. Har bir bayt va har bir
+uyg‘onish (radio yoqilishi) mahsulot talabi, optimallashtirish emas.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="2 B" label="Foydalanuvchi" hint="Taxminiy, oylik faol" />
+  <Stat value="100 B" label="Kunlik xabar" hint="Taxminiy, 2020-yil atrofi" />
+  <Stat value="1.16 M" label="Xabar/s" hint="O'rtacha, cho'qqisiz" />
+  <Stat value="30 kun" label="Navbatda saqlash" hint="Yetkazilmagan xabar muddati" />
+</StatGrid>
+
+<Calc title="Xabarlar va ular atrofidagi hodisalar" result="Xabarlarning o'zidan 3-4 barobar ko'p hodisa — belgilar tufayli">{`Kuniga 100 000 000 000 xabar:
+  1e11 / 86 400 = 1 157 407 xabar/s (o'rtacha)
+  Cho'qqida ~2.5 barobar = ~2 900 000 xabar/s
+
+Har bir SHAXSIY xabar atrofida:
+  1  xabarning o'zi
+  1  server tasdig'i (✓)          -> yuboruvchiga
+  1  yetkazildi belgisi (✓✓)      -> yuboruvchiga
+  1  o'qildi belgisi (ko'k ✓✓)    -> yuboruvchiga
+  = 4 ta hodisa
+
+Har bir GURUH xabari (o'rtacha 20 a'zo):
+  1  xabar -> serverga
+  19 yetkazish -> a'zolarga
+  19 yetkazildi + 19 o'qildi -> yuboruvchiga
+  = 58 ta hodisa bitta xabar uchun
+
+Agar xabarlarning 30% i guruhlarda bo'lsa:
+  0.7 x 4 + 0.3 x 58 = 2.8 + 17.4 = 20.2 hodisa/xabar
+
+  1.16 M x 20 = ~23 000 000 hodisa/s`}</Calc>
+
+Bu hisobning xulosasi kutilmagan: **xabarlarning o‘zi trafikning kichik
+qismi**. Asosiy yuk — belgilar, ya’ni “yetib keldi” va “o‘qildi” degan
+kichkina signallar. Guruhlarda bu ayniqsa keskin: bitta xabar 58 ta hodisa
+yaratadi va ulardan 38 tasi faqat yuboruvchiga “kim ko‘rdi” degan
+ma’lumotni qaytaradi.
+
+Bu Slack darsidagi presence xulosasining qarindoshi: **mahsulotning eng
+kichik ko‘rinadigan qismi eng katta trafikni yaratadi.** 5-bo‘limda
+belgilarni qanday arzonlashtirishni ko‘ramiz (guruhlash, kechiktirish,
+kattalashtirish) va 7-bo‘limda guruhlar uchun bu nega hal qiluvchi.
+
+<Check q="Nega WhatsApp uchun 'bir vaqtda ulangan' soni Slack'dagidan kamroq ahamiyatga ega?">
+Slack’da ulanishlar soni sig‘imning asosiy o‘lchovi edi, chunki noutbuklar
+ish kuni davomida ulangan turadi va har bir ulanish serverda holat ushlaydi.
+
+WhatsApp’da telefonlarning katta qismi **ko‘p vaqt ulanmagan**: operatsion
+tizim fondagi ilovaning tarmoq ulanishini bir necha soniya yoki daqiqadan
+keyin yopadi. Ular push bildirishnoma bilan uyg‘onadi, navbatdagi xabarlarni
+oladi va yana uxlaydi.
+
+Demak bu yerda asosiy o‘lchov boshqa: **ulanish chastotasi** (sekundiga
+nechta telefon uyg‘onib ulanadi) va **navbat hajmi** (qancha xabar
+egasini kutib yotibdi). Birinchisi CPU’ni, ikkinchisi xotira va diskni
+belgilaydi. 6-bo‘limda ikkalasini Little qonuni bilan hisoblaymiz.
+</Check>
+
+## 2. Nol nuqta: server o‘qiy olmaydigan xabar
+
+Bu bo‘lim darsning poydevori va eng uzuni. Arxitektura haqida gapirishdan
+oldin bitta savolga to‘liq javob kerak: **ikki telefon qanday qilib
+umumiy sirni kelishib oladi, agar ular orasidagi har bir baytni
+(jumladan, kelishuvning o‘zini) server ko‘rib tursa?**
+
+### 2.1 Simmetrik shifrlash: kalit bor, lekin uni qanday uzatasiz
+
+Eng oddiy shifrlash — **simmetrik**: bitta kalit bilan shifrlanadi, xuddi
+shu kalit bilan ochiladi. AES shunday ishlaydi. U juda tez (zamonaviy
+protsessorda sekundiga gigabaytlar) va juda ishonchli.
+
+```
+Anvar:  shifr = AES(kalit, "salom")      -> 3f9a1c...
+Server: 3f9a1c...  (o'qiy olmaydi — kalit yo'q)
+Bekzod: AES_ochish(kalit, 3f9a1c...)     -> "salom"
+```
+
+Muammo bitta, va u butun sohaning markaziy muammosi: **kalitni Bekzodga
+qanday yetkazasiz?** Agar uni server orqali yuborsangiz, server kalitni
+ko‘radi va hamma narsani o‘qiydi. Agar uni oldindan kelishib olsangiz
+(uchrashib, qog‘ozda) — 2 milliard foydalanuvchi uchun bu imkonsiz.
+
+Bu muammo 1976-yilgacha yechimsiz deb hisoblangan. Yechim ajoyib darajada
+sodda matematikaga asoslangan.
+
+### 2.2 Diffie–Hellman: ochiq kanalda umumiy sir
+
+G‘oya: ikki tomon **ochiq** sonlarni almashadi, lekin har biri o‘zining
+**yashirin** soni bilan ularni shunday qayta ishlaydiki, natijada ikkalasida
+bir xil son chiqadi — kuzatuvchida esa chiqmaydi.
+
+Kichik sonlar bilan, qo‘lda:
+
+<Calc title="Diffie-Hellman — kalkulyatorda takrorlang" result="Anvar va Bekzod ikkalasida 2 chiqdi. Server faqat 23, 5, 8 va 19 ni ko'rdi">{`OCHIQ PARAMETRLAR (hamma biladi, server ham):
+  p = 23  (tub son)
+  g = 5   (asos)
+
+ANVAR yashirin son tanlaydi: a = 6
+  A = g^a mod p = 5^6 mod 23 = 15 625 mod 23 = 8
+  Anvar serverga yuboradi: A = 8
+
+BEKZOD yashirin son tanlaydi: b = 15
+  B = g^b mod p = 5^15 mod 23
+    5^2  = 25  mod 23 = 2
+    5^4  = 2^2        = 4
+    5^8  = 4^2        = 16
+    5^15 = 5^8 x 5^4 x 5^2 x 5^1 = 16 x 4 x 2 x 5 = 640 mod 23 = 19
+  Bekzod serverga yuboradi: B = 19
+
+ANVAR hisoblaydi:   B^a mod p = 19^6 mod 23
+  19 = -4 (mod 23), (-4)^6 = 4 096, 4 096 mod 23 = 2
+
+BEKZOD hisoblaydi:  A^b mod p = 8^15 mod 23
+  8 = 2^3, 8^15 = 2^45
+  2^11 = 2 048 = 1 (mod 23), demak 2^45 = 2^(45 mod 11) = 2^1 = 2
+
+UMUMIY SIR: 2  (ikkalasida bir xil)
+
+SERVER ko'rgan narsa: p=23, g=5, A=8, B=19
+Undan sirni topish uchun a yoki b kerak: 5^x mod 23 = 8 dan x ni topish.
+Bu — DISKRET LOGARIFM masalasi.`}</Calc>
+
+Nega ikkalasida bir xil chiqdi? Chunki `(g^b)^a = g^(ab) = (g^a)^b`.
+Daraja ko‘paytmasi tartibga bog‘liq emas. Anvar `a` ni, Bekzod `b` ni biladi,
+va har biri boshqasining ochiq sonini o‘z yashirin darajasiga ko‘taradi.
+
+Nega server topa olmaydi? Chunki `8` dan `6` ni topish — ya’ni “5 ni nechanchi
+darajaga ko‘tarsam, 23 ga bo‘lgandagi qoldiq 8 bo‘ladi” degan savol — kichik
+sonlar uchun oson (22 ta variantni sinab ko‘rasiz), lekin katta sonlar uchun
+ma’lum usullarning hech biri amaliy vaqtda yecha olmaydi.
+
+<Calc title="Haqiqiy o'lchamda: nega sinab chiqish ishlamaydi" result="2^252 variant. Butun Yerdagi kompyuterlar koinot yoshidan uzoqroq vaqt ishlaydi">{`WhatsApp (Signal protokoli) Curve25519 elliptik egri chizig'idan foydalanadi.
+Yashirin kalit: 32 bayt = 256 bit
+Samarali xavfsizlik darajasi: ~128 bit (eng yaxshi ma'lum hujum bilan)
+
+2^128 = 3.4 x 10^38 operatsiya
+
+Faraz: har biri sekundiga 10^12 operatsiya bajaradigan
+1 milliard kompyuter (10^9):
+  10^9 x 10^12 = 10^21 operatsiya/s
+
+  3.4 x 10^38 / 10^21 = 3.4 x 10^17 soniya
+                      = 1.08 x 10^10 yil
+                      = ~10.8 milliard yil
+
+Koinot yoshi: ~13.8 milliard yil.
+Va bu bitta kalit uchun. Har bir suhbatda kalitlar doim almashadi (2.4).`}</Calc>
+
+Mana shu ikki `Calc` — shifrlashning butun g‘oyasi. Qolgan hamma narsa
+(X3DH, Double Ratchet, Sender Keys) shu bitta almashinuvni turli
+cheklovlar ostida — oflayn qabul qiluvchi, ko‘p qurilma, guruh — qanday
+qo‘llash haqida.
+
+<Deep title="Elliptik egri chiziq: nega kichikroq kalit bilan kuchliroq">
+Yuqoridagi misolda biz oddiy sonlar ustida `g^a mod p` ishlatdik. Bu
+klassik Diffie–Hellman. Uning muammosi — kalit o‘lchami: 128 bitlik
+xavfsizlik uchun `p` taxminan **3 072 bit** bo‘lishi kerak, chunki oddiy
+sonlar uchun diskret logarifmni “son maydoni g‘alviri” deb ataladigan
+subeksponensial algoritm tezlashtiradi.
+
+Elliptik egri chiziqlarda “daraja” o‘rniga **nuqtani o‘ziga qo‘shish**
+ishlatiladi: `a × G = G + G + ... + G` (a marta). Teskari masala
+(`a × G` dan `a` ni topish) uchun ma’lum eng yaxshi umumiy hujum faqat
+kvadrat ildiz tezligida ishlaydi, shuning uchun 256 bitlik kalit ~128
+bitlik xavfsizlik beradi.
+
+| | Klassik DH | Curve25519 |
+| --- | --- | --- |
+| 128-bit xavfsizlik uchun ochiq kalit | ~384 bayt | 32 bayt |
+| Kalit almashinuvi (CPU) | ~1–2 ms | ~0.05 ms |
+| Mobil tarmoqda trafik | Sezilarli | Deyarli yo‘q |
+
+Jadvalning birinchi qatori WhatsApp uchun hal qiluvchi: har bir yangi
+suhbat, har bir yangi qurilma, har bir guruh a’zosi kalit almashinuvini
+talab qiladi. 384 bayt va 32 bayt farqi 12 barobar — 2G tarmoqdagi
+foydalanuvchi uchun bu soniyalar. Ikkinchi qator esa batareya: kalit
+hisoblash 20–40 barobar arzon.
+
+Shuning uchun zamonaviy protokollarning deyarli hammasi (Signal, TLS 1.3,
+WireGuard) aynan X25519 dan foydalanadi. Bu darsda “DH” deganda
+**X25519** tushuniladi.
+</Deep>
+
+### 2.3 Oflayn qabul qiluvchi: nega oddiy DH ishlamaydi
+
+Diffie–Hellman **ikki tomonning ham qatnashishini** talab qiladi: Anvar `A`
+ni yuboradi, Bekzod `B` ni qaytaradi, shundan keyingina umumiy sir paydo
+bo‘ladi. Bu bir aylanma (round trip).
+
+WhatsApp’da esa Anvar birinchi xabarini yozayotganda Bekzodning telefoni
+**o‘chiq**. Bekzod `B` ni qaytara olmaydi. Anvar esa kutib o‘tirmasligi kerak:
+u “salom” yozadi va darhol ✓ ni ko‘rishni xohlaydi.
+
+Yechim — **oldindan tayyorlangan kalitlar** (prekeys). Bekzod ro‘yxatdan
+o‘tganda (yoki ilova ochilganda) o‘zining ochiq DH yarimlaridan bir
+to‘plamini **oldindan** serverga yuklab qo‘yadi. Anvar Bekzodga yozmoqchi
+bo‘lganda serverdan shulardan birini oladi va Bekzodsiz DH ning o‘z qismini
+bajaradi.
+
+```
+Bekzod ro'yxatdan o'tganda serverga yuklaydi:
+  IK_B       — identifikatsiya kaliti (doimiy, ochiq qismi)
+  SPK_B      — imzolangan prekey (haftada bir almashadi) + IK_B bilan imzo
+  OPK_B[1..100] — bir martalik prekey'lar (har biri bir marta ishlatiladi)
+
+Anvar birinchi xabarni yuborganda:
+  1. Serverdan so'raydi: "Bekzodning kalit to'plamini ber"
+  2. Server beradi: IK_B, SPK_B, imzo, OPK_B[37]  (va 37-ni o'chiradi)
+  3. Anvar imzoni tekshiradi (SPK_B haqiqatan Bekzodnikimi?)
+  4. Anvar vaqtinchalik kalit yaratadi: EK_A
+  5. Anvar 3-4 ta DH hisoblaydi (X3DH) -> umumiy sir SK
+  6. SK dan xabar kaliti chiqaradi, "salom" ni shifrlaydi
+  7. Serverga yuboradi: [IK_A, EK_A, "37-prekey ishlatildi", shifr]
+
+Bekzod ertasi kuni telefonini yoqqanda:
+  8. Xabarni oladi, o'zining yashirin kalitlari bilan xuddi shu DH'larni
+     hisoblaydi -> xuddi shu SK -> xabarni ochadi
+  9. OPK_B[37] ning yashirin qismini O'CHIRADI
+```
+
+<Flow nodes={["Bekzod: prekey yuklaydi", "Server: saqlaydi", "Anvar: to'plamni oladi", "Anvar: X3DH va shifr", "Navbat", "Bekzod: ochadi, OPK o'chiradi"]} caption="Bekzod va Anvar hech qachon bir vaqtda onlayn bo'lmaydi — shunga qaramay umumiy sir paydo bo'ladi" />
+
+Bu sxemaning nomi — **X3DH** (Extended Triple Diffie–Hellman). “Uchlik”,
+chunki kamida uchta DH hisoblanadi, va har biri boshqa kafolatni beradi.
+
+| DH juftligi | Nimani kafolatlaydi |
+| --- | --- |
+| `IK_A` × `SPK_B` | Bekzod Anvarning uzoq muddatli kalitini ko‘radi — Anvar haqiqatan Anvar |
+| `EK_A` × `IK_B` | Anvar Bekzodning uzoq muddatli kalitiga yozdi — Bekzod haqiqatan Bekzod |
+| `EK_A` × `SPK_B` | Vaqtinchalik kalit — oldinga maxfiylik (forward secrecy) |
+| `EK_A` × `OPK_B` | Bir martalik kalit — takroriy yuborish (replay) va eskirgan SPK’ga qarshi |
+
+Jadvaldan asosiy xulosa: **har bir DH juftligi bitta xavfni yopadi, va
+ulardan birortasini olib tashlash bitta aniq hujumni ochadi.** Birinchi
+ikkitasi autentifikatsiya (kim bilan gaplashyapman), qolgan ikkitasi
+kelajak va o‘tmishni himoya qilish. To‘rtinchisi esa **ixtiyoriy** —
+agar Bekzodning bir martalik kalitlari tugab qolsa, X3DH usiz ham
+ishlaydi, faqat biroz kuchsizroq kafolat bilan. 5-bo‘limning 6-qadamida
+bu “tugab qolish” qanchalik tez bo‘lishini hisoblaymiz.
+
+<Callout type="ogoh" title="Server kalitni almashtirsa-chi?">
+Diqqatli o‘quvchi darhol so‘raydi: server Anvarga Bekzodning emas,
+**o‘zining** kalitini bersa-chi? Unda Anvar server bilan shifrlaydi,
+server ochadi, o‘qiydi, qayta shifrlab Bekzodga yuboradi. Bu —
+“o‘rtadagi odam” (man-in-the-middle) hujumi, va X3DH uni **o‘zi
+to‘xtata olmaydi**.
+
+Himoya ikki qatlamli. Birinchisi — imzo: `SPK_B` Bekzodning `IK_B`
+kaliti bilan imzolangan, shuning uchun server `SPK` ni almashtirsa,
+imzo mos kelmaydi. Lekin server `IK_B` ning **o‘zini** almashtirsa,
+imzo ham soxta kalit bilan mos keladi.
+
+Ikkinchi va yakuniy himoya — **odam**: xavfsizlik raqami (safety
+number). Ikkala telefon ham ikkala `IK` dan 60 raqamli son (yoki QR kod)
+hisoblaydi. Anvar va Bekzod uchrashib, raqamlarni solishtirsa — o‘rtada
+hech kim yo‘q. Amalda buni juda kam odam qiladi, shuning uchun
+WhatsApp kalit o‘zgarganda suhbatda ogohlantirish chiqaradi: “Bekzodning
+xavfsizlik kodi o‘zgardi”. 11-bo‘limda bu ogohlantirishning mahsulot
+narxini ko‘ramiz.
+</Callout>
+
+### 2.4 Double Ratchet: har bir xabar — yangi kalit
+
+X3DH bitta umumiy sir beradi. Endi savol: barcha keyingi xabarlarni shu
+bitta kalit bilan shifrlaymizmi?
+
+Yo‘q, va sababi — **telefon o‘g‘irlanishi**. Agar bitta kalit butun
+suhbatni ochsa, o‘g‘ri telefondan kalitni olib, serverda (yoki tarmoqni
+yozib olgan kishida) saqlangan **barcha eski** shifrlangan xabarlarni
+ochadi. Buni oldini olish uchun kalit **har xabarda o‘zgarishi** va eski
+kalitlar **o‘chirilishi** kerak.
+
+Double Ratchet (“ikki tomonlama tishli g‘ildirak”) buni ikki mexanizm bilan
+bajaradi:
+
+```
+1) SIMMETRIK G'ILDIRAK (har bir xabarda):
+   zanjir_kaliti[n+1] = HMAC(zanjir_kaliti[n], 0x02)
+   xabar_kaliti[n]    = HMAC(zanjir_kaliti[n], 0x01)
+   -> xabar shifrlanadi, xabar_kaliti[n] va zanjir_kaliti[n] O'CHIRILADI
+
+   HMAC bir tomonlama: [n+1] dan [n] ni tiklab bo'lmaydi.
+   Demak bugungi kalitni o'g'irlagan odam kechagi xabarni ocholmaydi.
+
+2) DH G'ILDIRAGI (har javobda):
+   Har safar tomon almashganda (Anvar yozdi -> Bekzod javob berdi)
+   javob beruvchi YANGI vaqtinchalik DH kalit yaratadi va uni xabarga qo'shadi.
+   Yangi DH natijasi zanjirga aralashtiriladi.
+
+   Demak hujumchi hozirgi holatni o'g'irlasa ham, keyingi
+   DH almashinuvidan keyin u yana "ko'r" bo'lib qoladi.
+```
+
+| Kafolat | Qaysi g‘ildirak beradi | Oddiy tilda |
+| --- | --- | --- |
+| Oldinga maxfiylik | Simmetrik | Bugun kalit o‘g‘irlansa, kechagi xabarlar xavfsiz |
+| Buzilishdan keyingi tiklanish | DH | Bugun kalit o‘g‘irlansa, ertaga (bir javobdan keyin) yana xavfsiz |
+
+Bu ikki kafolat bir-birining teskarisi: biri **o‘tmishni**, ikkinchisi
+**kelajakni** himoya qiladi. Ular birgalikda “kalit o‘g‘irlanishining
+zarari vaqt bo‘yicha cheklangan” degan xossani beradi — hujumchi faqat
+o‘g‘irlik va keyingi DH almashinuvi orasidagi oynani o‘qiy oladi.
+
+<Calc title="Double Ratchet qancha turadi" result="Har xabarga ~0.1 ms CPU va 32 bayt. Xavfsizlik deyarli tekin">{`Har bir xabar uchun (yuboruvchida):
+  2 ta HMAC-SHA256 (zanjir + xabar kaliti)   ~0.002 ms
+  AES-256 shifrlash (1 KB)                    ~0.001 ms
+  HMAC autentifikatsiya                       ~0.001 ms
+
+Har bir tomon almashishida qo'shimcha:
+  1 ta X25519 kalit yaratish                  ~0.05 ms
+  1 ta X25519 DH                              ~0.05 ms
+  + 32 bayt ochiq kalit xabar sarlavhasida
+
+Kuniga 100 ta xabar yuboradigan foydalanuvchi:
+  ~0.1 ms x 100 = 10 ms CPU/kun
+  ~50 marta tomon almashadi -> 50 x 32 bayt = 1.6 KB/kun trafik
+
+Taqqoslash: bitta WhatsApp ovozli xabari (10 s) ~16 KB.`}</Calc>
+
+Xulosa: kriptografiya **arzon**. Kuniga 10 millisekund CPU va bir yarim
+kilobayt trafik — bu ekranni bir marta yoqishdan ham kam. Shuning uchun
+E2EE ning narxi hisoblashda emas, **arxitekturada**: server endi
+yordamchi bo‘la olmaydi, va har bir funksiya shu cheklov bilan qayta
+o‘ylanishi kerak.
+
+<Deep title="Tartibsiz kelgan xabarlar: o'tkazib yuborilgan kalitlar">
+Simmetrik g‘ildirak qat’iy ketma-ket: `n` chi kalitdan `n+1` chi chiqadi.
+Mobil tarmoqda esa xabarlar **tartibsiz** keladi: 5-xabar 3-dan oldin
+yetib kelishi mumkin (turli yo‘llar, qayta urinishlar, oflayn navbat).
+
+Agar Bekzod 5-xabarni oldin olsa, u zanjirni 3, 4, 5 gacha aylantiradi,
+5-ni ochadi — va 3, 4 uchun xabar kalitlarini **saqlab qo‘yadi**
+(“o‘tkazib yuborilgan kalitlar”). 3 va 4 kelganda ular shu saqlangan
+kalitlar bilan ochiladi va kalitlar o‘chiriladi.
+
+Bu oddiy ko‘rinadi, lekin ikkita xavfsizlik savoli tug‘diradi:
+
+1. **Qancha kalit saqlash mumkin?** Hujumchi “1 000 000-xabar” deb soxta
+   raqamli xabar yuborsa, qabul qiluvchi million kalit hisoblab, xotiraga
+   yozadi — bu DoS. Shuning uchun chegara bor (Signal spetsifikatsiyasida
+   bu sozlanadigan parametr, masalan 1 000).
+2. **Qancha vaqt saqlash mumkin?** Saqlangan kalit — bu oldinga
+   maxfiylikdagi teshik: telefon o‘g‘irlansa, hali kelmagan xabarlar
+   ochiladi. Shuning uchun ular muddat bilan o‘chiriladi.
+
+Umumiy dars: **tarmoq realligi (tartibsizlik, kechikish) xavfsizlik
+kafolatlarini doim biroz kuchsizlantiradi**, va har bir bunday
+kuchsizlanish aniq chegara bilan cheklanishi kerak. “Cheksiz bufer” —
+kriptografiyada ham, tarmoqda ham, hujum yuzasi.
+</Deep>
+
+<Check q="Server hamma shifrlangan xabarlarni yozib olsa va 5 yildan keyin Bekzodning telefonini o'g'irlasa, nimani o'qiy oladi?">
+Deyarli hech narsani. Double Ratchet tufayli har bir xabar o‘z kaliti
+bilan shifrlangan, va Bekzodning telefoni xabarni ochgandan keyin o‘sha
+kalitni **o‘chirgan**. 5 yildan keyin telefonda faqat **hozirgi** zanjir
+holati bor, undan eski kalitlarni tiklab bo‘lmaydi (HMAC bir tomonlama).
+
+Istisno — telefonda saqlanib qolgan narsalar: **ochilgan xabarlarning
+o‘zi** (suhbat tarixi ilovada ochiq holda saqlanadi) va hali kelmagan
+xabarlar uchun o‘tkazib yuborilgan kalitlar. Ya’ni hujumchi tarixni
+**telefondan** o‘qiydi, serverdagi yozuvlardan emas.
+
+Bu nozik farq muhim: E2EE **tarmoq va serverni** himoya qiladi, **qurilmani**
+emas. Qurilma himoyasi — ekran qulfi, disk shifrlash, zaxira nusxa
+shifrlash (5-bo‘lim, 13-qadam) — butunlay boshqa mavzu.
+</Check>
+
+## 3. v0: eng sodda ishlaydigan yechim
+
+Shifrlashsiz, bitta server, oddiy jadval. Bu — WhatsApp’ning ilk
+versiyalariga yaqin model (u paytda XMPP protokoli asosida qurilgan edi)
+va u haqiqatan ishlaydi.
+
+```python
+# Xabar navbati — yetkazilmaguncha shu yerda yotadi
+# CREATE TABLE inbox (to_user, msg_id, from_user, body, created_at)
+
+def send(from_user, to_user, body):
+    msg_id = uuid4()
+    db.insert("inbox", to_user, msg_id, from_user, body, now())
+    if to_user in online:
+        online[to_user].push({"id": msg_id, "from": from_user, "body": body})
+    return {"ok": True}
+
+def on_connect(user):
+    online[user] = connection
+    for m in db.select("inbox", to_user=user, order="created_at"):
+        connection.push(m)
+
+def on_ack(user, msg_id):
+    db.delete("inbox", to_user=user, msg_id=msg_id)   # yetkazildi -> o'chirildi
+```
+
+Uchta muhim xususiyatga e’tibor bering, chunki ular oxirigacha saqlanadi.
+
+Birinchi — **server tarix saqlamaydi**. Xabar yetkazilgan zahoti o‘chiriladi.
+Server — pochta qutisi emas, pochtachi. Bu Slack’dan tubdan farq qiladi:
+u yerda tarix haqiqat manbai edi (Slack, 5.3-qadam), bu yerda haqiqat
+manbai — **telefonlar**.
+
+Ikkinchi — **navbat qabul qiluvchi bo‘yicha**. Slack darsida biz
+“foydalanuvchi bo‘yicha navbat — antinaqsh” degan edik (Slack, 14-bo‘lim).
+Bu yerda esa u to‘g‘ri yechim, chunki tarix yo‘q: quvib yetadigan kanal
+tarixi mavjud emas, demak navbat — xabarning **yagona** joyi.
+
+Uchinchi — **o‘chirish tasdiqqa bog‘langan** (`on_ack`). Xabar faqat
+telefon “oldim” degandan keyin o‘chiriladi. Bu “kamida bir marta
+yetkazish” ning eng sodda amalga oshirilishi.
+
+Nima yetishmaydi — keyingi bo‘lim.
+
+## 4. Nima sindi
+
+### 4.1 Server hamma narsani o‘qiydi
+
+v0 da xabar serverda ochiq matn sifatida yotadi — yetkazilguncha. Bu qancha
+xabar?
+
+<Calc title="Istalgan paytda serverda ochiq yotgan xabarlar" result="~1.7 milliard xabar — bitta sizib chiqishda hammasi ochiladi">{`Faraz: xabarlarning 20% i qabul qiluvchi oflayn paytda keladi,
+va ular o'rtacha 2 soat kutadi (telefon yoqilguncha).
+
+Navbatga kirish tezligi:
+  1 157 407 x 0.2 = 231 481 xabar/s
+
+Little qonuni: navbatdagi o'rtacha elementlar = kirish tezligi x o'rtacha kutish
+  231 481 x 7 200 s = 1 666 666 666 xabar
+
+  ~1.7 milliard xabar, har biri ~500 bayt = ~830 GB ochiq matn
+
+Plus: jurnallar, zaxira nusxalar, replikalar, debug dump'lar...
+Ochiq matn nusxalari soni odatda 3-10 barobar ko'p.`}</Calc>
+
+Bu raqamdagi muhim so‘z — **“istalgan paytda”**. Server tarix saqlamasa ham,
+u doim milliardlab xabarni ushlab turadi, chunki odamlar doim oflayn. Va
+agar xabar ochiq bo‘lsa, bitta xato (noto‘g‘ri sozlangan zaxira, ichki
+xodim, hukumat so‘rovi) **milliardlab** shaxsiy yozishmani ochadi.
+
+“Tarix saqlamaymiz” degan va’da maxfiylik uchun yetarli emas. Faqat
+shifrlash yetarli.
+
+### 4.2 Matnli protokol 2G uchun juda og‘ir
+
+XMPP — XML asosidagi protokol. Bitta xabar shunday ko‘rinadi:
+
+```xml
+<message to="998901234567@s.whatsapp.net" id="3EB0C4A1F2" type="chat"
+         from="998907654321@s.whatsapp.net" t="1700000000">
+  <body>salom</body>
+</message>
+```
+
+<Calc title="XML qancha ortiqcha" result="5 baytlik 'salom' uchun ~190 bayt — 97% qo'shimcha">{`Yuqoridagi XML:              ~190 bayt
+Foydali ma'lumot ("salom"):     5 bayt
+Qo'shimcha:                   185 bayt = 97%
+
+Belgilar (✓✓, ko'k ✓✓) ham XML: har biri ~150 bayt.
+1.3-bo'limdan: har xabarga ~20 hodisa -> ~3 KB
+
+2G tarmoq (EDGE, amalda ~50 kbit/s = 6 KB/s):
+  bitta xabar va uning belgilari: ~0.5 s faqat uzatish uchun
+
+Kuniga 100 ta xabar yuboradigan/oladigan foydalanuvchi:
+  100 x 3 KB = 300 KB/kun, faqat protokol qo'shimchasi
+  Oylik 9 MB — ba'zi mamlakatlarda oylik paketning sezilarli qismi.`}</Calc>
+
+### 4.3 Doimiy ulanish batareyani yeydi
+
+Slack’da ulanishni ping bilan tirik saqlash arzon edi: noutbuk rozetkada.
+Telefonda esa har bir paket **radioni uyg‘otadi**, va radio uyg‘ongandan
+keyin darhol uxlamaydi.
+
+<Calc title="Ping'ning haqiqiy narxi telefonda" result="Har daqiqada ping — radio vaqtning ~17% ida yuqori quvvatda">{`Mobil radio (LTE) holatlari, soddalashtirilgan:
+  UXLASH (idle)       ~ 5-10 mW
+  FAOL (connected)    ~ 1 000-2 000 mW
+
+Paket yuborilgandan keyin radio darhol uxlamaydi —
+"dum" (tail) vaqti: ~5-10 soniya yuqori quvvatda qoladi
+(tarmoq sozlamasiga bog'liq).
+
+Ilova har 60 soniyada 2 baytlik ping yuborsa:
+  har daqiqada ~10 s yuqori quvvat
+  10 / 60 = ~17% vaqt
+
+Taxminiy energiya: 0.17 x 1 500 mW = ~250 mW o'rtacha
+3 000 mAh x 3.8 V = ~11.4 Wh batareya
+  11.4 Wh / 0.25 W = ~45 soat — faqat PING'lar uchun,
+  ekran o'chiq, telefon cho'ntakda.
+
+Va har bir ilova o'z ping'ini yuborsa — 10 ta ilova, 10 barobar.`}</Calc>
+
+Bu hisob WhatsApp dizaynining eng muhim tashqi cheklovini tushuntiradi:
+**telefonda ilova o‘z ulanishini fonda ushlab tura olmaydi.** Operatsion
+tizimlar (iOS va Android) buni aynan shu sababli taqiqlaydi yoki qattiq
+cheklaydi, va o‘rniga **bitta umumiy ulanish** taklif qiladi — push
+bildirishnomalar xizmati. Barcha ilovalar uchun bitta ping, bitta dum.
+6-bo‘limda bu qarorning butun arxitekturaga ta’sirini ko‘ramiz.
+
+### 4.4 “Yetkazildi” — lekin kimga, qachon?
+
+v0 da yuboruvchi bitta narsani biladi: `{"ok": True}`, ya’ni server xabarni
+qabul qildi. Qabul qiluvchi oldimi? O‘qidimi? Noma’lum.
+
+Va yana bir muammo: agar yuboruvchi javob olmasa (tarmoq uzildi) va xabarni
+qayta yuborsa, `send` yangi `msg_id` yaratadi — qabul qiluvchi **ikki marta**
+“salom” oladi.
+
+Ikkala muammo ham bir joydan kelib chiqadi: **xabar identifikatorini server
+yaratyapti**. Yuboruvchi qayta uringanda o‘zining oldingi urinishini
+tanitib bera olmaydi. Slack darsidagi `client_msg_id` bilan bir xil yechim
+kerak (Slack, 5.6-qadam), va bu yerda u yanada muhim, chunki mobil tarmoqda
+qayta urinish — odatiy holat, istisno emas.
+
+### 4.5 Navbat — eng qimmat ma’lumotlar bazasi yuki
+
+`inbox` jadvali oddiy ko‘rinadi, lekin uning ish rejimi ma’lumotlar bazasi
+uchun eng yomon rejimlardan biri.
+
+<Calc title="Navbat jadvalining yozish yuki" result="Sekundiga 2.3 million yozish — va ularning yarmi o'chirish">{`Har bir xabar navbatdan o'tadi (hatto qabul qiluvchi onlayn bo'lsa ham —
+xavfsizlik uchun avval yoziladi, keyin yuboriladi):
+
+  INSERT: 1 157 407/s
+  DELETE: 1 157 407/s  (tasdiqdan keyin)
+  = 2 314 814 yozish operatsiyasi/s
+
+Hayot davomiyligi: ko'pchilik xabar uchun millisekundlar,
+ba'zilari uchun 30 kungacha.
+
+B-tree asosidagi bazada (Postgres, MySQL):
+  - har DELETE "o'lik" qator qoldiradi (MVCC)
+  - tozalash (VACUUM) ular bilan quvlashishi kerak
+  - indeks doimiy bo'linadi va birlashadi
+
+Bu ish rejimi uchun LSM-tree (RocksDB, Cassandra) yoki
+xotiradagi navbat + jurnal ancha mos keladi.`}</Calc>
+
+Bu bo‘limning xulosasi: **navbat ma’lumotlar bazasi emas**. Uning ish
+rejimi — deyarli hamma narsa qisqa umr ko‘radi, lekin ba’zilari juda uzoq —
+umumiy maqsadli bazalar uchun qulay emas. 5-bo‘limning 10-qadamida navbatni
+ikki qatlamga bo‘lamiz: tez (xotirada, millisekundlik umr uchun) va
+bardoshli (diskda, soatlik va kunlik kutish uchun).
+
+<Check q="v0 dagi beshta muammodan qaysi birini keyin tuzatish eng qimmatga tushadi?">
+**Shifrlash (4.1)**, katta farq bilan.
+
+Qolgan to‘rttasi server ichki o‘zgarishlari: protokolni ikkilikka
+o‘tkazish, navbat saqlashni almashtirish, `client_msg_id` qo‘shish —
+bularning hammasi yangi ilova versiyasi va server migratsiyasi bilan
+hal bo‘ladi.
+
+Shifrlash esa **ikkala uchni ham** o‘zgartiradi, va ular bir vaqtda
+o‘zgarmaydi. Milliardlab telefonlar turli versiyalarda: ba’zilari yangi
+protokolni biladi, ba’zilari yo‘q. Shifrlangan va shifrlanmagan mijozlar
+bir-biri bilan qanday gaplashadi? Guruhda aralash versiyalar bo‘lsa-chi?
+
+Haqiqiy tarixda WhatsApp Signal protokolini bosqichma-bosqich — avval
+bitta platformada, keyin boshqalarida — joriy qilgan va to‘liq o‘tish
+2016-yil aprelida e’lon qilingan. Bu bir necha yil davom etgan
+jarayon.
+
+Umumiy qoida: **ikki tomonni ham o‘zgartiradigan qarorlar eng qimmat
+migratsiyalar.** Agar ularni boshidan qilish imkoni bo‘lsa — qiling.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+<Step n={1} title="Ikkilik protokol va lug'at" gain="Protokol qo'shimchasi 190 baytdan ~20 baytga" cost="Protokolni o'qib bo'lmaydi, otladish uchun maxsus vositalar kerak">
+XML’ning ortiqchaligi takrorlanishdan keladi: `message`, `to`, `from`,
+`s.whatsapp.net` — har xabarda bir xil satrlar. Yechim — **lug‘at**:
+har bir tez-tez uchraydigan satrga bitta baytlik raqam beriladi, va
+ikkala tomon ham lug‘atni oldindan biladi.
+
+```
+Lug'at (ikkala tomonda ham, ilova bilan birga keladi):
+  0x13 = "message"   0x2A = "to"   0x1F = "from"
+  0x44 = "s.whatsapp.net"   0x51 = "chat"   ...
+
+XML (~190 bayt):
+  <message to="998901234567@s.whatsapp.net" id="3EB0C4A1F2" type="chat" ...>
+
+Ikkilik (~30 bayt):
+  [0x13] [0x2A][JID: 998901234567 raqam sifatida, 5 bayt][0x44]
+  [id: 5 bayt] [0x51] ...
+```
+
+Telefon raqami ham matn emas, **son** sifatida kodlanadi: 12 ta raqam
+matnda 12 bayt, sonda 5 bayt. WhatsApp’ning bu ikkilik XMPP varianti
+teskari muhandislik orqali ommaga ma’lum bo‘lgan (ko‘pincha “FunXMPP”
+deb ataladi).
+
+Narxi — protokolni endi `tcpdump` bilan o‘qib bo‘lmaydi. Otladish uchun
+dekoder kerak, va lug‘at versiyasi mijoz va serverda mos bo‘lishi shart:
+yangi so‘z qo‘shish — protokol o‘zgarishi.
+</Step>
+
+<Step n={2} title="Ikki bosqichli tasdiq bilan navbat" gain="Xabar yo'qolmaydi, dublikat tanib olinadi" cost="Har xabarga qo'shimcha aylanma va holat">
+Xabarning navbatdagi hayoti aniq holat mashinasiga aylanadi:
+
+```
+Yuboruvchi                Server                     Qabul qiluvchi
+    |  send(id=abc) ---->   |                              |
+    |                       | navbatga YOZDI (diskka)      |
+    | <---- ack(abc)  ✓     |                              |
+    |                       | ---- deliver(abc) ---------> |
+    |                       |                              | saqladi (telefonda)
+    |                       | <--- ack(abc) -------------- |
+    |                       | navbatdan O'CHIRDI           |
+    | <---- receipt ✓✓      |                              |
+```
+
+Ikkita qoida butun ishonchlilikni beradi. **Birinchi: server ✓ ni
+diskka yozgandan keyin beradi**, oldin emas. Aks holda server ✓ berib,
+keyin yiqilsa, yuboruvchi “yetdi” deb o‘ylaydi, xabar esa yo‘q.
+**Ikkinchi: telefon ack ni xabarni saqlagandan keyin beradi**, qabul
+qilgandan keyin emas — Slack darsidagi kursor qoidasi bilan bir xil
+(Slack, 5.8).
+
+Identifikator — `id=abc` — yuboruvchi yaratadi (4.4-dagi muammo). Server
+va qabul qiluvchi bir xil `id` ni ikkinchi marta ko‘rsa, uni
+dublikat deb taniydi.
+</Step>
+
+<Deep title="✓ ni qachon berish: 'yozildi' nimani anglatadi">
+“Server xabarni diskka yozgandan keyin ✓ beradi” — bu jumla oddiy
+ko‘rinadi, lekin unda uchta noaniqlik bor, va har biri boshqa kafolat
+va boshqa kechikish beradi.
+
+| ✓ qachon beriladi | Kechikish (taxminan) | Nimaga chidaydi |
+| --- | --- | --- |
+| Xotiraga yozilgach | ~0.01 ms | Hech narsaga — jarayon o‘lsa, xabar yo‘q |
+| Bitta diskka `fsync` dan keyin | ~0.1–2 ms (SSD) | Jarayon o‘limiga; disk yoki mashina o‘limiga emas |
+| Ikkinchi mashina tasdiqlagach | ~0.5–1 ms (bir ma’lumot markazida) | Bitta mashina o‘limiga |
+| Boshqa mintaqa tasdiqlagach | ~30–100 ms | Butun ma’lumot markazi o‘limiga |
+
+Jadvalning har bir qatori oldingisidan qimmatroq va ishonchliroq. Qaysi
+birini tanlash — **“server ✓ bergan xabar yo‘qolmaydi”** degan va’daning
+qanchalik kuchli ekanini aniqlaydi.
+
+WhatsApp modeli uchun uchinchi qator tabiiy tanlov: ✓ ning kechikishi
+~1 ms qo‘shimcha (9.1-dagi 70 ms mobil tarmoq yonida sezilmaydi) va
+bitta mashina yiqilishi — eng keng tarqalgan nosozlik — xabarni
+yo‘qotmaydi. To‘rtinchi qator esa har xabarga 30–100 ms qo‘shib, faqat
+butun ma’lumot markazining yo‘qolishidan himoya qiladi — bu kamdan-kam
+hodisa, va u holda ham yuboruvchi telefonida xabar hali saqlangan
+(✓ kelmagan bo‘lsa, telefon qayta yuboradi).
+
+Oxirgi jumla muhim: **telefon — ikkinchi nusxa**. Xabar telefonda
+✓✓ kelguncha saqlanadi, demak server tomonda eng kuchli kafolat
+shart emas. Bu — tizim darajasida ishonchlilikni hisoblash: har bir
+komponent yolg‘iz emas, **zanjir sifatida** baholanadi.
+</Deep>
+
+<Step n={3} title="Uch belgi: ✓, ✓✓, ko'k ✓✓" gain="Yuboruvchi xabar taqdirini biladi" cost="Belgilar xabarlardan ko'p trafik yaratadi">
+Uch belgi — uch xil voqea, uch xil manba:
+
+| Belgi | Kim yaratadi | Nimani anglatadi |
+| --- | --- | --- |
+| ✓ (bitta kulrang) | Server | Server xabarni diskka yozdi |
+| ✓✓ (ikki kulrang) | Qabul qiluvchi telefoni | Telefon xabarni oldi va saqladi |
+| ✓✓ (ikki ko‘k) | Qabul qiluvchi telefoni | Suhbat ekranda ochildi |
+
+Diqqat qiling: ikkinchi va uchinchi belgini **server emas, telefon**
+yaratadi. Server faqat uzatadi. Bu E2EE dunyosida muhim, chunki server
+xabar mazmunini ko‘rmaydi, lekin **belgilarni ko‘radi** — ular
+metama’lumot. 11-bo‘limda bu metama’lumotning maxfiylik narxini ko‘ramiz.
+
+Belgilar holat mashinasi **monoton**: ✓ → ✓✓ → ko‘k ✓✓, faqat oldinga.
+Tarmoqda belgilar tartibsiz kelishi mumkin (ko‘k ✓✓ kulrang ✓✓ dan oldin),
+va mijoz orqaga qaytmasligi kerak: `holat = max(joriy, yangi)`.
+
+Trafikni kamaytirish uchun ikki usul: **guruhlash** (bir suhbatdagi 10 ta
+o‘qilgan xabar uchun bitta “shu `id` gacha hammasi o‘qildi” signali) va
+**kechiktirish** (o‘qildi belgisini 1–2 soniya to‘plab yuborish). Birinchisi
+Slack’dagi `read_seq` bilan bir xil g‘oya.
+</Step>
+
+<Step n={4} title="Push — faqat uyg'otish signali" gain="Telefon uxlaydi, batareya tejaladi" cost="Tashqi xizmatga bog'liqlik, kechikish, cheklovlar">
+4.3-dagi hisob: ilova o‘z ulanishini fonda ushlay olmaydi. Yechim —
+operatsion tizimning push xizmati (Apple’da APNs, Android’da FCM).
+Telefon **bitta** doimiy ulanishni ushlaydi — push xizmatiga — va u barcha
+ilovalar uchun umumiy.
+
+```
+1. Bekzodga xabar keldi, u oflayn
+2. Server -> APNs/FCM: "Bekzodning qurilmasini uyg'ot" (+ minimal ma'lumot)
+3. APNs/FCM -> telefon (umumiy ulanish orqali)
+4. OT ilovani qisqa muddatga (~30 s) uyg'otadi
+5. Ilova WhatsApp serveriga ulanadi, navbatni oladi, ack beradi
+6. Ilova xabarni SHIFRDAN OCHADI va bildirishnoma ko'rsatadi
+7. Ilova yana uxlaydi
+```
+
+6-qadam E2EE ning to‘g‘ridan-to‘g‘ri oqibati: push orqali **xabar matni
+yuborilmaydi**, chunki server uni bilmaydi. Push faqat “uyg‘on” deydi,
+matnni esa ilova o‘zi ochadi. 6-bo‘limda bu mexanizmning nozik joylarini
+ko‘ramiz.
+</Step>
+
+<Step n={5} title="Uchidan-uchiga shifrlash (Signal protokoli)" gain="Server buzilsa ham mazmun xavfsiz" cost="Server endi yordam bera olmaydi: qidiruv, filtrlash, zaxira — hammasi mijozda">
+2-bo‘limdagi hamma narsa shu yerda joriy qilinadi: X3DH bilan sessiya
+o‘rnatish, Double Ratchet bilan har xabar uchun yangi kalit.
+
+Server tomonda o‘zgarish ajablanarli darajada kichik: navbat endi ochiq
+matn o‘rniga shifrlangan baytlarni saqlaydi. Server kodi deyarli
+o‘zgarmaydi — u baribir xabar ichiga qaramagan edi.
+
+Katta o‘zgarish — **server nima qila olmasligida**:
+
+- Spam filtri xabar matniga qaray olmaydi
+- Qidiruv faqat telefonda
+- Havolalar oldindan ko‘rinishini (preview) server yarata olmaydi —
+  yuboruvchi telefoni o‘zi yaratadi va xabarga qo‘shadi
+- Bir xil rasmni ikki kishi yuborsa, server buni bilmaydi (8-qadam)
+
+Har biri alohida muhandislik muammosi, va 11-bo‘limda eng qiyini —
+spam va noto‘g‘ri ma’lumot bilan kurash — batafsil ko‘riladi.
+</Step>
+
+<Step n={6} title="Prekey serveri va to'ldirish" gain="Oflayn odamga birinchi xabar darhol shifrlanadi" cost="Prekey'lar tugashi mumkin — zaiflashgan rejim">
+2.3-bo‘limdagi bir martalik prekey’lar — cheklangan resurs. Ular tugasa
+nima bo‘ladi?
+
+<Calc title="Prekey'lar qanchalik tez tugaydi" result="Oddiy odam uchun hech qachon; mashhur odam uchun — bir kunda">{`Telefon bir vaqtda ~100 ta bir martalik prekey yuklaydi.
+Har bir YANGI sessiya (yangi suhbatdosh yoki yangi qurilma) bittasini sarflaydi.
+
+Oddiy foydalanuvchi:
+  haftasiga ~2 ta yangi suhbatdosh
+  100 / 2 = 50 hafta = ~1 yil zaxira
+  Va har safar ilova ochilganda server "kam qoldi" desa, telefon to'ldiradi.
+
+Kichik biznes akkaunti (do'kon, klinika):
+  kuniga ~200 ta yangi mijoz
+  100 ta prekey = 12 soat
+  Telefon kechasi o'chiq bo'lsa -> ertalabgacha tugaydi
+
+Tugaganda: X3DH to'rtinchi DH'siz ishlaydi (faqat IK va SPK).
+  Xabar baribir shifrlanadi, lekin birinchi xabar uchun
+  "takroriy yuborish"ga qarshi kafolat kuchsizroq.
+
+Server tomonda xotira:
+  2 000 000 000 x 100 x 32 bayt = 6.4 TB — oddiy kalit-qiymat ombori`}</Calc>
+
+Muhim nuqta: prekey tugashi **xato emas, zaiflashgan rejim**. Tizim
+ishlashda davom etadi, faqat bitta kafolat vaqtincha kuchsizroq. Bu —
+“muvaffaqiyatsiz bo‘lganda ochiq qolish” (fail-open) va “yopilish”
+(fail-closed) orasidagi ongli tanlov: agar xabar yuborilmasa, odamlar
+himoyasiz ilovaga o‘tib ketadi, bu esa yanada yomon.
+</Step>
+
+<Step n={7} title="Guruhlar uchun Sender Keys" gain="Guruh xabari bir marta shifrlanadi va bir marta yuklanadi" cost="A'zo chiqib ketganda qayta kalitlash — kvadratik">
+Oddiy yondashuv: guruhdagi har bir a’zoga alohida Double Ratchet
+sessiyasi bilan shifrlash. 1 000 a’zoli guruhda bu telefon **1 000 ta
+shifr** yaratib, **1 000 tasini** mobil tarmoq orqali yuklashini anglatadi.
+
+Sender Keys yechimi: har bir a’zo guruh uchun o‘zining **yuboruvchi
+kaliti**ni yaratadi va uni boshqa a’zolarga (juftlik sessiyalari orqali)
+**bir marta** tarqatadi. Keyin har bir guruh xabari shu kalit bilan
+**bir marta** shifrlanadi, server esa bitta shifrni hammaga tarqatadi.
+
+Bu qadam shunchalik muhimki, 7-bo‘lim butunlay unga bag‘ishlangan —
+ayniqsa narx qismiga.
+</Step>
+
+<Step n={8} title="Media: shifrlangan blob va CDN" gain="Katta fayllar xabar kanalidan chiqadi" cost="Server deduplikatsiya qila olmaydi">
+Rasm yoki video xabar ichida yuborilmaydi. Yuboruvchi telefoni:
+
+```
+1. Tasodifiy 32 baytlik media_kalit yaratadi
+2. Faylni shu kalit bilan shifrlaydi (AES-256 + HMAC)
+3. Shifrlangan blobni CDN'ga yuklaydi -> URL oladi
+4. Oddiy E2EE xabar yuboradi: {url, media_kalit, sha256, o'lcham}
+5. Qabul qiluvchi: xabarni ochadi -> URL'dan yuklaydi -> kalit bilan ochadi
+```
+
+Server va CDN faqat shifrlangan blobni ko‘radi. Kalit esa odatdagi
+xabar ichida — Double Ratchet bilan himoyalangan.
+
+<Calc title="Nega yo'naltirilgan (forward) rasm qayta yuklanmaydi" result="Mashhur rasm: 1 marta yuklanadi, 1 000 000 marta ishlatiladi">{`Har bir YANGI yuborishda yangi media_kalit -> yangi blob.
+Ikki kishi bir xil rasmni mustaqil yuborsa, server buni bilmaydi:
+  ikkita turli shifrlangan blob, deduplikatsiya imkonsiz.
+
+Lekin YO'NALTIRISHDA (forward) telefon eski xabardagi
+{url, media_kalit} ni qayta ishlatadi — yangi yuklash yo'q.
+
+Viral rasm (200 KB), 1 000 000 marta yo'naltirildi:
+  Qayta yuklash bilan:   1e6 x 200 KB = 200 GB yuklash
+  URL qayta ishlatish:   200 KB yuklash + 1e6 x ~150 bayt xabar = ~150 MB
+
+  Farq: ~1 300 barobar, va eng muhimi — foydalanuvchining
+  mobil trafigi tejaladi.`}</Calc>
+
+Narxi — deduplikatsiyaning mustaqil yuborishlar uchun imkonsizligi. Oddiy
+bulut xizmatlari bir xil faylni bir marta saqlaydi (hash bo‘yicha). Bu yerda
+esa har bir mustaqil yuborish yangi blob. Bu — E2EE ning to‘g‘ridan-to‘g‘ri
+saqlash narxi, va u 12-bo‘limdagi iqtisodda eng katta moddalardan biri.
+</Step>
+
+<Step n={9} title="Erlang: har ulanish uchun bitta yengil jarayon" gain="Bitta serverda milliondan ortiq ulanish" cost="Kam tarqalgan til, kichik ishga olish bozori">
+WhatsApp serverlari Erlang’da yozilgan (ejabberd asosida boshlangan va
+keyin kuchli qayta ishlangan). 2012-yilda ularning muhandislik blogi
+bitta serverda **2 milliondan ortiq** bir vaqtdagi TCP ulanish haqida
+yozgan edi. Slack darsida biz node boshiga 180 000 ni tanlagan edik.
+Farq 11 barobar. Nega?
+
+<Calc title="Xotira bu farqni tushuntirmaydi" result="Ulanish boshiga ~50 KB — Slack'dagi 35 KB dan ham KO'P">{`Faraz: server ~100 GB xotiraga ega (2012-yil atrofidagi yirik server).
+  100 GB / 2 000 000 ulanish = ~50 KB ulanish boshiga
+
+Slack darsidagi taxmin: ~35 KB ulanish boshiga.
+
+Ya'ni WhatsApp ulanishlari xotira bo'yicha ARZONROQ EMAS edi.
+Farq boshqa joyda.`}</Calc>
+
+Farq **zaxirada**. Slack darsida (12-bo‘lim, nazorat savoli) biz nazariy
+sig‘imning faqat 25% ini ishlatdik, va eng katta sabab — **axlat
+yig‘uvchi pauzalari**: JVM yoki Go kabi muhitlarda katta umumiy heap to‘liq
+yig‘ilganda barcha ulanishlar bir vaqtda to‘xtaydi.
+
+Erlang’da har bir jarayonning **o‘z kichik heap’i** bor va axlat har bir
+jarayonda alohida, mustaqil yig‘iladi. 2 million jarayondan birining
+yig‘ilishi qolganlarini to‘xtatmaydi. Demak “hamma bir vaqtda qotib
+qoladi” degan xavf yo‘q, va serverni o‘z chegarasiga ancha yaqin
+ishlatish mumkin.
+
+Bu — darslar orasidagi eng qimmatli bog‘lanishlardan biri: **sig‘im
+zaxirasi hajmi runtime xatti-harakatidan kelib chiqadi**, va bir xil
+xotira hisobi turli tillarda 4 barobar farqli amaliy sig‘im beradi.
+</Step>
+
+<Step n={10} title="Navbatni ikki qatlamga bo'lish" gain="Tez yo'l xotirada, sekin yo'l diskda" cost="Ikki tizim va ular orasidagi ko'chirish mantiqi">
+4.5-dagi muammo: navbat ish rejimi — ko‘p qisqa umrli va oz uzoq umrli
+elementlar. Yechim — ularni ajratish:
+
+| Qatlam | Nima yotadi | Umr | Saqlash |
+| --- | --- | --- | --- |
+| Tezkor | Onlayn qabul qiluvchiga ketayotgan xabar | millisekundlar | Xotira + replikatsiyalangan jurnal |
+| Bardoshli | Oflayn qabul qiluvchi xabari | soatlar – 30 kun | Disk (LSM asosidagi ombor) |
+
+Jadvalning mazmuni: **ko‘pchilik xabar hech qachon diskka tushmaydi**
+(qabul qiluvchi onlayn, xabar millisekundlarda yetib boradi va tasdiqlanadi).
+Faqat qabul qiluvchi yetib bo‘lmaydigan holatdagina xabar sekin qatlamga
+ko‘chiriladi. Bu qaror 4.5-dagi 2.3 million yozish/s ni bardoshli qatlam
+uchun ~460 000/s ga (faqat oflayn qismi, kirish va o‘chirish)
+tushiradi.
+
+Muhim nozik joy: tezkor qatlam ham **yo‘qotmaslik** kafolatini berishi
+kerak (✓ berilgan-ku). Shuning uchun u oddiy xotira emas, balki
+replikatsiyalangan jurnal: xabar kamida ikki mashinada bo‘lgandan keyin
+✓ beriladi.
+</Step>
+
+<Step n={11} title="Ko'p qurilma" gain="Telefon o'chiq bo'lsa ham noutbukda ishlaydi" cost="Har xabar har qurilma uchun alohida shifrlanadi">
+Dastlab WhatsApp Web telefonning “oynasi” edi: barcha xabarlar telefon
+orqali o‘tardi, va telefon o‘chsa, veb ham ishlamasdi. 2021-yilda
+haqiqiy ko‘p qurilma joriy qilindi: har bir qurilma o‘z kalitlariga ega
+mustaqil ishtirokchi.
+
+Narxi — shifrlash endi **qurilmalar** bo‘yicha. 8-bo‘lim bunga
+bag‘ishlangan.
+</Step>
+
+<Step n={12} title="Xavfsizlik kodi va kalit o'zgarishi ogohlantirishi" gain="O'rtadagi odam hujumi aniqlanadi" cost="Ogohlantirishlar ko'p bo'lsa, odamlar ularni e'tiborsiz qoldiradi">
+2.3-bo‘limdagi Callout: server kalitni almashtirsa, X3DH buni sezmaydi.
+Himoya — kontakt kaliti o‘zgarganda suhbatda tizim xabari:
+“Bekzodning xavfsizlik kodi o‘zgardi”.
+
+Muammo: kalit ko‘pincha **qonuniy** sabablarga ko‘ra o‘zgaradi — yangi
+telefon, ilovani qayta o‘rnatish. Ya’ni ogohlantirishlarning
+99.99% i yolg‘on signal. Odamlar ularni o‘qimaslikni o‘rganadi.
+
+Bu — xavfsizlik va foydalanish qulayligi orasidagi klassik ziddiyat,
+va unga yaxshi javob yo‘q. Ogohlantirishni xabar yuborishni
+**bloklaydigan** qilsangiz, har bir yangi telefon sotib olgan do‘stingiz
+sizni to‘xtatadi. Faqat **ko‘rsatsangiz**, u shovqinga aylanadi.
+WhatsApp ikkinchisini tanlagan; xavfsizlikka juda sezgir foydalanuvchilar
+uchun esa sozlamalarda qat’iyroq rejim bor.
+</Step>
+
+<Step n={13} title="Shifrlangan zaxira nusxa" gain="Telefon yo'qolsa tarix tiklanadi, bulut ham o'qiy olmaydi" cost="Parol unutilsa — tarix abadiy yo'qoladi">
+E2EE xabarlarni tarmoqda himoya qiladi, lekin ko‘p yillar davomida zaxira
+nusxalar bulutda (iCloud, Google Drive) **shifrlanmagan** holda
+saqlangan. Ya’ni eng zaif bo‘g‘in tarmoq emas, zaxira edi.
+
+2021-yildan boshlab zaxira ham shifrlanishi mumkin: foydalanuvchi yo
+64 raqamli kalitni o‘zi saqlaydi, yo parol o‘rnatadi — parol esa
+serverdagi **apparat xavfsizlik moduli** (HSM) ichidagi kalit omboriga
+bog‘lanadi, u taxmin qilish urinishlarini cheklaydi.
+
+Narxi mahsulotda aniq: **parolni tiklash imkoni yo‘q**. “Parolni
+unutdim” tugmasi bo‘lsa, demak kimdir parolsiz kira oladi — va u holda
+shifrlash ma’nosiz. Bu — foydalanuvchiga to‘g‘ridan-to‘g‘ri aytilishi
+kerak bo‘lgan kamdan-kam arxitektura qarorlaridan biri.
+</Step>
+
+<Step n={14} title="Yo'naltirish cheklovi — mazmunni o'qimasdan" gain="Noto'g'ri ma'lumot tarqalishi sekinlashadi" cost="Chegara mijozda — o'zgartirilgan ilova uni aylanib o'tadi">
+Server xabarni o‘qiy olmasa, yolg‘on xabar tarqalishiga qanday qarshi
+turadi? Javob — **mazmun emas, xatti-harakat**.
+
+Har bir xabarda yo‘naltirish hisoblagichi bor, va u **shifrlangan
+ichki qismda** — server uni ko‘rmaydi. Telefon uni oshiradi va
+chegarani **o‘zi** qo‘llaydi:
+
+```
+forward_count = 0      -> oddiy xabar
+forward_count >= 1     -> "Yo'naltirilgan" belgisi
+forward_count >= 5     -> "Ko'p marta yo'naltirilgan" belgisi,
+                          bir vaqtda faqat 1 ta suhbatga yo'naltirish mumkin
+```
+
+Bu qaror nafis: server hech narsani ko‘rmaydi, lekin **har bir halol
+telefon** tarqalishni sekinlashtiradi. Oddiy odamlar ilovaning rasmiy
+versiyasidan foydalanadi, shuning uchun chegara ular uchun ishlaydi.
+O‘zgartirilgan ilova esa uni aylanib o‘tadi — va bu qabul qilingan narx.
+
+Kengroq xulosa: **E2EE tizimida ba’zi siyosatlar serverda emas, mijozda
+bajariladi**, va bu ularni “kafolat” emas, “odatiy xatti-harakat” qiladi.
+Ko‘pincha bu yetarli, chunki maqsad hujumni imkonsiz qilish emas,
+ommaviy hodisani sekinlashtirish.
+</Step>
+
+<Check q="14 qadamdan qaysilari server kodini deyarli o'zgartirmadi, lekin tizimni tubdan o'zgartirdi?">
+**5-qadam (E2EE)** va **14-qadam (yo‘naltirish cheklovi)**.
+
+E2EE uchun server navbati ochiq matn o‘rniga shifrlangan baytlarni
+saqlay boshladi — server bu farqni sezmaydi ham, u baribir xabar ichiga
+qaramagan edi. Barcha murakkablik mijozda: kalitlar, sessiyalar,
+g‘ildiraklar.
+
+Yo‘naltirish cheklovi esa umuman **serverga tegmaydi** — hisoblagich
+shifrlangan ichki qismda, chegara telefonda.
+
+Bu WhatsApp arxitekturasining xarakterli jihati: **aql chekkada, markaz
+esa soqov**. Server — shifrlangan konvertlar pochtachisi. Bu Slack’ning
+teskarisi: u yerda server hamma narsani bilardi (tarix, qidiruv,
+ruxsatlar), mijoz esa “oyna” edi. Ikkala yondashuv ham to‘g‘ri — faqat
+turli talablar uchun.
+</Check>
+
+## 6. Oflayn telefon: navbat, push va uyg‘onish
+
+Bu bo‘lim WhatsApp’ni Slack’dan ajratib turadigan asosiy farqga bag‘ishlangan:
+qabul qiluvchi **odatda yo‘q**.
+
+### 6.1 Navbat hajmi: dumi hamma narsani belgilaydi
+
+4.1-bo‘limda Little qonunidan foydalandik: navbatdagi elementlar = kirish
+tezligi × o‘rtacha kutish. Endi uni to‘g‘riroq qo‘llaymiz, chunki “o‘rtacha
+kutish” juda aldamchi son.
+
+<Calc title="Navbatni kutish taqsimoti bo'yicha hisoblash" result="Xabarlarning 1% i navbat hajmining 86% ini egallaydi">{`Xabarlarni qabul qiluvchi holatiga qarab uch guruhga bo'lamiz:
+
+  A) Onlayn — darhol yetkaziladi:      80%,  kutish ~0.1 s
+  B) Qisqa oflayn — soatlar ichida:    19%,  kutish ~2 soat  (7 200 s)
+  C) Uzoq oflayn — kunlar:              1%,  kutish ~10 kun (864 000 s)
+     (telefon buzilgan, sayohat, ilova o'chirilgan, raqam almashgan)
+
+Kirish tezligi: 1 157 407 xabar/s
+
+Har guruhning navbatdagi ulushi (Little: L = lambda x W):
+  A) 1 157 407 x 0.80 x 0.1       =         92 593
+  B) 1 157 407 x 0.19 x 7 200     =  1 583 333 333
+  C) 1 157 407 x 0.01 x 864 000   = 10 000 000 000
+
+  JAMI: ~11.6 milliard xabar
+  C guruhi ulushi: 10.0 / 11.6 = 86%
+
+Hajm (~500 bayt shifr + konvert):
+  11.6e9 x 500 = ~5.8 TB`}</Calc>
+
+4.1-bo‘limda biz xuddi shu navbatni 1.7 milliard deb hisoblagan edik —
+bitta “o‘rtacha 2 soat” bilan. Haqiqiy javob 7 barobar katta, va farqning
+hammasi dumdan keladi. Bu ataylab qoldirilgan: birinchi hisob **tipik
+xato**ni, ikkinchisi uning tuzatilishini ko‘rsatadi.
+
+Bu raqam sig‘im rejalashtirishning eng muhim saboqlaridan birini
+ko‘rsatadi: **navbat hajmini o‘rtacha kutish emas, kutish taqsimotining
+dumi belgilaydi.** Xabarlarning 99% i navbatdan soatlar ichida o‘tib
+ketadi, lekin qolgan 1% — telefoni buzilgan yoki sayohatdagi odamlar —
+navbatning deyarli hammasini egallaydi.
+
+Bundan ikkita amaliy qaror chiqadi. Birinchisi — **30 kunlik chegara
+iqtisodiy qaror**: 60 kun qilsangiz, C guruhining kutishi deyarli ikki
+barobar oshadi va navbat hajmi ham shunga yaqin o‘sadi. Ikkinchisi —
+**navbatni ikki qatlamga bo‘lish** (5-bo‘lim, 10-qadam) aynan shu
+taqsimotdan kelib chiqadi: tezkor qatlam A guruhini, bardoshli qatlam
+B va C ni ushlaydi.
+
+<Callout type="ogoh" title="Little qonunini o'rtacha bilan ishlatmang">
+Little qonuni (`L = λ × W`) matematik jihatdan har doim to‘g‘ri, lekin
+**W — haqiqiy o‘rtacha** bo‘lishi kerak, “odatdagi” qiymat emas. Agar
+siz “xabarlar odatda bir necha soniyada yetadi” deb `W = 5 s` qo‘ysangiz,
+navbatni 1 000 barobardan ortiq kam baholaysiz — chunki haqiqiy
+o‘rtachani dumdagi 10 kunlik kutishlar tortib turadi.
+
+Amaliy qoida: `W` ni **o‘lchang**, taxmin qilmang. Yoki yuqoridagidek
+taqsimotni guruhlarga bo‘lib, har birini alohida hisoblang. Bitta
+o‘rtacha son uzun dumli taqsimotni hech qachon to‘g‘ri ifodalamaydi.
+</Callout>
+
+<Deep title="Nega L = λW har doim to'g'ri: yuza orqali tushuntirish">
+Little qonuni hayratlanarli darajada umumiy: u navbat turiga, taqsimotga,
+tartibga (FIFO, LIFO, tasodifiy) bog‘liq emas. Faqat bitta shart —
+tizim barqaror (uzoq muddatda kirish chiqishga teng). Nega?
+
+Grafik chizing: gorizontal o‘q — vaqt, vertikal — navbatdagi elementlar
+soni. Egri chiziq ostidagi **yuza**ni ikki usulda hisoblash mumkin.
+
+```
+1-usul: vaqt bo'yicha
+  Yuza = (o'rtacha navbat hajmi L) x (kuzatish vaqti T)
+
+2-usul: elementlar bo'yicha
+  Har bir element navbatda W_i vaqt turdi -> u yuzaga W_i "qo'shdi"
+  Yuza = W_1 + W_2 + ... + W_N = N x (o'rtacha W)
+
+Ikkalasi bir xil yuza:
+  L x T = N x W
+  L = (N / T) x W = lambda x W
+```
+
+Ya’ni qonun — bitta yuzani ikki tomondan sanashning natijasi. Unda
+hech qanday ehtimollar nazariyasi yo‘q.
+
+Amaliy kuchi shundaki, uch kattalikdan istalgan ikkitasini o‘lchab,
+uchinchisini topasiz. WhatsApp uchun: navbat hajmi (`L`) va kirish tezligi
+(`λ`) ni o‘lchash oson, ulardan o‘rtacha kutish (`W = L / λ`) chiqadi —
+har bir xabarning yoshini kuzatmasdan. Yoki teskarisi: rejalashtirishda
+`λ` va kutilgan `W` dan xotira hajmini (`L`) oldindan hisoblaysiz.
+
+Amaliyotning 2-darajasida `bench.py` aynan shuni tekshiradi: o‘lchangan
+`L` bilan `λ × W` ni solishtiradi. Agar sizning relay’ingiz to‘g‘ri
+ishlasa, ular 20% ichida mos keladi.
+</Deep>
+
+### 6.2 Push: uyg‘otish, lekin matnsiz
+
+5-bo‘limning 4-qadamida push faqat “uyg‘on” deydi, dedik. Endi bu
+mexanizmning cheklovlarini aniq ko‘ramiz, chunki ular butun oflayn
+tajribani belgilaydi.
+
+| Cheklov | Qiymat (taxminiy) | Oqibati |
+| --- | --- | --- |
+| Push yuk hajmi | ~4 KB | Butun xabar sig‘masligi mumkin; baribir server uni o‘qiy olmaydi |
+| Yetkazish kafolati | Yo‘q (“eng yaxshi urinish”) | Push yo‘qolishi mumkin — navbat baribir kerak |
+| Birlashtirish | Bir xil kalitli push’lar birlashadi | 50 ta xabar = 1 ta uyg‘onish |
+| Fonda ishlash vaqti | ~30 soniya | Shu vaqtda ulanish, yuklab olish, ochish, ko‘rsatish |
+| Tezlik cheklovi | OT tomonidan boshqariladi | Juda ko‘p push — past ustuvorlikka tushiriladi |
+
+Jadvalning ikkinchi qatori eng muhimi: **push kafolatlanmagan**. Shuning
+uchun push hech qachon ma’lumot tashuvchi emas, faqat **ishora**. Haqiqiy
+ma’lumot doim navbatda turadi, va telefon keyingi safar ulanganda (push
+kelsa ham, kelmasa ham) uni oladi.
+
+Uchinchi qator esa arxitektura qarori: server har bir xabar uchun push
+yubormaydi. Agar Bekzod oflayn bo‘lsa va unga 10 soniyada 50 ta xabar
+kelsa, bitta push yetarli — telefon uyg‘onib, hammasini oladi.
+
+<Versus
+  left={{ title: "Push — ishora", points: [
+    "Kafolat yo‘q: yo‘qolishi mumkin",
+    "Birlashtiriladi: 50 xabar → 1 push",
+    "Mazmun yo‘q: faqat “uyg‘on”",
+    "Uchinchi tomon kanali (Apple, Google)",
+    "Yo‘qolsa — faqat kechikish",
+  ] }}
+  right={{ title: "Navbat — ma’lumot", points: [
+    "Kafolat bor: replikatsiyalangan, ✓ dan keyin yo‘qolmaydi",
+    "Har xabar alohida, tartib bilan",
+    "Shifrlangan mazmun",
+    "O‘z serverlaringiz",
+    "Yo‘qolsa — xabar yo‘qoladi (bo‘lmasligi kerak)",
+  ] }}
+/>
+
+Ikki ustun ikki turli **kafolat sinfini** ko‘rsatadi, va arxitekturaning
+butun ishonchliligi ularni aralashtirmaslikka bog‘liq. Push’ni
+ishonchli qilishga urinish (qayta yuborish, tasdiqlash) keraksiz
+murakkablik: u baribir uchinchi tomon kanali. Navbatni esa “eng yaxshi
+urinish” qilish — xabarlarni yo‘qotish.
+
+<Flow nodes={["Xabar keldi", "Navbat (✓)", "Oflaynmi?", "Push shlyuzi", "APNs / FCM", "Telefon uyg'ondi", "Navbatni oladi (✓✓)"]} caption="Push yo'lning o'rtasida, lekin ma'lumot hech qachon u orqali o'tmaydi" />
+
+<Calc title="Push hajmi birlashtirish bilan va usiz" result="231 000 push/s dan ~15 000 push/s ga">{`Oflayn qabul qiluvchilarga keladigan xabarlar (1.3 va 6.1):
+  1 157 407 x 0.20 = 231 481 xabar/s
+
+Birlashtirishsiz: har xabarga bitta push -> 231 481 push/s
+
+Birlashtirish bilan: qurilma boshiga 30 soniyada ko'pi bilan bitta push.
+  Suhbatlar portlash bilan boradi (bir necha kishi ketma-ket yozadi),
+  shuning uchun bitta oynaga bir nechta xabar tushadi.
+  Faraz: o'rtacha ~15 xabar bitta push'ga to'g'ri keladi
+  231 481 / 15 = ~15 400 push/s
+
+APNs/FCM'ga so'rovlar 15 barobar kam, telefonlar 15 barobar
+kam uyg'onadi — batareya uchun ham xuddi shunday tejash.`}</Calc>
+
+Bu hisobda men soddalashtirishga majbur bo‘ldim (“o‘rtacha 15 xabar
+bitta push’ga”) va buni ochiq aytaman: haqiqiy koeffitsient suhbat
+naqshiga juda bog‘liq va uni faqat o‘lchash mumkin. Lekin tartib to‘g‘ri,
+va xulosa o‘zgarmaydi: **birlashtirish — push tizimining asosiy
+optimallashtirishi**, va u server, push xizmati va batareyani bir vaqtda
+tejaydi.
+
+### 6.3 Uyg‘onish byudjeti: 30 soniyada nimaga ulgurasiz
+
+Telefon push olgach, operatsion tizim ilovani qisqa muddatga uyg‘otadi.
+Shu vaqt ichida ilova hamma ishni bajarishi kerak.
+
+<Calc title="8 soatlik oflayndan keyin navbatni olish" result="2G'da 67 soniya — 30 soniyalik oynaga sig'maydi">{`Bekzod 8 soat samolyotda edi. Navbatda:
+  400 ta xabar (ko'p guruhlar), har biri ~1 KB shifr + konvert
+  = 400 KB
+
+Ulanish:          TLS/Noise qo'l siqish + auth    ~0.5-2 s
+Yuklab olish:
+  4G  (~5 MB/s):   400 KB / 5 MB/s   = 0.08 s
+  3G  (~200 KB/s): 400 KB / 200 KB/s = 2 s
+  2G  (~6 KB/s):   400 KB / 6 KB/s   = 67 s   <- oynadan oshadi
+Shifrdan ochish:  400 x ~0.1 ms = 0.04 s   (arzimas)
+Saqlash + ack:    ~0.5 s
+
+2G'da: 67 s > 30 s -> OT ilovani yarim yo'lda to'xtatadi.`}</Calc>
+
+Bu raqam 1.2-bo‘limdagi “2G’da ham ishlasin” talabining haqiqiy
+qiyinchiligini ko‘rsatadi. Yechim — **partiyalab olish va har partiyadan
+keyin tasdiqlash**:
+
+```
+while navbatda_xabar_bor and vaqt_qoldi(> 5 s):
+    partiya = server.fetch(limit=50)       # 50 KB
+    for m in partiya:
+        saqla(ochish(m))                   # AVVAL saqla
+    server.ack(oxirgi_id(partiya))         # KEYIN tasdiqla
+    bildirishnomani_yangila()              # "Anvar: 12 ta yangi xabar"
+```
+
+Ilova to‘xtatilsa ham, tasdiqlangan partiyalar navbatdan o‘chirilgan va
+telefonda saqlangan; tasdiqlanmagani esa navbatda qoladi va keyingi
+uyg‘onishda keladi. **Hech narsa yo‘qolmaydi, hech narsa takrorlanmaydi**
+— faqat ko‘rinish kechikadi.
+
+Qaysi tartibda olish kerak? Mantiqan — **yangilardan eskilarga emas,
+eskilardan yangilarga** (Double Ratchet zanjiri tartibni afzal ko‘radi,
+2.4-dagi Deep), lekin foydalanuvchiga eng oxirgi xabar muhimroq. Amaliy
+murosasi: ketma-ket olish, lekin bildirishnomada eng oxirgisini
+ko‘rsatish.
+
+<Deep title="iOS'da push kelganda matnni kim ochadi">
+iOS’da ilova fonda odatda umuman ishga tushmaydi. Push kelganda
+bildirishnomani **operatsion tizim** ko‘rsatadi, va u faqat push ichidagi
+matnni ko‘rsata oladi. Lekin push ichida matn yo‘q — u shifrlangan va
+server kalitni bilmaydi. Qanday qilib ekranda “Anvar: salom” chiqadi?
+
+Javob — **bildirishnoma xizmati kengaytmasi** (Notification Service
+Extension). Bu ilovaning alohida, juda cheklangan kichik qismi:
+
+```
+1. Push keladi, belgisi: "mutable-content: 1" (o'zgartirish mumkin)
+   ichida: shifrlangan xabar (agar sig'sa) yoki faqat "xabar bor"
+2. iOS kengaytmani ishga tushiradi:
+     vaqt: ~30 soniya
+     xotira: juda kam (o'nlab MB atrofida)
+3. Kengaytma:
+     - Keychain'dan (umumiy xavfsiz ombor) sessiya kalitini oladi
+     - xabarni ochadi
+     - bildirishnoma matnini "Anvar: salom" ga almashtiradi
+4. iOS o'zgartirilgan bildirishnomani ko'rsatadi
+```
+
+Bu sxemaning nozik joyi — **holat bo‘linishi**. Asosiy ilova va kengaytma
+turli jarayonlar, lekin bir xil Double Ratchet zanjiri bilan ishlaydi.
+Agar kengaytma xabarni ochib, zanjirni oldinga siljitsa, asosiy ilova
+buni bilishi kerak — aks holda u xuddi shu xabarni qayta ochishga
+urinadi va kalit allaqachon o‘chirilgan bo‘ladi.
+
+Demak zanjir holati umumiy, qulflangan xotirada turishi va ikki jarayon
+orasida sinxronlanishi kerak. Bu — kriptografik protokolning
+**operatsion tizim arxitekturasi** bilan to‘qnashuvi, va xatolar odatda
+shu yerda paydo bo‘ladi: “bildirishnomada xabar ko‘rindi, ilovada esa
+‘bu xabarni ochib bo‘lmadi’”.
+</Deep>
+
+<Callout type="xato" title="Android ishlab chiqaruvchilari va 'batareya optimallashtirish'">
+Android’da nazariya bitta, amaliyot boshqa. Ba’zi ishlab chiqaruvchilar
+batareyani tejash uchun fondagi ilovalarni juda agressiv o‘ldiradi — hatto
+yuqori ustuvorlikdagi push kelganda ham ilovani uyg‘otmaydi. Natija:
+foydalanuvchi telefonni qo‘liga olgunicha xabarlar kelmaydi.
+
+Bu sizning kodingizdagi xato emas, lekin foydalanuvchi uchun bu **sizning**
+ilovangizning xatosi: “WhatsApp xabarlarni kechiktiryapti”. Amaliy javoblar:
+qurilma modeli bo‘yicha yetkazish kechikishini kuzatish (13-bo‘lim),
+muammoli modellarda foydalanuvchiga sozlama bo‘yicha yo‘riqnoma ko‘rsatish,
+va yuqori ustuvorlikdagi push kvotasini **faqat haqiqiy xabarlar** uchun
+sarflash — aks holda OT uni kamaytiradi.
+</Callout>
+
+<Check q="Push yo'qolsa, xabar ham yo'qoladimi?">
+Yo‘q. Push — faqat ishora, ma’lumot emas. Xabar navbatda turadi va
+telefon **keyingi safar qanday sabab bilan bo‘lmasin** ulanganda uni oladi:
+foydalanuvchi ilovani ochdi, boshqa push keldi, davriy fon yangilanishi
+ishga tushdi.
+
+Yo‘qolgan push faqat **kechikish** yaratadi. Shuning uchun push tizimi
+“kamida bir marta” kafolatini talab qilmaydi va uni eng yaxshi urinish
+rejimida ishlatish mumkin.
+
+Umumiy naqsh: **ishora va ma’lumotni ajrating.** Ishora arzon,
+yo‘qolishi mumkin, birlashtiriladi. Ma’lumot qimmat, bardoshli,
+tasdiqlanadi. Ularni bitta kanalga aralashtirsangiz, ishorani ham
+ma’lumot kabi qimmat qilasiz yoki ma’lumotni ishora kabi ishonchsiz.
+</Check>
+
+## 7. Guruhlar: Sender Keys va kvadratik tuzoq
+
+### 7.1 Juftlik shifrlash va yuboruvchi kaliti
+
+<Versus
+  left={{ title: "Juftlik (har a'zoga alohida)", points: [
+    "N a’zoli guruhda: N ta shifrlash, N ta yuklash",
+    "1 024 a’zo, 1 KB xabar → 1 MB mobil yuklash",
+    "Har a’zo bilan to‘liq Double Ratchet: eng kuchli kafolat",
+    "A’zo chiqsa — hech narsa qilish shart emas",
+    "Kichik guruh uchun sodda va yetarli",
+  ] }}
+  right={{ title: "Sender Keys (yuboruvchi kaliti)", points: [
+    "Har xabar: 1 ta shifrlash, 1 ta yuklash",
+    "1 024 a’zo, 1 KB xabar → 1 KB yuklash, server tarqatadi",
+    "Faqat simmetrik g‘ildirak: buzilishdan keyingi tiklanish yo‘q",
+    "A’zo chiqsa — hamma yangi kalit tarqatishi kerak",
+    "Katta guruh uchun yagona amaliy yechim",
+  ] }}
+/>
+
+Ikki ustunning to‘rtinchi qatori — butun bo‘limning mavzusi. Sender Keys
+**har bir xabarni** arzonlashtiradi, lekin **har bir a’zolik o‘zgarishini**
+qimmatlashtiradi. Bu — yuklamani doimiy yo‘ldan kamdan-kam yo‘lga
+ko‘chirish: xabarlar kuniga minglab, a’zo chiqishi esa haftada bir necha
+marta. Odatda bu juda yaxshi savdo. Lekin “odatda” so‘zi 7.2-da sinovdan
+o‘tadi.
+
+Qanday ishlaydi, qadamlar bilan:
+
+```
+Anvar guruhga birinchi marta yozmoqchi:
+  1. Tasodifiy "zanjir kaliti" CK va imzo kalit juftligi yaratadi
+  2. {CK, imzo_ochiq_kaliti} ni har bir a'zoga JUFTLIK sessiyasi
+     orqali yuboradi  (bu N ta xabar — lekin faqat BIR MARTA)
+  3. Keyin har bir guruh xabari uchun:
+       xabar_kaliti = HMAC(CK, 1);  CK = HMAC(CK, 2)   (simmetrik g'ildirak)
+       shifr = AES(xabar_kaliti, matn);  imzo = Sign(shifr)
+       serverga BITTA nusxa yuboradi
+  4. Server bitta nusxani N ta a'zoga tarqatadi
+```
+
+<Calc title="Katta guruhda yuboruvchi telefonining yuki" result="1 024 barobar kam yuklash — 2G'da 3 daqiqa o'rniga 0.2 soniya">{`Guruh: 1 024 a'zo, xabar 1 KB (shifr + sarlavha)
+
+JUFTLIK:
+  Shifrlash: 1 023 x ~0.01 ms = ~10 ms (arzimas)
+  Yuklash:   1 023 x 1 KB = ~1 MB
+    2G (6 KB/s):   ~170 s  = ~3 daqiqa
+    3G (200 KB/s): ~5 s
+
+SENDER KEYS:
+  Shifrlash: 1 x ~0.01 ms
+  Yuklash:   1 KB
+    2G: ~0.17 s
+
+Server tarqatishi ikkala holatda ham bir xil: 1 023 yetkazish.
+Farq faqat YUBORUVCHI telefonida — lekin aynan u eng sekin bo'g'in.`}</Calc>
+
+Hisob muhim nuqtani ta’kidlaydi: Sender Keys **server yukini
+kamaytirmaydi** — server baribir 1 023 ta yetkazish qiladi. U
+**yuboruvchining mobil yuklashini** kamaytiradi, va bu tizimdagi eng
+tor bo‘g‘in. Optimallashtirishni har doim eng sekin resursga qarating,
+eng ko‘rinadigan resursga emas.
+
+### 7.2 A’zo chiqib ketganda: kvadratik qayta kalitlash
+
+Sender Keys’ning narxi shu yerda. Bekzod guruhdan chiqarildi. Uning
+qo‘lida **barcha a’zolarning** yuboruvchi kalitlari bor. Agar hech narsa
+qilinmasa, u server orqali o‘tadigan barcha kelajakdagi xabarlarni ocha
+oladi (masalan, serverdagi biror tanishi orqali yoki tarmoqni kuzatib).
+
+Demak **qolgan har bir a’zo** yangi yuboruvchi kaliti yaratib, uni
+**qolgan barcha a’zolarga** juftlik sessiyasi orqali tarqatishi kerak.
+
+<Calc title="Bitta a'zoni chiqarish narxi" result="1 024 a'zoli guruhda ~1 million juftlik xabari; ko'p qurilma bilan ~6.5 million">{`Guruh: N = 1 024 a'zo, bitta a'zo chiqdi -> 1 023 qoldi
+
+Har bir qolgan a'zo yangi kalitni qolgan (N-2) ta a'zoga yuboradi:
+  1 023 x 1 022 = 1 045 506 juftlik xabari
+
+Ko'p qurilma bilan (8-bo'lim): o'rtacha 2.5 qurilma har a'zoda
+  Kalit har bir QURILMAga yuboriladi, va har bir QURILMA o'z kalitini yaratadi:
+  (1 023 x 2.5) x (1 022 x 2.5) = 2 557 x 2 555 = ~6 530 000
+
+Har biri ~200 bayt:  6.5e6 x 200 = ~1.3 GB server orqali
+Bitta a'zo chiqishi uchun.
+
+10 a'zoli oilaviy guruhda:  9 x 8 = 72 xabar. Arzimas.`}</Calc>
+
+Kvadratik o‘sish yana paydo bo‘ldi — Slack darsidagi presence va boshlang‘ich
+holat kabi. Va xuddi o‘shandagidek: kichik guruhda u ko‘rinmaydi (72 ta
+xabar), katta guruhda esa har bir a’zolik o‘zgarishi gigabaytlik hodisaga
+aylanadi.
+
+Amaliy yumshatish — **dangasa qayta kalitlash**: a’zo chiqqanda hech kim
+darhol hech narsa yubormaydi. Har bir a’zo o‘zining **keyingi** guruh
+xabarini yuborishdan oldin yangi kalit yaratib tarqatadi. Guruhdagi 1 023
+kishidan kunlik 50 tasi yozadi — demak qayta kalitlash 1 023 x 1 022 emas,
+50 x 1 022 = ~51 000. Qolganlari hech qachon yozmasa — hech qachon
+kalitlamaydi.
+
+<Callout type="maslahat" title="Guruh hajmi chegarasi — kriptografik qaror">
+WhatsApp guruh hajmi tarixan asta-sekin oshirilgan (256 → 512 → 1 024).
+Bu cheklov ko‘pincha “mahsulot qarori” deb qabul qilinadi, lekin
+yuqoridagi hisob uning **kriptografik** asosini ko‘rsatadi: qayta kalitlash
+narxi N² bilan o‘sadi. Guruhni ikki barobar kattalashtirish — a’zo chiqish
+narxini to‘rt barobar oshirish.
+
+Shuning uchun juda katta auditoriya uchun alohida mahsulot kerak —
+“kanal” yoki “hamjamiyat” kabi, bu yerda faqat bitta yoki bir necha kishi
+yozadi va qolganlar faqat o‘qiydi. Unda qayta kalitlash faqat yozuvchilar
+uchun kerak, va N² o‘rniga N bo‘ladi.
+</Callout>
+
+### 7.3 Guruhdagi belgilar
+
+1.3-bo‘limda bitta guruh xabari 58 ta hodisa yaratishini hisobladik.
+Katta guruhda bu yanada keskin.
+
+<Calc title="Faol katta guruhning belgi trafigi" result="Xabarlardan 2 000 barobar ko'p belgi — va ular yuboruvchiga to'planadi">{`Guruh: 1 000 a'zo, kuniga 500 xabar
+
+Har xabar uchun:
+  999 yetkazish (xabar)
+  999 "yetkazildi" belgisi -> yuboruvchiga
+  999 "o'qildi" belgisi    -> yuboruvchiga
+
+Kuniga: 500 x 999 x 3 = ~1 500 000 hodisa
+Ulardan 999 000 tasi — yuboruvchilarga qaytgan belgilar.
+
+Bitta faol yuboruvchi (kuniga 50 xabar):
+  50 x 999 x 2 = ~100 000 belgi keladi uning telefoniga.
+  Har biri ~50 bayt = 5 MB/kun — faqat "kim ko'rdi" uchun.`}</Calc>
+
+Bu raqam — guruhlarda belgilarni **guruhlash** nega majburiy ekanining
+isboti. Yechim: qabul qiluvchi telefoni o‘qildi belgilarini bir necha
+soniya to‘playdi va “shu xabargacha hammasi o‘qildi” degan bitta signal
+yuboradi; server esa yuboruvchiga ularni birlashtirib, “987 kishi o‘qidi”
+degan agregat ko‘rinishda yetkazadi. Batafsil ro‘yxat (kim, qachon) esa
+faqat foydalanuvchi “Ma’lumot” ekranini ochganda so‘raladi — Slack
+darsidagi chekka kesh bilan bir xil g‘oya: **kerak bo‘lganda so‘ra,
+oldindan itarma**.
+
+<Deep title="Sender Keys nima uchun buzilishdan keyin tiklanmaydi">
+2.4-bo‘limda Double Ratchet ikki kafolat berishini ko‘rdik: oldinga
+maxfiylik (simmetrik g‘ildirak) va buzilishdan keyingi tiklanish (DH
+g‘ildiragi). Sender Keys esa **faqat simmetrik g‘ildirakni** ishlatadi.
+
+Nima uchun? Chunki DH g‘ildiragi **javobni** talab qiladi: har safar
+tomon almashganda yangi DH. Guruhda “javob beruvchi” tushunchasi yo‘q —
+Anvar yozadi, 1 023 kishi o‘qiydi. Har bir o‘quvchi bilan alohida DH
+qilish — juftlik shifrlashga qaytish degani.
+
+Oqibat aniq: agar hujumchi Anvarning guruh zanjir kalitini **bir marta**
+o‘g‘irlasa (masalan, telefoniga vaqtincha kirish orqali), u Anvarning
+**barcha kelajakdagi** guruh xabarlarini ocha oladi — toki Anvar yangi
+yuboruvchi kaliti yaratmaguncha. Double Ratchet’da esa bir javobdan
+keyin hujumchi yana ko‘r bo‘lardi.
+
+Bu — ongli savdo: guruh samaradorligi evaziga bitta kafolatdan voz
+kechish. Yumshatish usullari: yuboruvchi kalitini **davriy ravishda**
+almashtirish (masalan, har N xabarda yoki har a’zolik o‘zgarishida),
+va zamonaviy guruh protokollari (masalan, MLS — Messaging Layer
+Security standarti) daraxt asosidagi kalit almashinuvi orqali ikkala
+kafolatni ham log(N) narxida berishga harakat qiladi.
+
+Umumiy dars: **har bir samaradorlik optimallashtirishi qaysi kafolatdan
+voz kechayotganini aniq aytishi kerak.** “Sender Keys tezroq” — yarim
+haqiqat. “Sender Keys tezroq va buzilishdan keyin tiklanmaydi” — to‘liq
+haqiqat.
+</Deep>
+
+<Check q="Nega Sender Keys server yukini kamaytirmaydi, lekin baribir majburiy?">
+Chunki server ikkala holatda ham N−1 ta yetkazish bajaradi: juftlikda N−1
+ta turli shifrni, Sender Keys’da bitta shifrning N−1 ta nusxasini. Server
+uchun farq yo‘q.
+
+Farq **yuboruvchi telefonida**: juftlikda u N−1 ta shifrni mobil tarmoq
+orqali yuklaydi. 1 024 a’zoli guruhda bu 1 MB, 2G’da 3 daqiqa. Telefon
+esa tizimning eng tor, eng qimmat va eng ishonchsiz bo‘g‘ini — sekin,
+batareyali, tez-tez uziladi.
+
+Umumiy qoida: **tizimning qaysi qismi eng qimmat resursni ishlatayotganini
+aniqlang va yukni undan uzoqlashtiring.** WhatsApp’da bu doim telefon.
+Server kuchli, arzon va ishonchli — shuning uchun tarqatish unga
+beriladi.
+</Check>
+
+## 8. Ko‘p qurilma: har qurilma — alohida ishtirokchi
+
+### 8.1 Model
+
+2021-yilgacha WhatsApp Web telefonning **aks-sadosi** edi: noutbuk
+telefon bilan gaplashardi, telefon serverga. Telefon o‘chsa — hamma
+narsa to‘xtardi. Sababi oddiy: kalitlar faqat telefonda edi.
+
+Yangi modelda har bir qurilma **o‘zining identifikatsiya kaliti** va
+o‘zining Double Ratchet sessiyalariga ega. “Foydalanuvchi” endi bitta
+kalit emas, **qurilmalar ro‘yxati**.
+
+```
+Bekzod (akkaunt):
+  qurilma 0: telefon    IK_B0   (asosiy — ro'yxatni imzolaydi)
+  qurilma 1: noutbuk    IK_B1
+  qurilma 2: planshet   IK_B2
+
+Anvar Bekzodga "salom" yozadi:
+  shifr_0 = DoubleRatchet(Anvar_tel <-> B0, "salom")
+  shifr_1 = DoubleRatchet(Anvar_tel <-> B1, "salom")
+  shifr_2 = DoubleRatchet(Anvar_tel <-> B2, "salom")
+  + Anvarning O'Z boshqa qurilmalari uchun ham (noutbuki A1):
+  shifr_3 = DoubleRatchet(Anvar_tel <-> A1, "salom")
+
+  Serverga: 4 ta shifr, har biri o'z qurilmasiga
+```
+
+Bu yondashuv — **mijoz tomonda tarqatish** (client fan-out): server
+xabarni nusxalamaydi, chunki u har bir qurilma uchun boshqa kalit bilan
+shifrlangan. Yuboruvchi hammasini o‘zi tayyorlaydi.
+
+<Calc title="Ko'p qurilmaning narxi" result="Shaxsiy xabar uchun ~4-5 barobar shifr; guruhda kalit tarqatish 2.5 barobar">{`Faraz: o'rtacha foydalanuvchida 2.5 qurilma (telefon + 1.5 boshqa)
+
+SHAXSIY XABAR:
+  qabul qiluvchi qurilmalari:      2.5
+  yuboruvchining boshqa qurilmalari: 1.5
+  jami shifr:                       4.0 (oldin: 1)
+  1 KB xabar -> 4 KB yuklash. Arzimas.
+
+GURUH XABARI (Sender Keys):
+  Har xabar: baribir 1 ta shifr (bitta guruh kaliti)
+  LEKIN kalitni tarqatish har QURILMAGA:
+    100 a'zo x 2.5 qurilma = 250 juftlik sessiyasi (oldin 100)
+
+Yangi qurilma bog'langanda:
+  U hali hech kim bilan sessiyaga ega emas.
+  Birinchi xabar kelganda har bir suhbatdosh u bilan X3DH qiladi
+  -> uning 100 ta prekey'i tez tugaydi (5-bo'lim, 6-qadam)`}</Calc>
+
+Oxirgi qator — ko‘p qurilmaning yashirin narxi. Yangi noutbuk bog‘langan
+kuni u yuzlab yangi sessiya ochadi, va har biri bir martalik prekey
+sarflaydi. Shuning uchun yangi qurilma prekey’larni odatdagidan ko‘p va
+tez-tez to‘ldirishi kerak.
+
+### 8.2 Qurilmalar ro‘yxati: kim ishonchli?
+
+Mijoz tomonda tarqatishning xavfsizlik savoli: Anvar Bekzodning qurilmalar
+ro‘yxatini **qayerdan** oladi? Serverdan. Server esa bizning tahdid
+modelimizda ishonchsiz. Server ro‘yxatga o‘z qurilmasini qo‘shsa, Anvar
+unga ham shifrlaydi — va server hamma narsani o‘qiydi.
+
+Yechim — **imzolangan ro‘yxat**. Bekzodning asosiy qurilmasi (telefoni)
+ro‘yxatni o‘z identifikatsiya kaliti bilan imzolaydi. Yangi qurilma faqat
+telefon QR kodni skanerlab, ro‘yxatni qayta imzolagandan keyin qo‘shiladi.
+Anvar ro‘yxatni serverdan oladi, lekin imzoni Bekzodning `IK` kaliti bilan
+tekshiradi — va o‘sha kalit xavfsizlik kodiga bog‘langan (5-bo‘lim,
+12-qadam).
+
+<Deep title="Eskirgan qurilma ro'yxati: yangi noutbuk xabarni olmaydi">
+Imzolangan ro‘yxat server yolg‘onini to‘xtatadi, lekin boshqa, halol
+muammo qoladi: **Anvarning telefonidagi ro‘yxat eskirgan bo‘lishi mumkin**.
+
+```
+10:00  Bekzod yangi noutbuk bog'ladi (qurilma 3). Ro'yxat versiyasi 7.
+10:01  Anvar Bekzodga yozadi. Anvarning keshidagi ro'yxat: versiya 6
+       (qurilma 0, 1, 2). Noutbuk uchun shifr YO'Q.
+10:01  Server xabarni oladi: 3 ta shifr, lekin Bekzodda 4 ta qurilma.
+```
+
+Server bu yerda nimani qila oladi? U xabarni ocholmaydi va qurilma 3
+uchun shifr yarata olmaydi. Lekin u **nomuvofiqlikni ko‘radi**: yuboruvchi
+versiya 6 bo‘yicha shifrlagan, joriy versiya esa 7.
+
+Ikki yechim bor:
+
+1. **Server rad etadi**: “ro‘yxat eskirgan, mana versiya 7” — Anvarning
+   telefoni yangi ro‘yxatni oladi, imzoni tekshiradi, qurilma 3 bilan
+   X3DH qiladi va **butun xabarni** qayta yuboradi. Xabar kechikadi,
+   lekin hamma qurilma oladi.
+2. **Server qabul qiladi va qo‘shimcha so‘raydi**: 3 ta shifrni
+   yetkazadi, Anvarga esa “qurilma 3 uchun ham yubor” deydi. Tezroq,
+   lekin qurilma 3 xabarni boshqalardan keyin oladi.
+
+Ikkala holatda ham tamoyil bir xil: **server mazmunni bilmasa ham,
+versiyani biladi** — va versiya nomuvofiqligi aniq, arzon, mazmunsiz
+signal. Bu yana bir bor darslar orasidagi umumiy naqshni ko‘rsatadi:
+Slack’dagi `ts`, metama’lumot keshidagi `version`, bu yerdagi ro‘yxat
+versiyasi — **monoton son taqsimlangan tizimda tartib va yangilikni
+arzon tekshirish vositasi**.
+</Deep>
+
+<Deep title="Yangi qurilmaga tarix qanday ko'chiriladi">
+Yangi noutbuk bog‘landi. Unda suhbat tarixi yo‘q. Serverda ham yo‘q —
+server xabarlarni yetkazgach o‘chirgan (3-bo‘lim). Tarix faqat telefonda.
+
+Demak tarixni **telefon o‘zi** yangi qurilmaga yuborishi kerak:
+
+```
+1. Telefon QR kodni skanerlaydi -> yangi qurilma bilan
+   to'g'ridan-to'g'ri E2EE sessiya o'rnatiladi
+2. Telefon oxirgi N oy tarixini to'playdi, siqadi
+3. Tasodifiy kalit bilan shifrlaydi, blob sifatida yuklaydi
+   (xuddi media kabi — 5-bo'lim, 8-qadam)
+4. Kalitni yangi qurilmaga E2EE xabar sifatida yuboradi
+5. Yangi qurilma blobni yuklab, ochib, o'z bazasiga yozadi
+```
+
+Narxi mobil yuklashda:
+
+| Tarix hajmi | 4G (~2 MB/s yuklash) | 3G (~50 KB/s yuklash) |
+| --- | --- | --- |
+| 3 oy, faqat matn (~20 MB) | 10 s | ~7 daqiqa |
+| 1 yil, matn (~80 MB) | 40 s | ~27 daqiqa |
+| 1 yil, media bilan (~5 GB) | ~42 daqiqa | amalda imkonsiz |
+
+Jadval nega WhatsApp yangi qurilmaga **faqat yaqin tarixni** va media
+uchun **faqat havolalarni** ko‘chirishini tushuntiradi. Media esa
+kerak bo‘lganda — foydalanuvchi eski rasmni bosganda — telefon onlayn
+bo‘lsa, alohida so‘raladi.
+
+Bu yerdagi chuqur saboq: **serverda tarix saqlamaslik qarori** (3-bo‘lim)
+ko‘p qurilma paytida o‘z narxini to‘laydi. Slack’da yangi qurilma
+tarixni serverdan bir necha soniyada oladi. WhatsApp’da esa u
+telefonning mobil yuklash kanaliga bog‘liq. Maxfiylik va qulaylik
+orasidagi savdo bu yerda raqam bilan ko‘rinadi.
+</Deep>
+
+<Check q="Bekzodning noutbuki 3 hafta o'chiq turdi. U yoqilganda nima bo'ladi?">
+Ikki narsa sodir bo‘lishi mumkin, va ular 30 kunlik navbat chegarasiga
+(6.1) bog‘liq.
+
+**30 kundan kam** (bu holatda 21 kun): navbatda noutbuk uchun alohida
+shifrlangan nusxalar kutib turibdi (8.1: har qurilmaga alohida shifr).
+Noutbuk ulanadi, ularni oladi, ochadi. Hammasi joyida — lekin navbat
+hajmiga bu qurilma 21 kunlik xabarlarni qo‘shgan edi. Aynan shunday
+qurilmalar 6.1-dagi “C guruhi”ni tashkil qiladi.
+
+**30 kundan ko‘p**: navbatdagi xabarlar muddati o‘tib o‘chirilgan.
+Noutbukda bo‘shliq qoladi. Amaliy yechim — uzoq vaqt faol bo‘lmagan
+bog‘langan qurilmani avtomatik **uzish** va keyingi safar qayta
+bog‘lashni talab qilish (tarix telefondan qayta ko‘chiriladi).
+
+Bu savol ko‘p qurilmaning yashirin iqtisodini ko‘rsatadi: har bir
+bog‘langan, lekin ishlatilmaydigan qurilma **navbat xotirasini yeydi** —
+yuboruvchilar unga har xabarni shifrlaydi, server esa 30 kungacha
+saqlaydi. Uzoq faol bo‘lmagan qurilmalarni uzish — xavfsizlik qarori
+ham, iqtisodiy qaror ham.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Telefon va qurilmalar", boxes: ["Signal protokoli", "Mahalliy baza (tarix)", "Prekey boshqaruvi", "Media siqish va shifrlash"], note: "Aql shu yerda: kalitlar, tarix, qidiruv, siyosatlar (yo'naltirish chegarasi)." },
+    { name: "Transport", boxes: ["Noise protokoli (mijoz-server)", "Ikkilik lug'atli protokol"], note: "Xabar ikki marta shifrlangan: E2EE ichida, transport tashqarida." },
+    { name: "Ulanish serverlari", boxes: ["Erlang: ulanish = jarayon", "Onlayn reestr (kim qayerda)", "Belgilarni guruhlash"] },
+    { name: "Navbat", boxes: ["Tezkor: xotira + replikatsiyalangan jurnal", "Bardoshli: disk, 30 kun"], note: "Server tarix saqlamaydi — faqat yetkazilmaganlarni." },
+    { name: "Kalit xizmatlari", boxes: ["Identifikatsiya kalitlari", "Prekey ombori", "Imzolangan qurilma ro'yxatlari"] },
+    { name: "Media", boxes: ["Yuklash serverlari", "Shifrlangan blob ombori", "CDN"] },
+    { name: "Yon tizimlar", boxes: ["Push shlyuzi (APNs/FCM)", "Spam: metama'lumot tahlili", "Zaxira kalitlari (HSM)", "Qo'ng'iroq relay'lari"] },
+  ]}
+/>
+
+Diagrammani Slack darsidagi bilan solishtiring va farqni toping: bu
+yerda **“Saqlash” qatlami deyarli yo‘q**. Slack’da xabarlar bazasi,
+qidiruv indeksi, kanal tarixi — hammasi serverda. Bu yerda server faqat
+**vaqtincha** ushlaydi: yetkazilmagan xabarlar (navbat), prekey’lar
+(ishlatilguncha) va media (muddat tugaguncha). Doimiy ma’lumot faqat
+telefonlarda.
+
+Bu — arxitekturaning eng muhim xususiyati va 12-bo‘limdagi iqtisodning
+asosiy sababi.
+
+<Flow nodes={["Anvar telefoni", "Noise ulanish", "Ulanish serveri A", "Navbat (jurnal)", "Onlayn reestr", "Ulanish serveri B", "Bekzod telefoni"]} caption="Ikkalasi onlayn bo'lganda xabar navbatda millisekundlar turadi va diskka tushmaydi" />
+
+### 9.1 Yetkazish kechikishi byudjeti
+
+<Calc title="Ikkalasi onlayn, 4G" result="~210 ms — va uning 170 ms i mobil tarmoq">{`Anvar Toshkentda, Bekzod Samarqandda, ikkalasi 4G'da, ilova ochiq.
+
+   ->  2 ms   Shifrlash (Double Ratchet + AES)
+   -> 70 ms   Telefon -> ulanish serveri (4G, radio allaqachon faol)
+   ->  3 ms   Jurnalga yozish (2 replika) -> ✓ Anvarga
+   ->  2 ms   Onlayn reestrdan Bekzodning serverini topish
+   ->  3 ms   Server A -> Server B (bir ma'lumot markazida)
+   -> 70 ms   Server B -> Bekzod telefoni
+   ->  2 ms   Shifrdan ochish
+   -> 30 ms   Saqlash va ko'rsatish
+   ================================================
+      ~182 ms  (plus ✓✓ Anvarga qaytishi: yana ~30 ms tarmoq ichida)
+
+Agar Bekzodning radiosi UXLAYOTGAN bo'lsa (ilova ochiq, lekin
+ekran o'chiq): radio uyg'onishi +300-2 000 ms (tarmoq holatiga bog'liq).`}</Calc>
+
+Byudjetning 80% i — ikki mobil “oxirgi mil”. Serverdagi butun ish
+10 ms dan kam. Slack darsida ham xuddi shunday edi (u yerda 93 ms dan
+50 ms tarmoq), lekin bu yerda nisbat yanada keskin, chunki mobil tarmoq
+Wi-Fi’dan sekinroq va o‘zgaruvchan.
+
+Oxirgi qator esa eng muhimi: **radio uyg‘onishi**. Ekrani o‘chiq telefonga
+xabar kelganda mobil radio past quvvat holatidan faol holatga o‘tishi
+kerak, va bu yuzlab millisekunddan ikki soniyagacha oladi. Bu kechikishni
+server hech qanday optimallashtirish bilan kamaytira olmaydi — u
+tarmoq operatorining sozlamasi. Mahsulot darajasidagi javob: foydalanuvchi
+ko‘radigan narsa (✓ ning tez paydo bo‘lishi) serverga bog‘liq qilinadi,
+qabul qiluvchiga bog‘liq narsa (✓✓) esa kechikishi mumkin — va
+foydalanuvchilar buni tabiiy qabul qiladi.
+
+<Deep title="Nega transport uchun TLS emas, Noise">
+Slack darsida mijoz va server orasidagi ulanish TLS bilan himoyalangan
+edi. WhatsApp esa mijoz–server transporti uchun **Noise protokoli
+freymvorkidan** foydalanadi (texnik hujjatida “Noise Pipes” deb
+ataladi). Nega?
+
+| | TLS 1.3 | Noise (WhatsApp uslubida) |
+| --- | --- | --- |
+| Server autentifikatsiyasi | Sertifikat zanjiri, CA’lar | Server ochiq kaliti ilovaga oldindan yozilgan |
+| Qo‘l siqish hajmi | Sertifikat zanjiri: odatda 2–5 KB | Bir necha 32 baytlik kalit |
+| Qayta ulanish | Sessiya chiptasi, 0-RTT cheklovlar bilan | Oldingi ulanishdan saqlangan kalit bilan tez qayta ulanish |
+| Mijoz autentifikatsiyasi | Odatda alohida (token) | Mijozning statik kaliti qo‘l siqishning o‘zida |
+
+Birinchi qator asosiy farq: WhatsApp faqat **o‘z serveri** bilan
+gaplashadi, demak butun sertifikat infratuzilmasi (CA’lar, zanjirlar,
+bekor qilish ro‘yxatlari) keraksiz. Server kaliti ilova ichida — bu
+“kalitni mahkamlash” (pinning) ning eng qat’iy shakli.
+
+Ikkinchi qator esa 2G tarmog‘i uchun hal qiluvchi: 4 KB sertifikat
+zanjiri 6 KB/s tarmoqda ~0.7 soniya. Telefon kuniga o‘nlab marta qayta
+ulanadi (push bilan uyg‘onish, tarmoq almashishi) — har safar 0.7 soniya
+va radio vaqti. Noise qo‘l siqishi esa yuz baytlar atrofida.
+
+Umumiy dars: **umumiy maqsadli protokol har doim eng yaxshi tanlov
+emas**. TLS istalgan mijozni istalgan server bilan bog‘lash uchun
+yaratilgan, va bu umumiylik baytlar va aylanmalar bilan to‘lanadi.
+Agar ikkala uchni ham siz boshqarsangiz, ixtisoslashgan protokol arzonroq
+bo‘lishi mumkin — lekin faqat uni **sinovdan o‘tgan freymvork** ustida
+qursangiz (Noise shunday), o‘zingiz kriptografiya ixtiro qilsangiz emas.
+</Deep>
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Foydalanuvchi nimani ko‘radi | Javob |
+| --- | --- | --- |
+| Ulanish serveri yiqildi | Soat belgisi (yuborilmoqda), keyin ✓ | Jitter bilan boshqa serverga qayta ulanish, yuborilmaganlar qayta yuboriladi |
+| Tezkor navbat node’i yiqildi | Hech narsa (replika bor) | ✓ faqat 2 replikadan keyin berilgani uchun yo‘qotish yo‘q |
+| Push xizmati kechikdi | Xabar telefon ochilganda keladi | Navbat bor — faqat kechikish |
+| Sessiya sinxronligi buzildi | “Bu xabarni kutyapmiz…” | Qayta shifrlash so‘rovi (10.2) |
+| Prekey tugadi | Hech narsa | Zaiflashgan X3DH (5-bo‘lim, 6-qadam) |
+| Mintaqaviy uzilish | Bir mamlakatda hech narsa yuborilmaydi | Boshqa mintaqaga o‘tish, navbatlar replikatsiyasi |
+
+Jadvaldan ko‘rinadigan naqsh: **deyarli har qatorda javob “kechikish”,
+“yo‘qotish” emas**. Bu — 5-bo‘limning 2-qadamidagi ikki bosqichli tasdiq
+va 10-qadamdagi replikatsiyalangan jurnal natijasi. Server ✓ bergan
+xabar faqat **ikkala** replika bir vaqtda yo‘qolganda yo‘qoladi.
+
+Istisno — to‘rtinchi qator, va u WhatsApp foydalanuvchilariga eng tanish
+xato xabari. Uni alohida ko‘ramiz, chunki u E2EE ning eng og‘riqli
+operatsion jihatini ko‘rsatadi.
+
+### 10.2 “Bu xabarni kutyapmiz”: sessiya sinxronligi buzilganda
+
+Double Ratchet ikki tomonning **aynan bir xil holatda** bo‘lishini talab
+qiladi. Agar Bekzod ilovani qayta o‘rnatsa, yangi identifikatsiya kaliti
+yaratiladi va eski sessiyalar yo‘qoladi. Lekin Anvarning telefoni buni
+hali bilmaydi va xabarni **eski** sessiya bilan shifrlaydi.
+
+```
+1. Anvar eski sessiya bilan shifrlaydi -> yuboradi
+2. Bekzod (yangi o'rnatilgan) xabarni oladi -> OCHA OLMAYDI
+   Ekranda: "Bu xabarni kutyapmiz. Biroz vaqt olishi mumkin."
+3. Bekzod telefoni -> Anvarga: "qayta urinish" belgisi (retry receipt)
+   + o'zining yangi kalit to'plami
+4. Anvar telefoni: eski sessiyani tashlaydi, yangi X3DH qiladi,
+   xuddi shu xabarni QAYTA shifrlaydi -> yuboradi
+5. Bekzod ochadi. Ekrandagi yozuv haqiqiy xabarga almashadi.
+```
+
+Bu mexanizmning muhim sharti: **Anvarning telefoni onlayn bo‘lishi
+kerak**. Server qayta shifrlay olmaydi — u matnni bilmaydi. Agar Anvar
+xabarni yuborib, telefonini o‘chirib qo‘ygan bo‘lsa, Bekzod “kutyapmiz”
+yozuvini u qaytgunicha ko‘radi.
+
+<Calc title="Qayta shifrlash so'rovlari qanchalik tez-tez" result="Kuniga ~100 million qayta urinish — bu 'kam uchraydigan xato' emas">{`Faraz: kuniga 0.5% foydalanuvchi ilovani qayta o'rnatadi yoki
+telefon almashtiradi (~10 000 000 kishi).
+
+Har biriga shu kunlarda ~10 ta suhbatdosh yozadi,
+va har suhbatdoshning birinchi xabari ochilmaydi:
+  10 000 000 x 10 = 100 000 000 qayta urinish/kun
+  = ~1 160 qayta urinish/s
+
+Umumiy xabarlardan ulushi: 1e8 / 1e11 = 0.1%
+
+Ko'rinadigan ta'sir: har kuni 10 million odam kamida bitta
+"kutyapmiz" yozuvini ko'radi.`}</Calc>
+
+0.1% kichik ko‘rinadi, lekin mutlaq son — kuniga 10 million odam. Shuning
+uchun bu “kutyapmiz” xabari WhatsApp’ning eng ko‘p muhokama qilinadigan
+xatolaridan biri. Bu **xato emas, dizayn**: E2EE bilan server tomonida
+tiklash imkonsiz, va tizim buni halol ko‘rsatadi. Muqobil — xabarni
+jimgina yo‘qotish — ancha yomon bo‘lardi.
+
+<Callout type="ogoh" title="E2EE'da 'server tiklaydi' degan yo'l yo'q">
+Oddiy tizimda deyarli har qanday nomuvofiqlikni server tuzatadi: qayta
+yuboradi, holatni tiklaydi, bazadan oladi. E2EE tizimida server faqat
+**shifrlangan baytlarni qayta yuborishi** mumkin — agar ular ochilmasa,
+server hech narsa qila olmaydi.
+
+Bu tiklash mantiqini **mijozlar o‘rtasiga** ko‘chiradi: qabul qiluvchi
+so‘raydi, yuboruvchi qayta shifrlaydi. Demak har bir tiklash yo‘li
+**ikkala tomonning ham onlayn bo‘lishini** talab qiladi. Arxitekturani
+loyihalashda har bir “agar X buzilsa” stsenariysi uchun so‘rang: buni
+kim tuzatadi — va u hozir onlaynmi?
+</Callout>
+
+<Deep title="Telefon xabarni ochib, keyin o'chib qolsa">
+Double Ratchet’ning nozik operatsion talabi: **g‘ildirak holati va
+ochilgan xabar bir vaqtda saqlanishi kerak**. Aks holda telefon
+yiqilishi xabarni butunlay yo‘qotadi.
+
+```
+YOMON TARTIB:
+  1. Xabarni ochish: zanjir kalitini oldinga siljitish, xabar kalitini olish
+  2. Yangi zanjir holatini diskka yozish, xabar kalitini O'CHIRISH
+  3. <--- telefon batareyasi tugadi --->
+  4. (xabar matnini bazaga yozish amalga oshmadi)
+
+  Natija: kalit o'chirilgan, matn saqlanmagan. Xabar ABADIY yo'q.
+  Serverdan qayta so'rash ham yordam bermaydi — shifr bir xil,
+  kalit esa yo'q. Faqat qayta shifrlash so'rovi (10.2) qutqaradi.
+
+TO'G'RI TARTIB (bitta tranzaksiyada):
+  BEGIN
+    xabar matnini yozish
+    yangi zanjir holatini yozish
+    xabar kalitini o'chirish
+  COMMIT
+  keyin serverga ack (✓✓)
+```
+
+Bu Slack darsidagi kursor qoidasi va 5-bo‘lim, 2-qadamdagi ✓✓ qoidasi
+bilan bir xil tamoyil — **tasdiqlashdan oldin saqla** — lekin bu yerda
+xato narxi ancha yuqori. Oddiy tizimda saqlanmagan xabarni serverdan
+qayta olasiz. E2EE’da esa kalit o‘chirilgan bo‘lsa, serverdagi nusxa
+foydasiz baytlar.
+
+Bu tafsilot telefon tomonidagi bazani tanlashga ham ta’sir qiladi: u
+**tranzaksiyali** bo‘lishi va bir necha yozuvni atomik bajara olishi
+shart (SQLite shunday). Va 6.3-dagi iOS kengaytmasi ham xuddi shu
+tranzaksiyadan o‘tishi kerak — ikki jarayon, bitta atomik holat.
+</Deep>
+
+### 10.3 Degradatsiya tartibi
+
+<Timeline
+  rows={[
+    { when: "1-bosqich", what: "O'qildi belgilarini kechiktirish", why: "Ko'k ✓✓ 30 s kech keladi. Belgilar trafikning katta qismi (1.3), va ularni kechiktirish hech narsani yo'qotmaydi." },
+    { when: "2-bosqich", what: "'Yozmoqda' va 'onlayn' holatini to'xtatish", why: "O'tkinchi signallar. Slack darsidagi kabi — birinchi qurbon." },
+    { when: "3-bosqich", what: "Push'larni birlashtirish oynasini kattalashtirish", why: "30 s dan 2 daqiqaga. Telefonlar kamroq uyg'onadi, server kamroq qayta ulanish oladi." },
+    { when: "4-bosqich", what: "Media yuklashni sekinlashtirish", why: "Rasmlar kechikadi, matn o'tadi. Matn xabarlari 1 KB, media 150 KB — yuklamaning asosiy qismi." },
+    { when: "5-bosqich", what: "Yangi guruh va qurilma bog'lashni to'xtatish", why: "Qimmat operatsiyalar: kalit tarqatish, tarix ko'chirish (8.2)." },
+    { when: "6-bosqich", what: "Faqat shaxsiy matn xabarlari", why: "Eng muhim funksiya. Navbat ishlaydi, hech narsa yo'qolmaydi — faqat sekin." },
+  ]}
+/>
+
+Tartibning mantig‘i Slack’dagi bilan bir xil — o‘tkinchi narsalar birinchi,
+asosiy funksiya oxirgi — lekin bitta muhim farq bor: bu yerda
+**4-bosqich media**. Slack’da media CDN’da alohida edi va yuklamaga
+kam ta’sir qilardi. WhatsApp’da esa media — trafik va saqlashning asosiy
+qismi (12-bo‘lim), shuning uchun uni sekinlashtirish eng katta yengillik
+beradi.
+
+## 11. Xavfsizlik: mazmun himoyalangan, metama’lumot — yo‘q
+
+E2EE juda kuchli va’da beradi, va aynan shuning uchun uning **chegaralarini**
+aniq bilish kerak. Eng keng tarqalgan noto‘g‘ri tushuncha: “uchidan-uchiga
+shifrlangan, demak server hech narsa bilmaydi”.
+
+### 11.1 Server nimani biladi
+
+| Ma’lumot | Server ko‘radimi | Nima uchun kerak |
+| --- | --- | --- |
+| Xabar matni, rasm, ovoz | Yo‘q | — |
+| Kim kimga yozdi | Ha | Yetkazish uchun |
+| Qachon, qancha tez-tez | Ha | Yetkazish, navbat |
+| Guruh a’zolari ro‘yxati | Ha | Tarqatish uchun (7-bo‘lim) |
+| IP manzil va taxminiy joy | Ha | Ulanish uchun |
+| Qurilma turi va ilova versiyasi | Ha | Protokol mosligi |
+| O‘qildi belgilari | Ha | Yuboruvchiga yetkazish uchun |
+| Xabar hajmi | Ha (taxminan) | Transport |
+
+Jadval ikkiga bo‘linadi: birinchi qator — **mazmun**, qolgan hammasi —
+**metama’lumot**. Va metama’lumot ko‘p narsani aytadi. Ikki kishi har
+kuni kechasi soat 2 da yozishadi; kimdir har dushanba ertalab bir xil
+advokat bilan gaplashadi; guruh a’zolari ro‘yxati siyosiy tashkilotni
+ko‘rsatadi. Matnni o‘qimasdan ham ko‘p narsani bilish mumkin.
+
+Bu jadvaldan chiqadigan qaror: **E2EE — mazmun uchun zarur, lekin maxfiylik
+uchun yetarli emas.** Metama’lumotni kamaytirish alohida muhandislik ishi:
+qisqa saqlash muddatlari, jurnallarni agregatlash, va ba’zi tizimlarda
+(masalan, Signal’ning “muhrlangan yuboruvchi” — sealed sender — g‘oyasi)
+yuboruvchini serverdan ham yashirish. Har bir bunday qadam narxga ega,
+chunki server metama’lumotni **ishlashi uchun** ishlatadi.
+
+<Deep title="Muhrlangan yuboruvchi: server 'kimdan' ekanini bilmasa">
+Signal ilovasida qo‘llangan g‘oya: server xabarni **kimga** yetkazishni
+biladi (bu shart), lekin **kimdan** kelganini bilmaydi.
+
+```
+ODDIY:
+  konvert: { kimdan: Anvar, kimga: Bekzod, shifr: ... }
+  Server Anvarni autentifikatsiya qiladi (ulanish orqali) va konvertni o'qiydi.
+
+MUHRLANGAN YUBORUVCHI:
+  konvert: { kimga: Bekzod, muhrlangan: Enc_Bekzod( kimdan: Anvar + sertifikat, shifr ) }
+  Anvar serverga AUTENTIFIKATSIYASIZ ulanadi (anonim yuborish).
+  "Kimdan" maydoni Bekzodning kaliti bilan shifrlangan — faqat u ochadi.
+```
+
+Muammo darhol paydo bo‘ladi: agar server yuboruvchini bilmasa, spamni
+qanday to‘xtatadi? Har kim istalgan odamga anonim yubora oladi.
+
+Signal’ning javobi — **yetkazish tokeni**: Bekzod o‘z profil kalitidan
+kichik token chiqaradi va uni faqat o‘z kontaktlariga beradi. Anonim
+xabar faqat to‘g‘ri token bilan qabul qilinadi. Ya’ni server “kimdan”
+ekanini bilmaydi, lekin “yuboruvchi Bekzodning kontaktlaridan biri”
+ekanini tekshira oladi. Notanishlar esa oddiy, autentifikatsiyalangan
+yo‘ldan yuboradi — va 11.2-dagi spam signallari ularga qo‘llanadi.
+
+Umumiy xulosa: metama’lumotni yashirish har doim **bir xil savdoga**
+olib keladi — server qancha kam bilsa, abuse bilan kurash shuncha
+qiyin, va har bir yashirish uchun yangi kriptografik “ruxsatnoma”
+mexanizmi kerak bo‘ladi. Shuning uchun muhrlangan yuboruvchi kabi
+g‘oyalar hamma joyda emas, faqat maxfiylik asosiy mahsulot bo‘lgan
+ilovalarda qo‘llanadi.
+</Deep>
+
+### 11.2 Spam bilan kurash: matnni o‘qimasdan
+
+Server xabar matnini ko‘ra olmasa, spam va firibgarlikni qanday
+aniqlaydi? Faqat **xatti-harakat** orqali — va 11.1-dagi metama’lumot
+aynan shu yerda foydali.
+
+<Calc title="Spam akkauntini xatti-harakat bo'yicha ajratish" result="Birinchi soatda 200 ta notanishga yozish — oddiy odamda deyarli uchramaydi">{`ODDIY yangi foydalanuvchi, birinchi soat:
+  yozgan odamlar:          ~5-10 (hammasi kontaktlarda)
+  javob olganlar ulushi:   ~80%
+  bloklagan/shikoyat qilgan: ~0
+
+SPAM akkaunti, birinchi soat:
+  yozgan odamlar:          200+ (deyarli hammasi notanish)
+  javob olganlar ulushi:   <5%
+  bloklagan/shikoyat qilgan: 3-10%
+
+Signal: "notanishlarga yozish tezligi" x "javobsizlik" x "bloklash"
+  Oddiy:  10 x 0.2 x 0     = 0
+  Spam:  200 x 0.95 x 0.05 = 9.5
+
+Uchala signal ham METAMA'LUMOT — matnga qaramaydi.
+Shikoyat qilinganda esa: SHIKOYAT QILUVCHINING telefoni oxirgi bir necha
+xabarni o'zi ochib, serverga yuboradi. Bu E2EE'ni buzmaydi —
+qabul qiluvchi o'zi olgan xabarni ko'rsatishni tanladi.`}</Calc>
+
+Oxirgi paragraf — E2EE va moderatsiya muammosining eng nafis yechimi:
+**qabul qiluvchi o‘zi olgan narsani ko‘rsatishi mumkin**. Shifrlash
+yuboruvchini serverdan himoya qiladi, lekin qabul qiluvchidan emas —
+qabul qiluvchi baribir matnni ko‘radi va uni istalgan kishiga (jumladan,
+shikoyat orqali platformaga) ko‘rsatishi mumkin.
+
+Bu yondashuvning chegarasi: u faqat **kimdir shikoyat qilganda** ishlaydi.
+Yopiq guruhda hamma rozi bo‘lgan zararli kontent (hech kim shikoyat
+qilmaydi) ko‘rinmaydi. Bu — E2EE ning ma’lum va ochiq tan olingan narxi,
+va uni “hal qilish” uchun taklif qilinadigan ko‘p g‘oyalar (masalan,
+telefonda avtomatik skanerlash) E2EE va’dasining o‘zini buzadi.
+
+<Callout type="xato" title="'Faqat spam uchun' server tomonda skanerlash">
+Ba’zan shunday taklif keladi: “Xabarlarni shifrlaymiz, lekin server
+spam uchun ularni tekshirishi mumkin bo‘lsin — faqat avtomatik, odam
+qaramaydi.” Bu E2EE emas. Agar server tekshira olsa, demak server
+kalitga ega; agar server kalitga ega bo‘lsa, uni buzgan, sotib olgan
+yoki majburlagan har kim ham ega.
+
+Kriptografik va’da ikkilik: yo server o‘qiy oladi, yo o‘qiy olmaydi.
+“Faqat ba’zan”, “faqat avtomatik”, “faqat ruxsat bilan” degan oraliq
+holat **texnik jihatdan** mavjud emas — faqat siyosiy va’da sifatida
+mavjud, va u birinchi bosim ostida o‘zgaradi.
+</Callout>
+
+### 11.3 Havolaning oldindan ko‘rinishi: kichik funksiya, katta sizib chiqish
+
+Xabarga havola qo‘shsangiz, sarlavha va rasm bilan kichik kartochka
+chiqadi. Oddiy tizimda buni **server** yaratadi: havolani oladi, sahifani
+yuklaydi, sarlavhani chiqaradi. E2EE tizimida bu mumkin emas — server
+havolani ko‘rmaydi. Agar ko‘rsa, u shifrlash qatlamidan sizib chiqqan
+bo‘ladi.
+
+Yechim — **yuboruvchi telefoni** kartochkani yaratadi: havolani o‘zi
+ochadi, sarlavha va kichik rasmni oladi, va ularni xabarning **shifrlangan
+qismiga** qo‘shadi. Qabul qiluvchi esa hech narsa yuklamaydi.
+
+Nega qabul qiluvchi yuklamaydi? Chunki unda hujumchi sizga havola
+yuborib, sizning telefoningizni o‘z serveriga murojaat qildirishi — ya’ni
+IP manzilingizni va onlayn ekaningizni bilishi mumkin edi. Bu kichik
+funksiya ham xavfsizlik modelini aniq tushunishni talab qiladi: **kim
+tarmoqqa murojaat qilsa, u o‘zini oshkor qiladi**, va bu faqat o‘z
+xohishi bilan yuborgan odam bo‘lishi kerak.
+
+<Check q="WhatsApp guruh a'zolari ro'yxatini nega shifrlamaydi?">
+Chunki server uni **ishlashi uchun** biladi. 7-bo‘limda guruh xabari
+bitta shifr sifatida serverga keladi va server uni N ta a’zoga
+tarqatadi. Tarqatish uchun kimga tarqatishni bilish kerak.
+
+Muqobil — mijoz tomonda tarqatish: yuboruvchi har bir a’zoga alohida
+yuboradi, server esa guruh haqida hech narsa bilmaydi. Lekin bu Sender
+Keys’ning butun yutug‘ini yo‘q qiladi: telefon yana 1 024 ta nusxa
+yuklaydi (7.1-dagi 3 daqiqa 2G’da).
+
+Bu — metama’lumot va samaradorlik orasidagi to‘g‘ridan-to‘g‘ri savdo.
+Umumiy qoida: **server qancha kam bilsa, mijoz shuncha ko‘p ish qiladi.**
+Mijoz esa telefon — tizimdagi eng qimmat resurs. Shuning uchun amaliy
+E2EE tizimlari mazmunni to‘liq yashiradi, metama’lumotni esa faqat
+narxi qabul qilinadigan darajada kamaytiradi.
+</Check>
+
+## 12. Iqtisod: nega WhatsApp arzon
+
+WhatsApp tarixi iqtisod haqidagi eng mashhur hikoyalardan biri: keng
+tarqalgan ma’lumotlarga ko‘ra, 2014-yilda 450 milliondan ortiq
+foydalanuvchiga taxminan 50 nafar muhandis xizmat ko‘rsatgan. Bu raqam
+ko‘pincha “ular juda aqlli edi” deb tushuntiriladi. Aqlli bo‘lgani
+to‘g‘ri, lekin asosiy sabab **arxitekturada**: server qiladigan ish
+juda kam.
+
+<Calc title="Serverning xabar boshiga ishi: WhatsApp va Slack" result="WhatsApp serveri xabar boshiga taxminan 5-10 barobar kam ish qiladi">{`SLACK xabari serverda:
+  ruxsat tekshiruvi            ✓
+  ts tayinlash (kanal shardi)  ✓
+  doimiy saqlash (Postgres)    ✓ (+ replikalar, + zaxira, abadiy)
+  qidiruv indeksiga qo'shish   ✓ (+ indeks xotirada)
+  o'qilmaganlar hisoblagichi   ✓
+  pub/sub tarqatish            ✓
+  havola oldindan ko'rinishi   ✓ (server yuklaydi)
+  = 7 ta og'ir operatsiya, 2 tasi abadiy saqlash
+
+WHATSAPP xabari serverda:
+  navbatga yozish (jurnal)     ✓ (millisekundlar, ko'pincha diskka tushmaydi)
+  onlayn reestrdan qidirish    ✓
+  tarqatish                    ✓
+  tasdiqdan keyin o'chirish    ✓
+  = 4 ta yengil operatsiya, 0 ta abadiy saqlash
+
+Qolgan hamma narsa — telefonda, FOYDALANUVCHINING hisobidan:
+  shifrlash, saqlash, qidiruv, havola ko'rinishi, media siqish.`}</Calc>
+
+Bu hisob WhatsApp iqtisodining butun siri: **ish mijozga ko‘chirilgan**.
+Har bir telefon — kichik server: u o‘z tarixini saqlaydi, o‘z qidiruvini
+bajaradi, o‘z mediasini siqadi. 2 milliard telefon — 2 milliard bepul
+hisoblash tuguni. Server esa faqat pochtachi.
+
+<Calc title="Xarajat taqsimoti (illyustratsiya)" result="Media ~80% — va uning eng katta tutqichi telefonda">{`Faraz: kuniga 100 mlrd xabar, ulardan ~8% media (rasm, video, ovoz)
+  8 mlrd media/kun, siqilgandan keyin o'rtacha ~150 KB
+  = 1.2 PB/kun yuklash
+
+Har media o'rtacha 3 ta qabul qiluvchiga (guruhlar tufayli):
+  = 3.6 PB/kun yuklab olish (CDN chiqishi)
+
+Saqlash: yetkazilgach tez o'chiriladi, lekin yo'naltirish uchun
+  ~30 kun saqlanadi deb faraz:  1.2 PB x 30 = 36 PB
+
+Taxminiy oylik (katta hajmdagi kelishilgan narxlar bilan):
+  CDN chiqishi:  3.6 PB x 30 x ~0.005 $/GB  = ~540 000 $
+  Media saqlash: 36 PB x ~0.01 $/GB-oy      = ~360 000 $
+  Ulanish serverlari: 400 M ulanish / 1 M har serverda
+                      = 400 server x ~500 $  = ~200 000 $
+  Navbat (5.8 TB x 3 replika, SSD):          = ~10 000 $
+  Kalit ombori (6.4 TB):                      = ~10 000 $
+  -----------------------------------------------------------
+  Jami:                                       ~1 120 000 $/oy
+  2 mlrd foydalanuvchiga: ~0.00056 $/oy = yiliga ~0.7 sent`}</Calc>
+
+Raqamlar illyustratsiya — haqiqiy narxlar, siqish darajasi va saqlash
+muddati noma’lum va ancha farq qilishi mumkin. Lekin **tuzilma** ishonchli:
+xarajatning taxminan 80% i media, matn xabarlari esa deyarli bepul.
+
+| Xarajat moddasi | Ulushi | Asosiy tutqich |
+| --- | --- | --- |
+| Media (CDN + saqlash) | ~80% | Telefonda siqish, saqlash muddati, yo‘naltirishda qayta ishlatish |
+| Ulanish serverlari | ~18% | Server boshiga ulanish soni (Erlang, 5-bo‘lim, 9-qadam) |
+| Navbat va kalitlar | ~2% | Deyarli ahamiyatsiz |
+
+Jadvaldan uchta mahsulot qarori chiqadi, va ularning hammasi media
+haqida.
+
+**Birinchi: siqish telefonda bajariladi va u eng katta iqtisodiy
+tutqich.** Telefon kamerasi 3–4 MB rasm oladi; WhatsApp uni yuborishdan
+oldin ~100–200 KB gacha siqadi. Bu 20 barobar. Agar siqish serverda
+bo‘lsa, server 20 barobar ko‘p qabul qilib, keyin siqishi kerak edi —
+va E2EE bilan bu umuman imkonsiz, chunki server rasmni ko‘rmaydi.
+
+**Ikkinchi: “yuqori sifatda yuborish” — pullik funksiyaga o‘xshaydi.**
+Siqilmagan rasm yuborish imkoni media xarajatini shu xabar uchun 20 barobar
+oshiradi. Shuning uchun u standart emas, alohida tanlov.
+
+**Uchinchi: yo‘naltirishda URL qayta ishlatish** (5-bo‘lim, 8-qadam) —
+viral kontentda 1 000 barobardan ortiq tejash. Bu optimallashtirish
+bo‘lmaganda viral video har yo‘naltirishda qayta yuklanardi.
+
+<Deep title="Rasm qanday qilib 20 barobar kichrayadi">
+“3–4 MB dan ~150 KB gacha” degan raqam qayerdan kelishini qadam-baqadam
+ko‘ramiz. Siqish ikkita mustaqil ko‘paytuvchidan iborat.
+
+```
+1) O'LCHAMNI KICHRAYTIRISH (piksellar soni)
+   Telefon kamerasi:   4032 x 3024 = 12.2 M piksel
+   Messenjer uchun:    1600 x 1200 =  1.9 M piksel
+   Nisbat: 12.2 / 1.9 = ~6.4 barobar kam piksel
+
+   Telefon ekrani odatda ~1080-1440 piksel eni —
+   1600 dan kattasini foydalanuvchi baribir ko'rmaydi.
+
+2) JPEG SIFATI (piksel boshiga bayt)
+   Kamera JPEG sifati ~90-95:  ~2.4 bit/piksel  -> 12.2 M x 2.4 / 8 = ~3.7 MB
+   Messenjer sifati ~70-75:    ~0.7 bit/piksel  ->  1.9 M x 0.7 / 8 = ~170 KB
+   Piksel boshiga nisbat: 2.4 / 0.7 = ~3.4 barobar
+
+JAMI: 6.4 x 3.4 = ~22 barobar  (3.7 MB -> ~170 KB)
+```
+
+Bu hisobdagi bit/piksel qiymatlari taxminiy — ular rasm mazmuniga
+(tekis osmon yoki mayda barglar) kuchli bog‘liq. Lekin tuzilma aniq:
+**siqishning katta qismi o‘lchamni kichraytirishdan keladi**, sifat
+pasaytirishdan emas. Shuning uchun siqilgan rasm telefon ekranida deyarli
+farqsiz ko‘rinadi — piksellar baribir ekranga sig‘maydigan edi.
+
+Iqtisodiy natija 12-bo‘limdagi jadval bilan bog‘lanadi: media xarajatning
+~80% i, va bu ikki qator kod (o‘lcham va sifat) uni 20 barobar kamaytiradi.
+Server tomonda hech qanday optimallashtirish bunga yaqinlasha olmaydi —
+va E2EE bilan server buni umuman qila olmaydi.
+</Deep>
+
+<Deep title="Telefonga ish ko'chirishning yashirin narxi">
+“Ishni mijozga ko‘chirish” tekin ko‘rinadi — server xarajati kamayadi,
+foydalanuvchi esa to‘lamaydi. Lekin narx yo‘qolmaydi, u boshqa joyga
+ko‘chadi. Uchta joyga.
+
+**Foydalanuvchi batareyasi va xotirasi.** Siqish, shifrlash, tarix
+saqlash — hammasi telefon resurslarini ishlatadi. 32 GB li arzon
+telefonda 3 yillik WhatsApp tarixi media bilan o‘nlab gigabayt bo‘lishi
+mumkin, va “xotira to‘ldi” — WhatsApp foydalanuvchilarining eng keng
+tarqalgan shikoyatlaridan biri. Shuning uchun ilovada “xotirani
+boshqarish” ekrani bor: bu server xarajatining **foydalanuvchiga
+o‘tkazilgan** qismi.
+
+**Muhandislik murakkabligi.** Server kodi bitta, siz uni boshqarasiz va
+bir kunda yangilaysiz. Mijoz kodi esa milliardlab qurilmada, yuzlab
+modelda, o‘nlab OT versiyasida ishlaydi va yangilanishi oylab davom
+etadi. Serverdagi xato — bir soatlik hodisa; mijozdagi kriptografik
+xato — yillar davomida yashaydigan muammo, chunki eski versiyalar
+hali ham ishlatiladi.
+
+**Funksiyalar chegarasi.** Server qidira olmaydi, tavsiya qila olmaydi,
+tahlil qila olmaydi. Slack’ning butun “ish maydoni bo‘yicha qidiruv”
+funksiyasi bu arxitekturada **mavjud bo‘lishi mumkin emas**. Bu
+iqtisodiy tanlov ham: siz bu funksiyalarga pul sarflamaysiz, lekin ularni
+sota ham olmaysiz.
+
+Umumiy dars: **“arzon” arxitektura — bu xarajatni kim to‘lashini
+o‘zgartirish.** Har doim so‘rang: ko‘chirilgan ish qayerga tushdi, va u
+yerda kim uning narxini sezadi?
+</Deep>
+
+<Check q="Nega WhatsApp uchun ulanish serverlari xarajatning atigi ~18% i, Slack'da esa ~47%?">
+Ikkita sabab, va ikkalasi ham shu darslarda hisoblangan.
+
+**Birinchi — ulanishlar soni nisbatan kam.** Slack’da noutbuklar ish kuni
+davomida ulangan turadi. WhatsApp’da telefonlarning katta qismi fonda
+ulanishni yopadi va push bilan uyg‘onadi (6-bo‘lim). 2 milliard
+foydalanuvchidan bir vaqtda ulangani ancha kam ulush.
+
+**Ikkinchi — server boshiga ulanish ko‘p.** Erlang’ning jarayon boshiga
+GC modeli (5-bo‘lim, 9-qadam) serverni chegarasiga yaqin ishlatishga
+imkon beradi: Slack’dagi 180 000 o‘rniga million va undan ko‘p.
+
+Uchinchi, bilvosita sabab — **boshqa moddalar katta**. Media xarajati
+shunchalik kattaki, ulanishlar nisbatan kichik ulushga tushadi. Slack’da
+esa media alohida va kichik, shuning uchun gateway fleti eng katta
+modda bo‘lib qoladi.
+
+Xulosa: **xarajat ulushi — bu mutlaq xarajat emas.** “Ulanishlar 18%”
+degani ularning arzonligini emas, boshqa moddaning qimmatligini ham
+anglatishi mumkin. Taqqoslashda har doim ikkalasini ham ko‘ring.
+</Check>
+
+## 13. Sig‘im rejalashtirish
+
+Slack’da sig‘imni ikki o‘q belgilagan edi: ulanishlar soni va eng katta
+ish maydoni. WhatsApp’da ham ikki o‘q bor, lekin boshqalari: **uyg‘onish
+tezligi** (sekundiga qancha telefon ulanib, navbatni oladi) va **vaqt
+mintaqalari bo‘yicha sinxron hodisalar** (hamma bir vaqtda uyg‘onadi
+yoki bir vaqtda yozadi).
+
+| Bosqich | Yuk | Arxitektura | Keyingi bosqichga o‘tish signali |
+| --- | --- | --- | --- |
+| A | 10 000 foydalanuvchi | Bitta server, navbat bazada | Navbat jadvali tozalash (VACUUM) ortda qolsa |
+| B | 1 M | Ulanish serverlari ajratilgan, navbat alohida | Ertalabki uyg‘onishda ulanish p99 > 3 s |
+| C | 50 M | Ikki qatlamli navbat, push birlashtirish | Bardoshli navbat hajmi haftasiga 10% dan tez o‘ssa |
+| D | 500 M | Mintaqaviy ulanish serverlari, kalit xizmati alohida | Mintaqalararo trafik 30% dan oshsa |
+| E | 2 B | Ko‘p mintaqa, media CDN, ko‘p qurilma | Yangi yil kechasi sinovida navbat 5 daqiqadan ko‘p tiklansa |
+
+Jadvaldagi signallarning ikkitasi Slack’da umuman bo‘lmagan turdagi:
+**“ertalabki uyg‘onish”** (B) va **“yangi yil kechasi”** (E). Ikkalasi ham
+kalendar va soat bilan bog‘liq sinxron hodisalar. Slack’ning foydalanuvchilari
+ish vaqtida tekis taqsimlangan; WhatsApp foydalanuvchilari esa bir
+mamlakat ichida **bir vaqtda** uyg‘onadi, bir vaqtda bayram qiladi va
+bir vaqtda “Yangi yilingiz bilan!” yozadi.
+
+<Calc title="Ertalabki uyg'onish to'lqini" result="Bitta katta mamlakat — sekundiga ~40 000 ulanish, har biri navbatni bo'shatadi">{`Faraz: bitta vaqt mintaqasida 500 000 000 foydalanuvchi
+(masalan, Janubiy Osiyoning katta qismi).
+
+Ertalab 6:00 - 8:00 oralig'ida 60% telefonini yoqadi yoki qo'liga oladi:
+  500e6 x 0.6 / 7 200 s = 41 667 ulanish/s
+
+Har biri kechasi to'plangan navbatni bo'shatadi:
+  o'rtacha 30 ta xabar (guruhlar!) x 1 KB = 30 KB
+  41 667 x 30 KB = 1.25 GB/s chiqish
+  41 667 x 30 = 1 250 000 navbatdan o'qish + o'chirish /s
+
+Taqqoslash: o'rtacha kun davomidagi navbat yozuvi (6.1) ~231 000/s.
+Ertalab faqat BITTA mintaqada 5 barobar ko'p.`}</Calc>
+
+Bu hisobning muhim xulosasi: **o‘rtacha yuklama bo‘yicha rejalashtirilgan
+navbat har kuni ertalab yiqiladi**. Va bu “kamdan-kam cho‘qqi” emas —
+bu har kungi hodisa, va har bir yirik vaqt mintaqasida qayta takrorlanadi.
+Sig‘im bu yerda sutkalik maksimum bo‘yicha emas, **mintaqaviy ertalabki
+maksimum** bo‘yicha rejalashtiriladi.
+
+<Calc title="Yangi yil kechasi: yiliga bir marta, lekin hammasi bir daqiqada" result="10 daqiqa davomida ~5-10 barobar yuk — va u mintaqadan mintaqaga siljiydi">{`Faraz: bitta vaqt mintaqasi, 300 000 000 faol foydalanuvchi.
+Yarim tunda ~50% bir nechta tabrik yuboradi (o'rtacha 8 ta, ko'pi guruhlarga).
+
+  300e6 x 0.5 x 8 = 1 200 000 000 xabar
+  Ularning ~70% i birinchi 10 daqiqada (600 s):
+    1.2e9 x 0.7 / 600 = 1 400 000 xabar/s — BITTA mintaqadan
+
+Butun dunyo o'rtachasi: 1 157 407 xabar/s.
+Ya'ni bitta mintaqa 10 daqiqa davomida butun dunyo o'rtachasidan ko'p yuk beradi.
+
+Va guruhlar tufayli: har xabar ~20 hodisa (1.3) -> 28 000 000 hodisa/s.
+
+Muhim: bu to'lqin har SOATDA keyingi mintaqaga ko'chadi.
+Tizim 24 marta ketma-ket cho'qqi ko'radi, har biri o'z mintaqasida.`}</Calc>
+
+To‘lqinning haqiqiy yo‘li — yirik bozorlar bo‘yicha, UTC vaqtida:
+
+<Timeline
+  rows={[
+    { when: "31-dek, 13:00 UTC", what: "Avstraliya sharqi (UTC+11)", why: "Birinchi yirik to'lqin. Kichikroq bozor — tizim uchun 'mashq'." },
+    { when: "31-dek, 17:00 UTC", what: "Indoneziya g'arbi (UTC+7)", why: "Yirik WhatsApp bozori. Birinchi haqiqiy sinov." },
+    { when: "31-dek, 18:30 UTC", what: "Hindiston (UTC+5:30)", why: "Eng katta bozor. Indoneziyadan 90 daqiqa keyin — oldingi to'lqin navbati tiklangan bo'lishi kerak." },
+    { when: "31-dek, 19:00 UTC", what: "O'zbekiston (UTC+5)", why: "Hindistondan atigi 30 daqiqa keyin — ikki to'lqin navbatda ustma-ust tushishi mumkin." },
+    { when: "31-dek, 23:00 UTC", what: "G'arbiy Yevropa (UTC+1)", why: "Ko'p davlatlar bir vaqtda — zich, qisqa cho'qqi." },
+    { when: "1-yan, 03:00 UTC", what: "Braziliya (UTC-3)", why: "Yana bir eng yirik bozor. Guruhlar juda faol — belgilar yuki yuqori." },
+    { when: "1-yan, 05:00 UTC", what: "AQSh sharqi (UTC-5)", why: "WhatsApp ulushi nisbatan kichik — to'lqin sezilarli pasayadi." },
+  ]}
+/>
+
+Timeline’dagi eng xavfli joy — **Hindiston va O‘zbekiston orasidagi 30
+daqiqa**. Agar Hindiston to‘lqinining navbati (13-bo‘limdagi ~1.4 M
+xabar/s, 10 daqiqa) 30 daqiqada to‘liq tiklanmasa, keyingi to‘lqin
+qisman bo‘shagan navbat ustiga tushadi. Umumiy qoida: sig‘imni **alohida
+cho‘qqilar** bo‘yicha emas, **cho‘qqilar orasidagi tiklanish vaqti**
+bo‘yicha ham tekshiring.
+
+Yangi yil kechasi WhatsApp uchun eng yaxshi **haqiqiy yuk testi**. U
+oldindan ma’lum (sanasi, soati, mintaqa tartibi), uni rejalashtirish
+mumkin, va u tizimning har bir qismini — navbat, belgilar, push, media —
+bir vaqtda sinaydi. Shuning uchun E bosqichining signali aynan shu
+kechaga bog‘langan: agar navbat 5 daqiqadan ko‘proq vaqtda tiklansa, keyingi
+yilga sig‘im yetmaydi.
+
+<Callout type="maslahat" title="Sinxron hodisalarni kalendarga yozing">
+Global mahsulotlarda eng katta cho‘qqilar **oldindan ma’lum**: yangi yil,
+diniy bayramlar (Ramazon hayiti, Diwali, Xitoy yangi yili), yirik sport
+finallari, saylovlar. Ularning har biri o‘z mintaqasida o‘z shakliga ega.
+
+Amaliy qoida: sig‘im jamoasining kalendari bo‘lsin, unda har bir hodisa
+uchun **o‘tgan yilgi cho‘qqi**, **kutilgan o‘sish** va **tayyorgarlik
+muddati** yozilgan. Bu metrikalardan ko‘ra ishonchliroq signal, chunki
+metrika hodisa bo‘lgandan keyin keladi, kalendar esa oldin.
+</Callout>
+
+<Check q="Nega yangi yil kechasida belgilar (✓✓) birinchi bo'lib kechiktiriladi?">
+Chunki ular yuklamaning eng katta qismi (1.3-bo‘lim: xabar boshiga ~20
+hodisa, ulardan ko‘pchiligi belgi) va eng kam **qiymatli** qismi.
+
+Yarim tunda foydalanuvchi xabarining **yetib borishi** muhim —
+“Yangi yilingiz bilan!” soat 00:01 da borishi kerak, 00:20 da emas.
+Lekin ko‘k ✓✓ ning 5 daqiqa kech kelishini hech kim sezmaydi: odamlar
+bu paytda telefonga emas, atrofga qarab turibdi.
+
+Belgilarni kechiktirish (10.3, 1-bosqich) bir zumda hodisa yukini 3–4
+barobar kamaytiradi va hech narsani yo‘qotmaydi — ular navbatda turadi
+va cho‘qqi o‘tgach yetkaziladi. Bu degradatsiyaning ideal nomzodi:
+**katta ulush, past qiymat, to‘liq tiklanadigan**.
+</Check>
+
+## 14. Kuzatuv: xabarlarni o‘qimasdan tizimni ko‘rish
+
+Oddiy tizimda muammo bo‘lsa, muhandis jurnalga qaraydi: qaysi so‘rov,
+qanday ma’lumot, qayerda xato. WhatsApp’da jurnalda **xabar mazmuni yo‘q**
+— faqat shifrlangan baytlar. Demak kuzatuv faqat metama’lumot va
+**telefonlardan keladigan anonim telemetriya** asosida quriladi.
+
+### 14.1 Server tomon metrikalari
+
+| Metrika | Nima ko‘rsatadi | Ogohlantirish chegarasi |
+| --- | --- | --- |
+| `ack_latency_p99` | Xabar kelishidan ✓ gacha (jurnalga yozish) | > 100 ms |
+| `delivery_latency_p99` | ✓ dan ✓✓ gacha (ikkalasi onlayn bo‘lganda) | > 2 s |
+| `queue_durable_size` | Bardoshli navbatdagi xabarlar soni | Kunlik trenddan 20% dan ortiq og‘ish |
+| `queue_tail_age_p99` | Navbatdagi eng eski 1% xabarlar yoshi | 30 kunlik chegaraga yaqinlashsa |
+| `wake_to_connect_p99` | Push yuborilgandan telefon ulanishigacha | Qurilma modeli bo‘yicha > 30 s |
+| `prekey_exhaustion_rate` | Prekey’siz o‘rnatilgan sessiyalar ulushi | > 1% |
+| `retry_receipt_rate` | Qayta shifrlash so‘rovlari / xabarlar | Bazaviy darajadan 2× |
+
+Jadvaldagi ikkinchi qator — tizimning eng qimmatli metrikasi, va u
+**bepul**: har bir ✓✓ belgisi xabar qabul qiluvchi telefonga qachon
+yetganini aytadi. Server ✓ va ✓✓ vaqtlari orasidagi farqni o‘lchab,
+uchidan-uchiga yetkazish kechikishini **har bir xabar uchun** biladi —
+mazmunga qaramasdan. Bu Slack darsidagi `catchup_gap_size` bilan bir
+xil g‘oya: **mahsulot mexanizmining o‘zi o‘lchov asbobiga aylanadi**.
+
+Beshinchi qator esa 6.2-bo‘limdagi Android muammosini ko‘rsatadi:
+`wake_to_connect` qurilma modeli bo‘yicha bo‘linsa, “batareyani
+optimallashtirish” agressiv bo‘lgan modellar darhol ajralib chiqadi.
+Umumiy o‘rtacha buni hech qachon ko‘rsatmaydi — bitta model 3% ulush
+bilan o‘rtachani sezilarli o‘zgartirmaydi, lekin o‘sha modeldagi
+foydalanuvchilar uchun xabarlar daqiqalab kechikadi.
+
+### 14.2 Telefon tomon telemetriyasi
+
+Ba’zi muammolarni server umuman ko‘ra olmaydi, chunki ular shifrlash
+qatlamining ichida. Masalan, xabar yetib keldi (✓✓), lekin telefon uni
+ocha olmadi. Server uchun hammasi muvaffaqiyatli.
+
+| Metrika (telefondan, anonim) | Nima ko‘rsatadi |
+| --- | --- |
+| `decrypt_failure_rate` | Ochilmagan xabarlar ulushi — sessiya sinxronligi |
+| `waiting_for_message_shown` | “Kutyapmiz” yozuvi ko‘rsatilgan va qancha turgani |
+| `background_fetch_truncated` | 30 s oynada navbatni to‘liq ololmagan uyg‘onishlar (6.3) |
+| `media_download_fail` | CDN’dan yuklab ololmagan yoki ochib bo‘lmagan media |
+
+Bu metrikalar bitta muhim tamoyil asosida quriladi: **ular hech qachon
+mazmun yoki identifikator tashimaydi** — faqat hisoblagich va
+taqsimotlar, qurilma modeli va ilova versiyasi bo‘yicha guruhlangan.
+Aks holda telemetriya kanali E2EE ni aylanib o‘tadigan ikkinchi yo‘lga
+aylanadi.
+
+<Calc title="decrypt_failure_rate'ni versiyalar bo'yicha kuzatish" result="Yangi versiyadagi 0.3% xato — kuniga 30 million ochilmagan xabar">{`Normal holat: decrypt_failure_rate ~ 0.1% (asosan qayta o'rnatishlar, 10.2)
+
+Yangi ilova versiyasi chiqdi, 10% foydalanuvchiga (bosqichma-bosqich):
+  bu versiyada kriptografik holatni saqlashda xato bor
+  decrypt_failure_rate shu versiyada: 0.4%
+
+Umumiy ko'rinishda:
+  0.9 x 0.1% + 0.1 x 0.4% = 0.13%   <- deyarli o'zgarmagan, "shovqin"
+
+Versiya bo'yicha bo'linganda:
+  eski:  0.10%
+  yangi: 0.40%   <- 4 BAROBAR, darhol ko'rinadi
+
+Agar versiya 100% ga chiqarilsa:
+  1e11 x 0.3% qo'shimcha = 300 000 000 ochilmagan xabar/kun`}</Calc>
+
+Bu hisob bosqichma-bosqich chiqarish va versiya bo‘yicha bo‘lishning
+nega birgalikda ishlashi kerakligini ko‘rsatadi. 10% ga chiqarilganda
+xato umumiy metrikada **ko‘rinmaydi** (0.10% → 0.13%), lekin versiya
+bo‘yicha bo‘lganda **4 barobar** farq aniq. Mobil ilovada bu ayniqsa
+muhim, chunki chiqarilgan versiyani qaytarib olib bo‘lmaydi —
+foydalanuvchilar uni allaqachon o‘rnatgan.
+
+<Callout type="ogoh" title="Mobil ilovani orqaga qaytarib bo'lmaydi">
+Serverdagi xatoli versiyani bir daqiqada qaytarasiz. Telefondagi
+xatoli versiyani esa **qaytara olmaysiz**: u milliardlab qurilmada, va
+foydalanuvchilar keyingi versiyani haftalar davomida o‘rnatadi. Agar
+xato kriptografik holatni buzsa (masalan, sessiyani noto‘g‘ri saqlasa),
+buzilgan holat tuzatilgan versiyada ham qoladi.
+
+Shuning uchun mobil ilovalarda ikki narsa majburiy: **server
+boshqaradigan funksiya bayroqlari** (yangi kod yo‘lini ilovani yangilamasdan
+o‘chirish imkoni) va **juda sekin bosqichma-bosqich chiqarish** (1% → 5%
+→ 20% → 100%, har bosqichda versiya bo‘yicha metrikalarni tekshirib).
+</Callout>
+
+<Check q="Server xabar mazmunini ko'rmasa, 'xabarlar yetib bormayapti' degan shikoyatni qanday tekshirasiz?">
+Belgilar orqali, qadam-baqadam.
+
+**✓ bormi?** Server jurnalida bu `msg_id` uchun navbatga yozilgan yozuv
+bor-yo‘qligi. Yo‘q bo‘lsa — muammo yuboruvchi telefonida yoki
+ulanishda.
+
+**✓✓ bormi?** Qabul qiluvchi telefoni tasdiq yubordimi. Yo‘q bo‘lsa —
+xabar navbatda turibdi: qabul qiluvchi oflayn, push yetmayapti
+(`wake_to_connect`, qurilma modeli), yoki navbat qatlamida muammo.
+
+**✓✓ bor, lekin foydalanuvchi ko‘rmayapti?** Bu server ko‘ra olmaydigan
+zona: xabar yetib borgan, lekin ochilmagan (`decrypt_failure_rate`) yoki
+ko‘rsatilmagan. Bu yerda faqat telefon telemetriyasi yordam beradi.
+
+Uch bosqichli tekshiruv **mazmunsiz** ishlaydi, chunki har bir belgi
+quvurning aniq bir nuqtasiga bog‘langan. Bu — belgilar nafaqat
+foydalanuvchi uchun, balki muhandis uchun ham diagnostika vositasi
+ekanining isboti.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Push ichida xabar matnini yuborish", pro: "Bildirishnoma darhol, ilova uyg'otilmaydi, kod sodda", con: "Server matnni ko'radi — E2EE bekor; push xizmati ham ko'radi" },
+    { choice: "Serverda tarix saqlash 'qulaylik uchun'", pro: "Yangi qurilma tarixni soniyalarda oladi (8.2 muammosi yo'q)", con: "Server buzilsa — hamma tarix ochiladi; abadiy saqlash narxi" },
+    { choice: "Push'ni yetkazish kanali deb hisoblash", pro: "Navbat kerak emas, arxitektura sodda", con: "Push kafolatlanmagan — xabarlar jimgina yo'qoladi" },
+    { choice: "Katta guruhda juftlik shifrlash", pro: "Eng kuchli kafolat, a'zo chiqishi tekin", con: "1 024 a'zoda har xabar 1 MB yuklash — 2G'da 3 daqiqa" },
+    { choice: "Qurilma ro'yxatini imzosiz serverdan olish", pro: "Sodda, tez, qo'shimcha kalit yo'q", con: "Server o'z qurilmasini qo'shib hamma narsani o'qiydi" },
+  ]}
+/>
+
+**Birinchi qator** eng keng tarqalgan xato, chunki u juda qulay. Push
+ichida matn bo‘lsa, bildirishnoma ilovani uyg‘otmasdan darhol ko‘rinadi —
+6.3-dagi 30 soniyalik oyna, iOS kengaytmasi, Keychain sinxronligi, hech
+biri kerak emas. Bir qator kod o‘rniga yuzlab qator murakkab mantiq
+tejaladi. Muammo — bu qulaylik E2EE ni **butunlay** bekor qiladi: push
+serveringizdan, keyin Apple yoki Google serverlaridan ochiq holda o‘tadi.
+Va bu xato ko‘pincha “vaqtinchalik” deb qilinadi va hech qachon tuzatilmaydi.
+
+**Ikkinchi qator** jozibali, chunki 8.2-dagi jadval haqiqatan og‘riqli:
+yangi noutbukka bir yillik tarix 3G’da yarim soat ko‘chiriladi. Serverda
+tarix bo‘lsa — bir necha soniya. Lekin serverdagi tarix — **qo‘shimcha
+shifrlangan nusxa** emas, bu **yangi hujum yuzasi**: agar tarix serverda
+server ochadigan kalit bilan saqlansa, E2EE faqat tarmoqdagi yo‘lni
+himoya qiladi, eng qimmatli narsani — tarixni — esa yo‘q.
+
+**Uchinchi qator** jozibali, chunki push **ko‘pincha** ishlaydi. Testda
+100 ta push yuborsangiz, 100 tasi yetib boradi. Muammo faqat miqyosda
+va maxsus holatlarda ko‘rinadi: telefon uzoq oflayn bo‘lsa, push
+xizmati eski push’larni tashlaydi; agressiv batareya rejimi; tarmoq
+almashishi. 0.5% yo‘qotish testda ko‘rinmaydi, lekin kuniga 100 mlrd
+xabarda bu 500 million yo‘qolgan xabar.
+
+**To‘rtinchi qator** jozibali, chunki u **to‘g‘ri** — juftlik shifrlash
+haqiqatan kuchliroq (7.3-dagi Deep). Kichik guruhda (5–10 a’zo) bu
+yaxshi tanlov ham bo‘lishi mumkin. Xato — uni hajmga qaramasdan
+qo‘llash. Bu Slack darsidagi presence eshittirishi bilan bir xil
+naqsh: **kichik hajmda eng yaxshi, katta hajmda imkonsiz**.
+
+**Beshinchi qator** eng xavfli, chunki u **ko‘rinmaydi**. Tizim to‘liq
+ishlaydi, shifrlash haqiqiy, hamma testlar o‘tadi. Faqat bitta narsa
+yo‘q — va u server halol ekanini **faraz qiladi**. E2EE ning butun
+ma’nosi esa aynan shu farazdan voz kechish.
+
+<Callout type="xato" title="Oltinchi antinaqsh: o'z kriptografiyangizni ixtiro qilish">
+“Signal protokoli murakkab, biz soddaroq sxema qilamiz: har bir juftlik
+uchun bitta AES kaliti, RSA bilan almashamiz.” Bu jumla loyihaning
+xavfsizligi tugagan paytni belgilaydi.
+
+2-bo‘limdagi har bir detal — to‘rtta DH (2.3 jadvali), ikki g‘ildirak
+(2.4), o‘tkazib yuborilgan kalitlar chegarasi (2.4-dagi Deep) — **aniq
+bir hujumga javob**. Soddalashtirilgan sxema bu hujumlarning qaysi
+birini ochganini bilmaysiz, chunki hujumchi sizga aytmaydi.
+
+Qoida: **sinovdan o‘tgan protokolni sinovdan o‘tgan kutubxona orqali
+ishlating** (masalan, libsignal). Sizning ishingiz — protokol atrofidagi
+tizim: navbat, qurilmalar, tiklash. Protokolning o‘zi emas.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Uchidan-uchiga shifrlash", pro: "Server buzilsa ham mazmun xavfsiz", con: "Server qidira, filtrlay, tiklay olmaydi; spam faqat metama'lumot bo'yicha" },
+    { choice: "Serverda tarix yo'q (saqla va uzat)", pro: "Saqlash xarajati deyarli nol, sizib chiqish yuzasi kichik", con: "Yangi qurilmaga tarix telefondan ko'chiriladi — sekin" },
+    { choice: "Push faqat uyg'otish uchun", pro: "Matn push xizmatidan o'tmaydi", con: "Uyg'onish byudjeti ~30 s, murakkab mijoz mantiqi" },
+    { choice: "Sender Keys (guruhlar)", pro: "Har xabar bir marta shifrlanadi va yuklanadi", con: "A'zo chiqsa kvadratik qayta kalitlash; buzilishdan tiklanish yo'q" },
+    { choice: "Mijoz tomonda tarqatish (ko'p qurilma)", pro: "Server qurilma kalitlarini bilmaydi", con: "Har xabar qurilmalar soniga ko'paytiriladi" },
+    { choice: "Telefonda media siqish", pro: "Media xarajati 20 barobar kam", con: "Sifat yo'qotiladi; siqish telefon batareyasidan" },
+  ]}
+/>
+
+Jadvalni juftliklar bo‘yicha o‘qing. Birinchi uchta qator — bitta qarorning
+uch tomoni: **server hech narsani bilmasin**. Birinchisi mazmunni, ikkinchisi
+vaqtni (tarix), uchinchisi yetkazish kanalini (push) serverdan yashiradi.
+Har biri serverni soddalashtiradi va mijozni murakkablashtiradi.
+
+To‘rtinchi va beshinchi qator esa **ko‘paytma** haqida: guruh a’zolari
+va qurilmalar. Ikkalasi ham shifrlashni N ga ko‘paytiradi, va ikkalasi
+ham uni **qayerga** ko‘chirishni hal qiladi: Sender Keys — xabardan
+a’zolik o‘zgarishiga; mijoz tarqatishi — serverdan telefonga.
+
+Oltinchi qator yolg‘iz va eng “kam kriptografik”, lekin 12-bo‘limda
+ko‘rganimizdek, iqtisodiy jihatdan eng muhimi.
+
+<Callout type="ogoh" title="Qaysi metrikani optimallashtiryapsiz?">
+Xabar almashish tizimida to‘rtta raqobatdosh maqsad bor:
+
+**Maxfiylik** — server qancha kam biladi. Maksimallashtirsangiz, metama’lumotni
+ham yashirasiz (muhrlangan yuboruvchi, guruh a’zoligini yashirish) va
+**samaradorlik va abuse bilan kurashni** qurbon qilasiz.
+
+**Qulaylik** — yangi qurilma, tarix, qidiruv, tiklash. Maksimallashtirsangiz,
+serverga ko‘proq ma’lumot berasiz va **maxfiylikni** qurbon qilasiz.
+
+**Tejamkorlik** — trafik, batareya, 2G’da ishlash. Maksimallashtirsangiz,
+siqasiz, birlashtirasiz, kechiktirasiz va **tezlik va sifatni** qurbon
+qilasiz.
+
+**Xavfsizlik (abuse)** — spam, firibgarlik, noto‘g‘ri ma’lumot.
+Maksimallashtirsangiz, serverga mazmunni ko‘rsatishni xohlaysiz va
+**maxfiylikni** qurbon qilasiz.
+
+WhatsApp tartibi taxminan: **maxfiylik (mazmun) > tejamkorlik > qulaylik >
+abuse bilan kurash**, va oxirgisi faqat metama’lumot hamda shikoyatlar
+orqali. Slack esa deyarli teskari: qulaylik va qidiruv birinchi, chunki
+korporativ mijoz tarixni **talab qiladi**. Ikkala tanlov ham to‘g‘ri —
+turli foydalanuvchilar uchun. Noto‘g‘ri bo‘lgani — to‘rttasini ham
+“birinchi o‘rinda” deb e’lon qilish.
+</Callout>
+
+## 17. Intervyu savollari
+
+### 17.1 Mexanizm
+
+<QA q="Diffie-Hellman qanday ishlaydi va nega kuzatuvchi umumiy sirni topa olmaydi?">
+Ikki tomon ochiq parametrlarda (`p`, `g`) kelishadi. Har biri yashirin son
+tanlaydi (`a`, `b`) va `g^a mod p`, `g^b mod p` ni ochiq almashadi. Har biri
+boshqasining ochiq sonini o‘z yashirin darajasiga ko‘taradi: `(g^b)^a =
+(g^a)^b = g^(ab)`. Natija ikkalasida bir xil.
+
+Kuzatuvchi `g^a mod p` ni ko‘radi, lekin undan `a` ni topish — diskret
+logarifm masalasi. Kichik sonlarda (p=23) sinab chiqish mumkin, lekin
+Curve25519 da bu ~2^128 operatsiya: milliard kompyuter ~10 milliard yil.
+
+Amalda WhatsApp elliptik egri chiziqli variantni (X25519) ishlatadi:
+32 baytlik kalit, ~0.05 ms CPU. Klassik DH da xuddi shu xavfsizlik uchun
+~384 bayt kerak bo‘lardi — mobil tarmoq uchun muhim farq.
+</QA>
+
+<QA q="Qabul qiluvchi oflayn bo'lsa, birinchi xabar qanday shifrlanadi?">
+Oddiy DH ikkala tomonning ishtirokini talab qiladi. Yechim — prekey’lar:
+qabul qiluvchi oldindan serverga ochiq kalitlar to‘plamini yuklaydi
+(identifikatsiya kaliti, imzolangan prekey, ~100 ta bir martalik prekey).
+
+Yuboruvchi serverdan to‘plamni oladi, imzoni tekshiradi, vaqtinchalik
+kalit yaratadi va 3–4 ta DH hisoblaydi (X3DH). Natijadagi sir bilan
+birinchi xabar shifrlanadi va ishlatilgan bir martalik prekey raqami
+bilan birga yuboriladi.
+
+Qabul qiluvchi keyinroq xuddi shu DH’larni o‘z yashirin kalitlari bilan
+hisoblaydi va bir martalik prekey’ning yashirin qismini o‘chiradi.
+Hech kim hech kimni kutmaydi.
+</QA>
+
+<QA q="X3DH'dagi to'rtta DH nima uchun kerak?">
+Har biri bitta xavfni yopadi. `IK_A × SPK_B` — yuboruvchi autentifikatsiyasi.
+`EK_A × IK_B` — qabul qiluvchi autentifikatsiyasi. `EK_A × SPK_B` —
+vaqtinchalik kalit orqali oldinga maxfiylik. `EK_A × OPK_B` — bir martalik
+kalit orqali takroriy yuborish va eskirgan SPK’ga qarshi himoya.
+
+To‘rtinchisi ixtiyoriy: bir martalik prekey’lar tugasa, X3DH usiz ishlaydi,
+faqat kuchsizroq kafolat bilan. Bu “ishlamaslik” o‘rniga “zaiflashgan
+rejim” tanlovi — chunki xabar yuborilmasa, odamlar himoyasiz ilovaga
+o‘tadi.
+</QA>
+
+<QA q="Double Ratchet qanday kafolatlar beradi?">
+Ikkita, va ular bir-birining teskarisi.
+
+**Oldinga maxfiylik** — simmetrik g‘ildirak: har xabar uchun
+`HMAC(zanjir_kaliti)` bilan yangi kalit, eskisi o‘chiriladi. HMAC bir
+tomonlama, shuning uchun bugungi kalitdan kechagisini tiklab bo‘lmaydi.
+
+**Buzilishdan keyingi tiklanish** — DH g‘ildiragi: har safar tomon
+almashganda yangi vaqtinchalik DH kalit. Hujumchi hozirgi holatni
+o‘g‘irlasa ham, keyingi DH almashinuvidan keyin yana ko‘r bo‘ladi.
+
+Birgalikda: kalit o‘g‘irlanishining zarari vaqt bo‘yicha cheklangan —
+faqat o‘g‘irlik va keyingi DH orasidagi oyna. Narxi arzimas: xabar boshiga
+~0.01 ms va har javobda 32 bayt.
+</QA>
+
+<QA q="Guruh xabarlari uchun Sender Keys qanday ishlaydi va uning narxi nima?">
+Har bir a’zo guruh uchun o‘z yuboruvchi kalitini (zanjir kaliti + imzo
+kaliti) yaratadi va uni boshqa a’zolarga juftlik sessiyalari orqali
+**bir marta** tarqatadi. Keyin har xabar shu kalit bilan bir marta
+shifrlanadi, server bitta nusxani hammaga tarqatadi.
+
+Yutuq: 1 024 a’zoli guruhda yuboruvchi 1 MB o‘rniga 1 KB yuklaydi.
+
+Narx ikki: (1) a’zo chiqsa, qolgan har bir a’zo yangi kalit yaratib
+hammaga tarqatishi kerak — N² ≈ 1 million juftlik xabari, ko‘p qurilma
+bilan ~6.5 million; (2) faqat simmetrik g‘ildirak bor, shuning uchun
+kalit o‘g‘irlansa, yangi kalit yaratilgunicha barcha kelajakdagi
+xabarlar ochiq. Dangasa qayta kalitlash (faqat keyingi yozishda)
+birinchi narxni amalda 20 barobar kamaytiradi.
+</QA>
+
+<QA q="Uch belgi (✓, ✓✓, ko'k ✓✓) qanday ishlaydi va ularni kim yaratadi?">
+✓ — server: xabar replikatsiyalangan jurnalga yozilgandan keyin. ✓✓ —
+qabul qiluvchi telefoni: xabarni saqlagandan keyin tasdiq yuboradi.
+Ko‘k ✓✓ — qabul qiluvchi telefoni: suhbat ekranda ochilganda.
+
+Muhim nuqtalar: ikkinchi va uchinchisini server emas, telefon yaratadi;
+holat mashinasi monoton (`max(joriy, yangi)`), chunki belgilar tartibsiz
+kelishi mumkin; va belgilar trafikning katta qismi — guruhda bitta xabar
+~58 hodisa yaratadi. Shuning uchun ular guruhlanadi (“shu `id` gacha
+hammasi”) va degradatsiyada birinchi bo‘lib kechiktiriladi.
+</QA>
+
+<QA q="Push bildirishnomada xabar matnini ko'rsatish uchun nima kerak, agar server matnni bilmasa?">
+Push faqat uyg‘otish signali — unda matn yo‘q yoki faqat shifrlangan
+holda bor. Ekrandagi matnni **telefon o‘zi** ochadi.
+
+Android’da: yuqori ustuvorlikdagi FCM ilovani qisqa muddatga uyg‘otadi,
+ilova serverga ulanib navbatni oladi, ochadi va bildirishnoma ko‘rsatadi.
+
+iOS’da: ilova fonda odatda ishga tushmaydi, shuning uchun alohida
+bildirishnoma xizmati kengaytmasi ishlatiladi — u ~30 s va juda kam
+xotira bilan ishlaydi, Keychain’dan sessiya kalitini olib xabarni ochadi
+va bildirishnoma matnini almashtiradi. Nozik joy: kengaytma va asosiy
+ilova bir xil Double Ratchet holatini bo‘lishadi, va uni sinxron saqlash
+kerak.
+</QA>
+
+<QA q="Rasm qanday qilib uchidan-uchiga shifrlangan holda yuboriladi?">
+Rasm xabar ichida emas. Telefon tasodifiy 32 baytlik kalit yaratadi,
+rasmni u bilan shifrlaydi (AES + HMAC), shifrlangan blobni CDN’ga yuklaydi
+va URL oladi. Keyin oddiy E2EE xabar yuboradi: `{url, kalit, sha256,
+o‘lcham}`.
+
+Server va CDN faqat shifrlangan blobni ko‘radi. Kalit Double Ratchet
+bilan himoyalangan xabar ichida.
+
+Oqibat: mustaqil yuborilgan bir xil rasmlarni server deduplikatsiya
+qila olmaydi — har biri boshqa kalit bilan. Lekin yo‘naltirishda telefon
+eski `{url, kalit}` ni qayta ishlatadi — viral rasm uchun 1 000 barobardan
+ortiq tejash.
+</QA>
+
+<QA q="Mijoz va server orasida nega TLS emas, Noise ishlatiladi?">
+Chunki WhatsApp faqat **o‘z serveri** bilan gaplashadi. TLS istalgan
+mijozni istalgan server bilan bog‘lash uchun yaratilgan va buning uchun
+sertifikat infratuzilmasi (CA, zanjirlar) kerak. WhatsApp’da server
+ochiq kaliti ilovaga oldindan yozilgan — sertifikat keraksiz.
+
+Amaliy yutuq trafikda: TLS sertifikat zanjiri odatda 2–5 KB, 2G’da
+~0.7 s. Noise qo‘l siqishi — bir necha 32 baytlik kalit. Telefon
+kuniga o‘nlab marta qayta ulanadi (push bilan uyg‘onish), shuning uchun
+bu farq batareya va kechikishda sezilarli.
+
+Muhim tafsilot: bu “o‘z kriptografiyasini yozish” emas — Noise
+ochiq, tahlil qilingan freymvork. Ixtisoslashtirish sinovdan o‘tgan
+bloklar ustida qilinadi.
+</QA>
+
+### 17.2 Miqyos
+
+<QA q="Serverdagi navbat hajmini qanday hisoblaysiz?">
+Little qonuni: `L = λ × W`. Lekin bitta o‘rtacha `W` bilan emas —
+kutish taqsimoti uzun dumli.
+
+Guruhlarga bo‘lib: 80% darhol (0.1 s), 19% soatlar ichida (~2 soat),
+1% kunlar (~10 kun). 1.16 M xabar/s da: birinchi guruh ~92 000,
+ikkinchisi ~1.6 mlrd, uchinchisi ~10 mlrd. Jami ~11.6 mlrd xabar,
+~5.8 TB.
+
+Asosiy xulosa: **1% xabar navbatning 86% ini egallaydi**. “O‘rtacha
+2 soat” bilan hisoblasangiz 1.7 mlrd chiqadi — 7 barobar kam. Shuning
+uchun 30 kunlik saqlash chegarasi iqtisodiy qaror: uni ikki barobar
+oshirish navbatni deyarli ikki barobar oshiradi.
+</QA>
+
+<QA q="Little qonuni nima va uni qanday ishlatasiz?">
+`L = λ × W`: barqaror tizimda navbatdagi o‘rtacha elementlar soni kirish
+tezligi va o‘rtacha kutish vaqtining ko‘paytmasiga teng. Taqsimotga,
+tartibga, navbat turiga bog‘liq emas — u bitta yuzani (vaqt × elementlar)
+ikki tomondan sanashdan kelib chiqadi.
+
+Ishlatish: uchtadan ikkitasini o‘lchab uchinchisini topish. Rejalashtirishda
+— `λ` va `W` dan xotira hajmi `L`. Kuzatuvda — `L` va `λ` dan o‘rtacha
+kutish `W`, har bir xabarni kuzatmasdan.
+
+Tuzoq: `W` haqiqiy o‘rtacha bo‘lishi kerak, “odatdagi” qiymat emas. Uzun
+dumli taqsimotda (WhatsApp navbati) o‘rtacha dum tomonidan belgilanadi:
+“odatda 2 soat” deb hisoblash navbatni 7 barobar kam baholaydi.
+</QA>
+
+<QA q="Nega Erlang'da bitta serverda million ulanish ushlab turish mumkin, boshqa runtime'larda esa qiyinroq?">
+Xotira bo‘yicha farq kichik: WhatsApp’ning 2012-yilgi ko‘rsatkichi
+(~2 M ulanish, ~100 GB server) ulanish boshiga ~50 KB beradi — boshqa
+tizimlardan kam emas.
+
+Farq **axlat yig‘ishda**. Erlang’da har bir jarayon (har ulanish) o‘z
+kichik heap’iga ega va alohida yig‘iladi. Bitta jarayonning yig‘ilishi
+qolganlarni to‘xtatmaydi. JVM yoki Go’da esa katta umumiy heap bor, va
+uni yig‘ish barcha ulanishlarga ta’sir qiladi.
+
+Natija: umumiy heap’li tizimda GC pauzalaridan himoyalanish uchun katta
+zaxira kerak (Slack darsida nazariy sig‘imning ~25% i ishlatildi),
+Erlang’da esa chegaraga ancha yaqin ishlash mumkin.
+</QA>
+
+<QA q="Ertalab bir mamlakatda hamma bir vaqtda telefonini yoqadi. Nima bo'ladi?">
+Sinxron uyg‘onish to‘lqini. 500 M foydalanuvchili mintaqada, 2 soat
+ichida 60% uyg‘onsa: ~42 000 ulanish/s, har biri kechasi to‘plangan
+~30 xabarni oladi → 1.25 M navbatdan o‘qish/s va 1.25 GB/s chiqish.
+Bu kunlik o‘rtachadan 5 barobar ko‘p, va har kuni takrorlanadi.
+
+Demak sig‘im sutkalik o‘rtacha bo‘yicha emas, **har bir yirik mintaqaning
+ertalabki cho‘qqisi** bo‘yicha rejalashtiriladi. Bu cho‘qqilar vaqt
+mintaqalari bo‘yicha siljiydi, shuning uchun global tizim ularni ketma-ket
+ko‘radi va bitta mintaqa uchun zaxirani boshqa mintaqaning cho‘qqisiga
+qayta ishlatishi mumkin.
+</QA>
+
+<QA q="Guruh hajmini 1 024 dan 10 000 ga oshirish so'ralsa, nima deysiz?">
+Avval hisoblayman. A’zo chiqish narxi N² bilan o‘sadi: 1 024 da ~1 M
+juftlik xabari, 10 000 da ~100 M — ko‘p qurilma bilan ~600 M. Bitta
+a’zo chiqishi uchun.
+
+Belgilar ham: bitta xabar ~30 000 hodisa yaratadi.
+
+Tavsiyam — guruhni kattalashtirish emas, **boshqa mahsulot**: faqat
+administratorlar yozadigan kanal yoki e’lonlar guruhi. Unda qayta
+kalitlash faqat yozuvchilar uchun (N² emas, N), belgilar esa
+agregatlangan holda yoki umuman yo‘q.
+
+Bu savol intervyuda mahsulot talabini texnik narxga aylantirish
+qobiliyatini tekshiradi: “ha/yo‘q” emas, “bu shuncha turadi, mana
+arzonroq muqobil”.
+</QA>
+
+<QA q="Nima uchun navbatni oddiy relatsion bazada saqlash yomon g'oya?">
+Ish rejimi: sekundiga ~1.16 M kiritish va ~1.16 M o‘chirish, ko‘pchilik
+elementlar millisekundlar yashaydi, ozchiligi 30 kungacha.
+
+B-tree va MVCC’li bazalarda har o‘chirish o‘lik qator qoldiradi, tozalash
+jarayoni ular bilan quvlashadi, indekslar doimiy bo‘linadi. Bu yuk turi
+uchun juda qimmat.
+
+Yechim — ikki qatlam: tezkor (xotira + replikatsiyalangan jurnal) qabul
+qiluvchi onlayn bo‘lgan 80% xabar uchun, ular hech qachon diskka
+tushmaydi; bardoshli (LSM asosidagi ombor) oflayn qabul qiluvchilar
+uchun. Bardoshli qatlam yuki 2.3 M/s dan ~460 000/s ga tushadi.
+</QA>
+
+<QA q="Ko'p qurilmani qo'llab-quvvatlash xabar hajmiga qanday ta'sir qiladi?">
+Har qurilma o‘z kalitlariga ega, shuning uchun shaxsiy xabar har bir
+qurilma uchun alohida shifrlanadi: qabul qiluvchining barcha qurilmalari
+va yuboruvchining boshqa qurilmalari. O‘rtacha 2.5 qurilma bilan ~4
+barobar shifr.
+
+Matn uchun bu arzimas (1 KB → 4 KB). Guruhlarda esa har xabar baribir
+bitta Sender Key shifri, lekin kalit tarqatish har **qurilmaga** —
+100 a’zoli guruhda 250 sessiya.
+
+Yashirin narxlar: yangi qurilma kuni yuzlab X3DH va prekey’larni tez
+sarflash; ishlatilmaydigan qurilma uchun navbatda 30 kungacha xabarlar
+to‘planishi. Shuning uchun uzoq faol bo‘lmagan qurilmalar avtomatik uziladi.
+</QA>
+
+<QA q="Yangi yil kechasiga qanday tayyorlanasiz?">
+Hisob: bitta 300 M’li mintaqada birinchi 10 daqiqada ~1.4 M xabar/s —
+butun dunyo o‘rtachasidan ko‘p. Guruhlar tufayli ~28 M hodisa/s. Va bu
+har soatda keyingi mintaqaga siljiydi.
+
+Tayyorgarlik: (1) o‘tgan yilgi cho‘qqi va o‘sish asosida sig‘im;
+(2) degradatsiya bosqichlari **oldindan yoqilgan** — o‘qildi belgilarini
+kechiktirish, “yozmoqda” ni o‘chirish, push birlashtirish oynasini
+kattalashtirish; (3) deploy muzlatish; (4) har mintaqa uchun navbat
+tiklanish vaqtini kuzatish — keyingi mintaqa kelguncha oldingisi
+tiklangan bo‘lishi kerak.
+
+Asosiy g‘oya: oldindan ma’lum cho‘qqida degradatsiya **reaktiv emas,
+rejalashtirilgan** bo‘ladi.
+</QA>
+
+<QA q="WhatsApp nega shunchalik arzon ishlaydi?">
+Chunki server kam ish qiladi. Slack serveri xabar boshiga 7 ta og‘ir
+operatsiya bajaradi (ruxsat, ts, abadiy saqlash, qidiruv indeksi,
+hisoblagichlar, tarqatish, havola ko‘rinishi). WhatsApp serveri — 4 ta
+yengil: navbatga yozish, reestrdan qidirish, tarqatish, o‘chirish.
+Abadiy saqlash yo‘q.
+
+Qolgan hamma narsa telefonda: shifrlash, tarix, qidiruv, media siqish,
+havola ko‘rinishi. 2 mlrd telefon — 2 mlrd bepul hisoblash tuguni.
+
+Xarajatning ~80% i media, va uning eng katta tutqichi ham telefonda:
+3–4 MB rasmni ~150 KB gacha siqish (20 barobar). Narx yo‘qolmaydi — u
+foydalanuvchi batareyasi va xotirasiga, hamda mijoz kodining
+murakkabligiga ko‘chadi.
+</QA>
+
+### 17.3 Tajriba
+
+<QA q="Foydalanuvchilar 'Bu xabarni kutyapmiz' yozuvini ko'p ko'rishyapti. Qanday tekshirasiz?">
+Bu — qabul qiluvchi xabarni ocha olmagani, odatda sessiya sinxronligi
+buzilganda. Normal sabab: qayta o‘rnatish yoki telefon almashtirish,
+bazaviy daraja ~0.1%.
+
+Tekshiruv: `decrypt_failure_rate` va `retry_receipt_rate` ni **ilova
+versiyasi, platforma va qurilma modeli** bo‘yicha bo‘lish. Agar
+o‘sish bitta yangi versiyada bo‘lsa — kriptografik holatni saqlashda
+xato (masalan, iOS kengaytmasi va asosiy ilova sinxronligi). Agar
+hamma versiyada bo‘lsa — server tomonda: kalit xizmati eski prekey
+beryaptimi, qurilma ro‘yxati eskirganmi.
+
+Muhim: server bu xabarlarni ko‘ra olmaydi va tiklay olmaydi. Tiklash
+faqat yuboruvchi qayta shifrlaganda bo‘ladi, u esa onlayn bo‘lishi kerak.
+</QA>
+
+<QA q="Xatoli mobil versiya 20% foydalanuvchiga chiqib ketdi. Nima qilasiz?">
+Serverdan farqli, uni qaytarib bo‘lmaydi — u allaqachon o‘rnatilgan.
+
+Birinchi — **funksiya bayrog‘i**: agar xato yangi kod yo‘lida bo‘lsa,
+serverdan o‘chiriladi va ilova eski yo‘lga qaytadi. Shuning uchun har bir
+xavfli o‘zgarish bayroq ortida chiqariladi.
+
+Ikkinchi — tarqatishni to‘xtatish: ilova do‘konida bosqichma-bosqich
+chiqarishni muzlatish.
+
+Uchinchi — **buzilgan holatni tiklash**: agar xato kriptografik holatni
+buzgan bo‘lsa (sessiyalarni noto‘g‘ri saqlagan), tuzatilgan versiya
+buzilgan sessiyalarni aniqlab, ularni qayta o‘rnatishi kerak — ya’ni
+qayta shifrlash so‘rovlari to‘lqini. Bu to‘lqinni jitter bilan tarqatish
+kerak, aks holda u o‘zi hodisaga aylanadi.
+</QA>
+
+<QA q="Bir Android modeli foydalanuvchilari xabarlar daqiqalab kechikishini aytyapti. Nima bo'lyapti?">
+Eng ehtimolli sabab — ishlab chiqaruvchining agressiv batareya
+optimallashtirishi: fondagi ilova o‘ldiriladi va yuqori ustuvorlikdagi
+push ham uni uyg‘otmaydi.
+
+Tasdiqlash: `wake_to_connect_p99` ni qurilma modeli bo‘yicha bo‘lish.
+Umumiy o‘rtachada ko‘rinmaydi (bitta model ~3% ulush), lekin bo‘linganda
+bu model darhol ajralib chiqadi.
+
+Javob: bu sizning kodingizdagi xato emas, lekin foydalanuvchi uchun
+sizning xatoingiz. Muammoli modellarda foydalanuvchiga sozlama bo‘yicha
+yo‘riqnoma ko‘rsatish; yuqori ustuvorlikdagi push kvotasini faqat haqiqiy
+xabarlar uchun sarflash (aks holda OT uni kamaytiradi); va ilova
+ochilganda navbatni tez bo‘shatish.
+</QA>
+
+<QA q="Spam kampaniyasi boshlandi, lekin server xabarlarni o'qiy olmaydi. Qanday to'xtatasiz?">
+Metama’lumot orqali. Spam akkaunti xarakterli xatti-harakatga ega:
+qisqa vaqtda ko‘p notanishga yozadi, javob olmaydi, bloklanadi. Uch
+signal birgalikda (notanishlarga yozish tezligi × javobsizlik × bloklash)
+oddiy foydalanuvchidan keskin ajralib turadi — hech biri matnga qaramaydi.
+
+Qo‘shimcha: yangi akkauntlar uchun notanishlarga yozish tezligini
+cheklash, va shikoyatlar — shikoyat qiluvchi telefoni oxirgi xabarlarni
+o‘zi ochib yuboradi, bu E2EE’ni buzmaydi.
+
+Chegara: yopiq guruhda hamma rozi bo‘lgan zararli kontent ko‘rinmaydi.
+Bu E2EE ning ochiq tan olingan narxi.
+</QA>
+
+<QA q="Foydalanuvchi telefonini yo'qotdi. Tarixini qanday tiklaydi va xavfsizlik qayerda?">
+Tarix faqat telefonda edi — server uni saqlamaydi. Tiklash faqat zaxira
+nusxadan (iCloud / Google Drive).
+
+Xavfsizlik savoli: zaxira shifrlanganmi? Shifrlanmagan bo‘lsa, E2EE
+faqat tarmoqni himoya qilgan — tarix bulutda ochiq. Shifrlangan zaxira
+bilan foydalanuvchi 64 raqamli kalit yoki parol kiritadi; parol HSM
+ichidagi omborga bog‘langan, u taxmin urinishlarini cheklaydi.
+
+Mahsulot narxi: parol unutilsa, tiklash yo‘q. “Parolni tiklash” tugmasi
+bo‘lsa, demak kimdir parolsiz kira oladi — va shifrlash ma’nosiz. Bu
+foydalanuvchiga ochiq aytilishi shart.
+</QA>
+
+<QA q="Kontaktning xavfsizlik kodi o'zgardi degan ogohlantirish ko'payib ketdi. Bu hujummi?">
+Ko‘pincha yo‘q: kalit qonuniy sabablarga ko‘ra o‘zgaradi — yangi telefon,
+qayta o‘rnatish. Bu ogohlantirishlarning deyarli hammasi yolg‘on signal.
+
+Lekin to‘satdan **o‘sish** tekshirilishi kerak: (1) bir vaqtda ko‘p
+foydalanuvchida kalit o‘zgargan bo‘lsa — yangi ilova versiyasi kalitlarni
+qayta yaratyaptimi; (2) bitta mintaqada — o‘sha mintaqada kalit xizmatiga
+hujum yoki noto‘g‘ri kalit tarqatish bo‘lishi mumkin; (3) bitta
+foydalanuvchida takroran — uning akkauntini kimdir boshqa qurilmada
+ro‘yxatdan o‘tkazyapti (SIM almashtirish hujumi).
+
+Uchinchisi eng xavfli va eng keng tarqalgan real hujum: kriptografiya
+emas, **telefon raqami** buziladi. Himoya — ikki bosqichli tasdiqlash
+PIN kodi.
+</QA>
+
+<QA q="Serverni butunlay nazorat qiladigan hujumchi nimaga erisha oladi?">
+Mazmunni ololmaydi — kalitlar faqat qurilmalarda. Lekin ko‘p narsaga
+erisha oladi:
+
+**Metama’lumot** — kim kimga, qachon, qancha tez-tez, guruh a’zolari,
+IP manzillar (11.1 jadvali).
+
+**Faol hujum** — yangi suhbatlar uchun soxta identifikatsiya kaliti berish
+(o‘rtadagi odam). Buni faqat xavfsizlik kodini solishtirish yoki kalit
+o‘zgarishi ogohlantirishiga e’tibor aniqlaydi.
+
+**Soxta qurilma qo‘shish** — agar qurilma ro‘yxati imzolanmagan bo‘lsa.
+Imzo tufayli bu aniqlanadi.
+
+**Xizmatni to‘xtatish** — xabarlarni yetkazmaslik.
+
+Xulosa: E2EE serverdan **passiv** o‘qishni to‘liq to‘xtatadi. **Faol**
+hujumni esa faqat odam — xavfsizlik kodini tekshirgan foydalanuvchi —
+to‘xtata oladi.
+</QA>
+
+<QA q="Nega WhatsApp o'z kriptografik protokolini yozmagan?">
+Chunki kriptografik protokoldagi xatolar **ko‘rinmaydi**. Tizim ishlaydi,
+xabarlar shifrlanadi va ochiladi, hamma testlar o‘tadi — va protokolda
+hujumchi foydalanadigan teshik bo‘lishi mumkin. Buni faqat yillar
+davomidagi ochiq kriptografik tahlil topadi.
+
+Signal protokoli ochiq nashr etilgan, akademik tahlildan o‘tgan va
+ko‘plab ilovalarda ishlatiladi. Uni qabul qilish — o‘sha tahlilning
+hammasini tekinga olish.
+
+Umumiy qoida: **sinovdan o‘tgan protokolni sinovdan o‘tgan kutubxona orqali
+ishlating.** Muhandislik ishi — protokol atrofidagi tizim: navbat,
+qurilmalar, push, tiklash. Bu darsning 90% i aynan shu haqida.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Birinchi va ikkinchi daraja uchun `docs/amaliyot/whatsapp/`
+da tayyor kod bor: `dh_demo.py` to‘liq ishlaydi, `relay.py` va `phone.py`
+esa TODO bilan skelet — simulyatsiya va o‘lchov (`bench.py`) tayyor, hech
+qanday baza yoki server kerak emas.
+
+<Task title="1-daraja: Diffie-Hellman'ni qo'lda va kodda">
+Avval qog‘ozda: 2.2-bo‘limdagi hisobni **o‘z sonlaringiz** bilan
+takrorlang (`p = 23`, `g = 5`, istalgan `a` va `b`). Ikkala tomonda bir xil
+sir chiqqanini ko‘rsating.
+
+Keyin `python dh_demo.py` ni ishga tushiring. U uch narsani qiladi:
+kichik sonlar bilan qadam-baqadam DH, X25519 bilan haqiqiy kalit
+almashinuvi, va 10 000 ta X25519 almashinuvining vaqtini o‘lchash.
+
+**Tekshiruv mezoni:** (1) qo‘lda hisoblangan sir `dh_demo.py` natijasi
+bilan mos; (2) o‘lchangan X25519 vaqti — millisekundlarda — va uni
+2.2-dagi Deep jadvalidagi ~0.05 ms bilan solishtirish; farq bo‘lsa,
+sababini yozing (protsessor, Python qo‘shimchasi). Bonus: `p = 23` da
+`A` dan `a` ni sinab chiqish bilan toping va nega bu 256 bitda
+ishlamasligini bir jumlada tushuntiring.
+</Task>
+
+<Task title="2-daraja: saqla va uzat — belgilar bilan (asosiy topshiriq)">
+`relay.py` (server) va `phone.py` (telefon) ni to‘ldiring. `bench.py`
+ularni simulyatsiya qilingan tarmoqda sinaydi: 500 ta telefon, 1 soatlik
+virtual vaqt, 5% paketlar yo‘qoladi, telefonlar uch guruhda oflayn
+bo‘ladi (6.1-bo‘limdagi A/B/C kabi).
+
+Amalga oshirish kerak: ✓ faqat saqlagandan keyin; ✓✓ faqat telefon
+saqlagandan keyin; mijoz yaratgan `msg_id` bilan dublikatni tanish;
+monoton belgilar; oflayn telefonga navbatdan tartib bilan yetkazish.
+
+**Tekshiruv mezoni:** `bench.py` hisobotida `lost = 0`, `dup_shown = 0`,
+`tick_regressions = 0`. Qo‘shimcha ravishda bench navbatning o‘lchangan
+o‘rtacha hajmi `L` ni Little qonuni bashorati `λ × W` bilan solishtiradi —
+farq 20% dan oshmasligi kerak. Hisobotda telefonlarning ~20% i bo‘lgan **B va C
+guruhlari navbatning qancha qismini** egallashini ko‘ring va 6.1-bo‘limdagi
+“dum hamma narsani belgilaydi” xulosasi bilan solishtiring. Nega
+simulyatsiyada ulushlar darsdagidan farq qiladi (vaqt siqilgan, telefonlar
+soni kichik)?
+</Task>
+
+<Task title="3-daraja: Sender Keys va juftlik shifrlash">
+`cryptography` kutubxonasi bilan ikki sxemani amalga oshiring: (a) har
+a’zoga alohida shifrlash (X25519 + HKDF + AES-GCM), (b) Sender Keys
+(bitta simmetrik zanjir, a’zolarga bir marta tarqatilgan).
+
+Guruh hajmi 10, 100, 1 000 uchun o‘lchang: bitta xabar uchun yuboruvchi
+yuklaydigan baytlar, yuboruvchi CPU vaqti, va **bitta a’zo chiqqanda**
+jami yuborilishi kerak bo‘lgan juftlik xabarlari soni (darhol va dangasa
+qayta kalitlash bilan, kuniga 5% a’zo yozadi deb).
+
+**Tekshiruv mezoni:** jadval va ikki grafik. Yuklash nisbati N ga, qayta
+kalitlash soni N² ga yaqin chiqishi kerak (log-log grafikda qiyalik 1 va 2).
+Dangasa qayta kalitlash 1 000 a’zoda kamida 15 barobar tejash ko‘rsatsin.
+</Task>
+
+<Task title="4-daraja: sinxron cho'qqilar modeli">
+Skript yozing. Kirish: mintaqalar ro‘yxati (foydalanuvchilar soni, UTC
+siljishi), ertalabki uyg‘onish oynasi, tunda to‘planadigan xabarlar soni,
+yangi yil kechasidagi xabarlar va ularning birinchi 10 daqiqadagi ulushi.
+
+Chiqish: 24 soatlik grafik — sekundiga ulanishlar va navbatdan o‘qishlar,
+mintaqalar bo‘yicha rangli qatlamlar; yangi yil kechasi uchun alohida
+grafik.
+
+**Tekshiruv mezoni:** (1) sutkalik maksimumni sutkalik o‘rtacha bilan
+solishtiring — nisbat nechaga teng; (2) eng katta mintaqaning ertalabki
+cho‘qqisi global o‘rtachadan necha barobar; (3) yangi yil kechasida qaysi
+mintaqa global cho‘qqini belgilaydi. Modelingiz 13-bo‘limdagi ~42 000
+ulanish/s va ~1.4 M xabar/s tartibidagi raqamlarni takrorlashi kerak.
+</Task>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| E2EE | Uchidan-uchiga shifrlash: faqat yuboruvchi va qabul qiluvchi qurilmalari o‘qiydi |
+| Diffie–Hellman (DH) | Ochiq kanalda umumiy sirni kelishish usuli |
+| X25519 | Curve25519 elliptik egri chizig‘idagi DH; 32 baytlik kalitlar |
+| Diskret logarifm | `g^x mod p` dan `x` ni topish masalasi — DH xavfsizligining asosi |
+| Identifikatsiya kaliti (IK) | Qurilmaning uzoq muddatli kaliti |
+| Prekey | Oflayn qabul qiluvchi uchun oldindan yuklangan ochiq kalit |
+| X3DH | Prekey’lar yordamida 3–4 ta DH bilan sessiya o‘rnatish |
+| Double Ratchet | Har xabarda kalit almashtiruvchi ikki g‘ildirakli protokol |
+| Oldinga maxfiylik | Bugungi kalit o‘g‘irlansa, o‘tmishdagi xabarlar xavfsiz |
+| Buzilishdan keyingi tiklanish | Kalit o‘g‘irlansa ham, keyingi DH’dan so‘ng yana xavfsiz |
+| Sender Keys | Guruh uchun yuboruvchi kaliti: xabar bir marta shifrlanadi |
+| Saqla va uzat | Server xabarni yetkazilguncha saqlab, keyin o‘chiradi |
+| Little qonuni | `L = λ × W`: navbatdagi elementlar = kirish tezligi × kutish |
+| Push (APNs, FCM) | OT darajasidagi umumiy uyg‘otish kanali |
+| Birlashtirish (coalescing) | Bir nechta push’ni bitta uyg‘onishga qo‘shish |
+| Qayta shifrlash so‘rovi | Ochilmagan xabarni yuboruvchidan qayta so‘rash |
+| Xavfsizlik kodi | Ikki IK dan hisoblangan 60 raqamli son / QR kod |
+| Mijoz tomonda tarqatish | Yuboruvchi har qurilma uchun alohida shifr tayyorlaydi |
+| Noise protokoli | Mijoz–server transporti uchun yengil kriptografik freymvork |
+| Metama’lumot | Mazmun emas, balki kim, kimga, qachon, qayerdan |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| DH misoli: p, g, a, b | 23, 5, 6, 15 → sir 2 | Qo‘lda hisoblangan; klassik darslik misoli |
+| X25519 kalit hajmi | 32 bayt | RFC 7748 |
+| Curve25519 xavfsizlik darajasi | ~128 bit | RFC 7748; Bernstein, “Curve25519” (2006) |
+| Klassik DH, 128-bit xavfsizlik | ~3 072 bit | NIST SP 800-57 kalit o‘lchami tavsiyalari |
+| X3DH va Double Ratchet tuzilishi | — | Signal spetsifikatsiyalari (Marlinspike, Perrin, 2016) |
+| Sender Keys, media shifrlash | — | WhatsApp Encryption Overview (texnik hujjat) |
+| Transport: Noise Pipes | — | WhatsApp Encryption Overview |
+| To‘liq E2EE e’loni | 2016-yil aprel | WhatsApp rasmiy blogi |
+| Bitta serverda 2 M+ ulanish | 2012-yil | WhatsApp muhandislik blogi |
+| Ko‘p qurilma | 2021-yil | Meta muhandislik blogi |
+| Yetkazilmagan xabar saqlanishi | 30 kun | WhatsApp maxfiylik hujjatlari |
+| Guruh hajmi chegarasi | 1 024 | WhatsApp e’lonlari (2022) |
+| “Ko‘p marta yo‘naltirilgan” chegarasi | 5 marta → 1 suhbat | WhatsApp e’loni (2020) |
+
+Foydalanuvchilar soni (2 mlrd), kunlik xabarlar (100 mlrd), onlayn/oflayn
+ulushlar, kutish taqsimoti (80/19/1), media ulushi va hajmi, narxlar,
+radio quvvati va “dum” vaqti, 2014-yilgi jamoa hajmi — **illyustratsiya
+uchun taxminiy** raqamlar. Ular e’lon qilingan yoki keng tarqalgan
+ma’lumotlar tartibida, lekin aniq emas. Kriptografik va protokol
+raqamlari esa tekshirilishi mumkin — ularning manbasi yuqorida.
+
+## 21. Manbalar
+
+- WhatsApp, “WhatsApp Encryption Overview” (texnik hujjat) — X3DH, Double
+  Ratchet, Sender Keys, media va transport shifrlashining rasmiy tavsifi
+- Moxie Marlinspike, Trevor Perrin, “The X3DH Key Agreement Protocol” va
+  “The Double Ratchet Algorithm” — Signal spetsifikatsiyalari
+- Whitfield Diffie, Martin Hellman (1976), “New Directions in Cryptography”
+- RFC 7748 — X25519 va X448 elliptik egri chiziqlari
+- Trevor Perrin, “The Noise Protocol Framework”
+- RFC 9420 — Messaging Layer Security (MLS): katta guruhlar uchun daraxt
+  asosidagi kalit almashinuvi
+- WhatsApp muhandislik blogi (2012), bitta serverda 2 milliondan ortiq
+  ulanish haqida
+- Meta muhandislik blogi (2021), ko‘p qurilma arxitekturasi haqida
+- John D. C. Little (1961), “A Proof for the Queuing Formula L = λW”

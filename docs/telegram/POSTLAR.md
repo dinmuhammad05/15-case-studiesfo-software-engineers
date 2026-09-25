@@ -45,8 +45,9 @@ Hozir 4 ta dars tayyor:
 04 — Twitter tasmasi qanday ishlaydi (10 200 so'z)
 05 — Reddit qanday ishlaydi (14 000 so'z)
 06 — Slack qanday ishlaydi (19 500 so'z)
+07 — WhatsApp qanday ishlaydi (20 000 so'z)
 
-Yana 11 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, WhatsApp,
+Yana 10 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, Spotify,
 fond birjasi va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
@@ -66,8 +67,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-6 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack), 11 tasi rejada. Internetsiz ham o'qish mumkin.
+7 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp), 10 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -217,6 +218,37 @@ WebSocket nima turadi (bitta bo'sh ulanish 35 KB), ulanish paytida
 xabar tartibi, ts nega satr. Hammasi hisob-kitob bilan.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/slack/
+```
+
+---
+### 3.7 — WhatsApp
+
+```
+Ikki kishi ochiq kanalda to'rtta son almashdi: 23, 5, 8 va 19.
+Server hammasini ko'rdi.
+
+Lekin ikkalasida bir xil sir paydo bo'ldi — 2 — va server uni
+topa olmaydi.
+
+Bu Diffie-Hellman. 1976-yilgi g'oya, maktab matematikasi:
+    5^6 mod 23 = 8
+    5^15 mod 23 = 19
+    19^6 mod 23 = 8^15 mod 23 = 2
+
+WhatsApp'dagi har bir xabar shu g'oya ustida qurilgan. Faqat sonlar
+23 emas, 256 bitlik — sinab chiqish uchun milliard kompyuterga
+10 milliard yil kerak.
+
+Qiziq tomoni: server xabarni o'qiy olmagani uchun u deyarli hech
+narsa qilmaydi — tarix saqlamaydi, qidirmaydi, indekslamaydi.
+Shuning uchun WhatsApp dunyodagi eng arzon katta tizimlardan biri.
+
+Yangi dars — WhatsApp qanday ishlaydi (20 000 so'z):
+Diffie-Hellman qo'lda, X3DH va prekey'lar, Double Ratchet, guruhlarda
+bitta a'zo chiqishi nega million xabar turadi, oflayn telefon uchun
+navbat va Little qonuni, yangi yil kechasi vaqt mintaqalari bo'ylab.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/whatsapp/
 ```
 
 ---
