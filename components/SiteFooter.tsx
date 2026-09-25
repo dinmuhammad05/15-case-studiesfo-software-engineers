@@ -20,13 +20,28 @@ export function SiteFooter() {
               <AuthorPhoto className="h-full w-full" fallback="dM" />
             </span>
             <div className="min-w-0">
-              <div className="font-medium">{site.author.handle}</div>
+              <a
+                href={site.author.portfolio}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium hover:text-[var(--skin-accent)]"
+              >
+                {site.author.name}
+              </a>
               <div className="text-sm text-[var(--skin-muted)]">
-                Loyihani yozgan va yuritadigan
+                Full-stack dasturchi · loyihani yozgan va yuritadigan
               </div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
+            <a
+              href={site.author.portfolio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border border-[var(--skin-border)] bg-[var(--skin-accent)] px-3.5 py-1.5 text-sm text-[var(--skin-accent-text)] hover:opacity-90"
+            >
+              Portfolio
+            </a>
             <a
               href={site.author.github}
               target="_blank"

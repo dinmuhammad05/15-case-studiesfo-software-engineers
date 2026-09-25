@@ -19,9 +19,10 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden text-xs text-[var(--skin-muted)] sm:inline">muallif</span>
           <a
-            href={site.author.github}
+            href={site.author.portfolio}
             target="_blank"
             rel="noopener noreferrer"
+            title="Muallif portfoliosi"
             className="flex items-center gap-2 rounded-full border border-[var(--skin-border)] py-1 pr-3 pl-1 transition-colors hover:bg-[var(--skin-surface)]"
           >
             <span

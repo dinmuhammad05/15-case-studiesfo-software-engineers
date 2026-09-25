@@ -13,6 +13,8 @@ export const site = {
   repo: "https://github.com/dinmuhammad05/15-case-studiesfo-software-engineers",
   author: {
     handle: "dinmuhammad05",
+    name: "Dinmuhammad",
+    portfolio: "https://dinmuhammad05.github.io/",
     github: "https://github.com/dinmuhammad05",
     telegram: "@dinMuhammad05",
     telegramUrl: "https://t.me/dinMuhammad05",
