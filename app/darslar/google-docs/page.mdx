@@ -1,0 +1,2795 @@
+## Bu darsda nima o‘rganasiz
+
+Oldingi darslarning ko‘pida qiyinchilik **miqyosda** edi: sekundiga yuz
+minglab so‘rov, eksabaytlab trafik, milliardlab hodisa. Google Docs’da
+miqyos ham bor, lekin eng qiziq muammo bitta hujjat ichida, hatto
+**ikki kishi** bilan ham paydo bo‘ladi.
+
+Ikki kishi bir paragrafni bir vaqtda tahrirlaydi. Har biri o‘z
+o‘zgarishini **darhol** ko‘radi — kutmaydi. Bir soniyadan keyin ikkalasi
+ham aynan **bir xil** matnni ko‘rishi kerak, va unda ikkalasining ham
+o‘zgarishi saqlangan bo‘lishi kerak. Bu uch talab — darhol, bir xil,
+hech narsa yo‘qolmagan — bir-biriga zid ko‘rinadi, va dars asosan shu
+ziddiyatni hal qilish haqida.
+
+Yo‘lda ikki katta g‘oyani ko‘ramiz. Birinchisi — **operatsion
+transformatsiya** (OT): Google Docs 2010-yildan beri ishlatadigan usul,
+unda markaziy server tartibni belgilaydi va har bir o‘zgarish boshqalariga
+moslab “qayta yoziladi”. Ikkinchisi — **CRDT**: har bir belgiga abadiy
+identifikator berib, tartibni matematik jihatdan kafolatlash; serversiz
+ham ishlaydi, lekin o‘z narxi bilan.
+
+Keyin ular atrofidagi hamma narsa: kursorlar va “kim nima qilyapti”,
+versiyalar tarixi, oflayn tahrirlash, izohlar, ruxsatlar, va nima uchun
+bitta hujjat bitta serverda yashashi kerak. Dars Slack va WhatsApp
+darslaridan keyin o‘qish uchun qulay — ular “xabarlar tartibi” haqida
+edi, bu esa “bir matn ustidagi o‘zgarishlar tartibi” haqida.
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+| Talab | Tafsilot |
+| --- | --- |
+| Bir vaqtda tahrirlash | Bir nechta odam bir hujjatni, hatto bir so‘zni, bir vaqtda o‘zgartiradi |
+| Darhol javob | Har bir tugma bosilishi o‘z ekranida kechikishsiz ko‘rinadi |
+| Hamkorlar ko‘rinadi | Boshqalarning kursori, belgilagan joyi va o‘zgarishlari jonli |
+| Boy matn | Sarlavhalar, qalin/kursiv, ro‘yxatlar, jadvallar, rasmlar |
+| Izohlar va takliflar | Matn qismiga bog‘langan izoh; “taklif” rejimidagi o‘zgarishlar |
+| Versiyalar tarixi | Istalgan o‘tgan holatni ko‘rish va tiklash; kim nimani yozgani |
+| Oflayn | Internetsiz tahrirlash, keyin boshqalar bilan birlashtirish |
+| Ruxsatlar | Egasi, muharrir, izohlovchi, o‘quvchi; havola orqali ulashish |
+
+Birinchi va ikkinchi qator birgalikda butun darsning asosiy qiyinchiligi.
+Faqat birinchisi bo‘lsa, oddiy qulf yetardi: bir kishi yozadi, qolganlar
+kutadi. Faqat ikkinchisi bo‘lsa, oddiy lokal muharrir yetardi. Ikkalasi
+birga — **har kim darhol yozadi, va hech kim kutmaydi** — tizimni
+optimistik qiladi: har bir mijoz o‘z o‘zgarishini boshqalar nima
+qilayotganini bilmasdan qo‘llaydi. Keyin bu “ko‘r” o‘zgarishlarni
+birlashtirish kerak.
+
+### 1.2 Nofunksional talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Lokal javob | Tugma bosilishidan ekrangacha < 16 ms (bitta kadr) |
+| Boshqalarga yetish | O‘zgarish hamkor ekranida p50 < 200 ms, p99 < 1 s |
+| Yaqinlashish | Barcha nusxalar o‘zgarishlar tugagach **bir xil**, har doim |
+| Yo‘qotmaslik | Server tasdiqlagan o‘zgarish hech qachon yo‘qolmaydi |
+| Hamkorlar soni | Bir hujjatda ~100 kishi bir vaqtda (Google Docs hujjatlariga ko‘ra) |
+| Hujjat hajmi | ~1 million belgigacha (Google Docs chegarasi) |
+
+Uchinchi qator — “yaqinlashish” (convergence) — boshqa darslardagi
+“taxminan” talablardan tubdan farq qiladi. Twitter tasmasida ikki
+foydalanuvchi bir necha soniya turli narsa ko‘rsa — muammo emas. Bu
+yerda esa ikki muharrir **abadiy** turli matn ko‘rib qolsa, bu hujjat
+buzilgani: biri “yubordim” deb o‘ylaydi, ikkinchisida bu paragraf yo‘q.
+Yaqinlashish — ehtimoliy emas, **kafolatlangan** xususiyat bo‘lishi
+kerak.
+
+Birinchi qator ham qat’iy: 16 ms — ekranning bitta kadri (60 Hz).
+Bu shuni anglatadiki, lokal o‘zgarish **tarmoqni umuman kutmaydi**:
+hatto eng yaqin serverga bir aylanish (~20–50 ms) ham juda sekin.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="~20 M" label="Bir vaqtda ochiq hujjat" hint="Faraz, cho'qqi" />
+  <Stat value="~5 M/s" label="Operatsiyalar" hint="Hisoblangan" />
+  <Stat value="100" label="Hamkor bir hujjatda" hint="Maksimum" />
+  <Stat value="~50x" label="Tarix / matn" hint="Hisoblangan" />
+</StatGrid>
+
+<Calc title="Hujjatlar tizimi — bir xil o'lchov bilan" result="Operatsiyalar ~5 M/s, trafik ~0.5 GB/s — kichik. Tarix matndan ~50x katta. Qiyinlik baytlarda emas">{`FARAZLAR (tartib uchun, rasmiy raqamlar emas):
+  Cho'qqida bir vaqtda ochiq hujjat sessiyalari:  ~20 M
+  Ulardan hozir faol yozayotganlar:               ~25% -> 5 M
+  Yozish tezligi: ~200 belgi/daqiqa = ~3.3 belgi/s
+  Mijoz belgilarni ~bir xabarga yig'adi (5-bo'lim, 6-qadam)
+    -> faol yozuvchi boshiga ~1 xabar/s (pauzalar bilan o'rtacha)
+
+OPERATSIYALAR:
+  5 M yozuvchi x ~1 xabar/s = ~5 M operatsiya/s
+  Operatsiya xabari ~100 bayt -> ~500 MB/s = ~4 Gbit/s kiruvchi
+  (YouTube: ~104 000 Gbit/s. Bu yerda baytlar arzimas)
+
+TARQATISH:
+  Hujjatlarning ko'pi bitta odam tomonidan tahrirlanadi.
+  O'rtacha qo'shimcha tomoshabin ~0.5 -> chiquvchi ~2.5 M xabar/s
+
+SAQLASH — MATN VA TARIX:
+  O'rtacha hujjat: ~5 000 so'z = ~30 000 belgi = ~30 KB
+  Yozish jarayoni: har yakuniy belgi uchun ~1.3 terilgan belgi
+    (o'chirishlar, tuzatishlar) -> ~40 000 operatsiya
+  Har operatsiya tarixda ~40 bayt (kim, qachon, nima, qayerda)
+  Tarix: 40 000 x 40 = ~1.6 MB  ->  matndan ~50 barobar katta`}</Calc>
+
+Hisobni uch xulosaga qisqartiramiz.
+
+**Birinchi: tarmoq va saqlash deyarli arzimas.** Sekundiga besh million
+kichik xabar — Slack darsidagi xabarlar oqimi darajasida, va har biri
+yuz bayt. Hech qanday CDN, maxsus kodek yoki eksabayt ombori kerak emas.
+
+**Ikkinchi: tarix matndan katta.** Har bir hujjat o‘zining yakuniy
+holatidan o‘nlab barobar katta “o‘zgarishlar jurnali” bilan keladi.
+Uni saqlash kerak (versiyalar tarixi, 1.1), lekin har ochishda o‘qib
+bo‘lmaydi. Bu 9-bo‘limdagi suratlar (snapshot) va siqish g‘oyasiga
+olib keladi.
+
+**Uchinchi: qiyinlik bitta hujjat ichida.** 5 M operatsiya/s — 20 M
+**mustaqil** hujjat bo‘ylab tarqalgan. Ular bir-biriga deyarli ta’sir
+qilmaydi, shuning uchun gorizontal masshtablash oson: hujjatlarni
+serverlarga bo‘lib tashlash yetarli. Qiyin savol — **bitta** hujjatdagi
+100 kishining operatsiyalarini qanday tartiblash. Bu savol raqamlarga
+bog‘liq emas: u ikki kishi bilan ham xuddi shunday qiyin.
+
+<Check q="Nega bu tizimning asosiy muammosi foydalanuvchilar soniga emas, bitta hujjatdagi parallellikka bog'liq?">
+Chunki hujjatlar bir-biridan **mustaqil**. Ali o‘z hujjatini, Vali
+boshqasini tahrirlasa, ularning operatsiyalari hech qachon to‘qnashmaydi —
+ularni turli serverlarda, turli ma’lumotlar bazalarida qayta ishlash
+mumkin. 20 M hujjat — 20 M kichik, alohida muammo; ularni 200 serverga
+bo‘lsak, har biriga 100 000 hujjat (5-bo‘lim, 7-qadam).
+
+Bitta hujjat ichida esa operatsiyalar bir-biriga **bog‘liq**: Alining
+“5-pozitsiyaga qo‘sh” operatsiyasining ma’nosi Vali oldinroq 3-pozitsiyadan
+nimanidir o‘chirgan-o‘chirmaganiga bog‘liq. Bu bog‘liqlik ikki kishida
+ham bor, va uni server qo‘shib hal qilib bo‘lmaydi.
+
+Bu Twitter darsidan teskari manzara: u yerda bitta tvit oddiy, lekin
+millionlab kuzatuvchiga tarqatish qiyin edi (miqyos muammosi). Bu yerda
+tarqatish oddiy (bir necha hamkor), lekin bitta hujjatning **izchilligi**
+qiyin (mantiq muammosi). Muammo turini to‘g‘ri aniqlash — qaysi
+vositalar kerakligini aniqlash: birinchisiga sharding va kesh, ikkinchisiga
+algoritm.
+</Check>
+
+## 2. Nol nuqta: hujjat va operatsiyalar
+
+Hamkorlikdagi tahrirlashni tushunish uchun avval bitta muharrir ichida
+nima sodir bo‘lishini aniq aytib olamiz: **hujjat nima, va o‘zgarish nima?**
+
+### 2.1 Hujjat — belgilar ketma-ketligi, o‘zgarish — operatsiya
+
+Eng sodda model: hujjat — belgilar qatori, har bir belgining
+**pozitsiyasi** (0 dan boshlab) bor. Har qanday tahrir ikki asosiy
+operatsiyaga keltiriladi:
+
+```
+hujjat = "SALOM"          pozitsiyalar: S=0 A=1 L=2 O=3 M=4
+
+ins(p, s)  — p pozitsiyaga s matnni qo'shish
+  ins(5, "!")     -> "SALOM!"
+  ins(0, ">> ")   -> ">> SALOM"
+
+del(p, n)  — p pozitsiyadan n ta belgini o'chirish
+  del(0, 1)       -> "ALOM"
+  del(1, 3)       -> "SM"
+
+Tugma bosilishi = bitta operatsiya:
+  "a" tugmasi, kursor 7 da    -> ins(7, "a")
+  Backspace, kursor 7 da      -> del(6, 1)
+  Belgilangan 12 belgini o'chirish -> del(p, 12)
+  Nusxa qo'yish (paste)       -> ins(p, "...butun matn...")
+```
+
+Bu model muhim bir xususiyatga ega: **operatsiya hujjatning butun
+holatidan kichik**. 30 KB hujjatda bitta harf qo‘shish — butun faylni
+qayta yuborish emas, balki “7-pozitsiyaga ‘a’” — o‘nlab bayt. Butun
+tizim operatsiyalarni yuborishga qurilgan, holatni emas (Spotify
+darsidagi “holatni emas, o‘zgarishlarni saqlash” naqshi).
+
+Boy matn bu modelni biroz kengaytiradi: “qalin qilish” — bu matnni
+o‘zgartirmaydigan, faqat belgilar oralig‘iga **atribut** qo‘yadigan
+uchinchi operatsiya. Google Wave va undan kelib chiqqan tizimlarda
+operatsiya butun hujjat bo‘ylab “o‘tish” sifatida yoziladi:
+
+```
+"SALOM DUNYO" ni "SALOM, DUNYO" ga aylantirish va DUNYO ni qalin qilish:
+
+  [ retain(5), insert(","), retain(1), retain(5, {bold: true}) ]
+     |           |            |            |
+     5 belgini   vergul       probelni     5 belgini o'tkazib,
+     o'tkazib    qo'shish     o'tkazish    qalin atributini qo'yish
+     yuborish
+
+Qoida: retain + delete uzunliklari yig'indisi = hujjat uzunligi
+       (operatsiya hujjatning HAR bir belgisini "ko'radi")
+```
+
+Bu yozuv shakli (komponentlar ro‘yxati) 5-bo‘limda va amaliyotda
+ishlatiladi. Uning afzalligi: bitta operatsiya bir nechta joydagi
+o‘zgarishni o‘z ichiga oladi, va ikkita ketma-ket operatsiyani bittaga
+**birlashtirish** (compose) oson.
+
+<Deep title="Pozitsiya nimani sanaydi: bayt, kod birligi yoki harf?">
+“5-pozitsiya” oddiy ko‘rinadi, lekin savol tug‘iladi: **nimaning**
+5-chisi? Lotin harflari uchun javob bir xil, lekin boshqa belgilar
+uchun uch xil hisob bor:
+
+```
+Matn: "Oʻzbek 👍🏽"
+
+UTF-8 baytlari:         O=1, ʻ=2, z=1 ... 👍=4, 🏽=4
+UTF-16 kod birliklari:  O=1, ʻ=1, z=1 ... 👍=2, 🏽=2   (JavaScript string.length)
+Unicode kod nuqtalari:  O=1, ʻ=1, z=1 ... 👍=1, 🏽=1   (Python len)
+Ko'rinadigan harflar:   O=1, ʻ=1, z=1 ... 👍🏽=1        (foydalanuvchi uchun "bitta belgi")
+```
+
+Agar brauzerdagi mijoz (JavaScript) pozitsiyalarni UTF-16 da, server
+esa (masalan, Python yoki Go) kod nuqtalarida yoki baytlarda sanasa,
+emojidan keyingi har bir operatsiya **bir-ikki pozitsiyaga siljiydi** —
+va nusxalar ajraladi. Bunday xato faqat emoji yoki kam uchraydigan
+belgilar bor hujjatda ko‘rinadi, ya’ni test paytida deyarli hech qachon.
+
+Ikkinchi muammo — **harfni bo‘lish**. Kursor “👍🏽” ning o‘rtasiga
+tushsa (UTF-16 da u 4 birlik), Backspace terining rangini o‘chirib,
+barmoqni qoldiradi, yoki yarim surrogat juftlik qoladi — buzilgan
+belgi. Muharrir kursor va o‘chirishni **ko‘rinadigan harf** chegaralarida
+ushlashi kerak, operatsiyalar esa bitta kelishilgan birlikda.
+
+Qoida: protokolda pozitsiya birligi **aniq yozilgan** bo‘lishi
+kerak (ko‘p tizimlar UTF-16 ni tanlaydi, chunki brauzer shunda
+ishlaydi), va har bir tomonda — mijoz, server, eksport — xuddi
+shu birlik ishlatiladi. Bu Twitter darsidagi “280 belgi — qaysi
+belgilar?” savolining hujjatlardagi jiddiyroq ko‘rinishi.
+</Deep>
+
+<Calc title="Birlik mos kelmasa — qancha siljiydi" result="Har emoji 1-3 pozitsiya siljish; o'zbekcha ʻ va ʼ ham UTF-8 da 2 bayt — lotin matnida ham xavf bor">{`Matn: 200 belgilik paragraf, ichida 3 ta emoji (har biri UTF-16 da 2)
+  va 12 ta "ʻ" (oʻ, gʻ) belgisi (UTF-8 da 2 bayt, UTF-16 da 1)
+
+Paragraf oxiridagi pozitsiya:
+  UTF-16:        200 + 3 x 1 (emoji qo'shimchasi)     = 203
+  Kod nuqtalari: 200                                   = 200
+  UTF-8 bayt:    200 + 3 x 3 + 12 x 1                  = 221
+
+Mijoz (UTF-16) "203-pozitsiyaga qo'sh" yubordi,
+server (kod nuqtalari) buni 3 belgi KEYINROQ deb tushundi:
+  -> keyingi paragrafning boshiga tushadi — ajralish.
+
+O'zbek lotin yozuvi uchun: "ʻ" (U+02BB) va "ʼ" (U+02BC) — ASCII emas.
+  UTF-8 bayt hisobi har birida +1 siljiydi -> oddiy o'zbekcha matnda ham
+  bayt va belgi pozitsiyalari farq qiladi.`}</Calc>
+
+### 2.2 Muammo: pozitsiya — nisbiy manzil
+
+Endi ikki muharrir. Ikkalasida ham `"abc"`. Bir vaqtda (bir-birining
+o‘zgarishini ko‘rmasdan):
+
+<Calc title="Ikki muharrir, ikki operatsiya, ikki xil natija" result="A: 'aXc', B: 'aXb' — nusxalar abadiy farq qiladi, va A da B istamagan harf o'chdi">{`Boshlang'ich holat (ikkalasida): "abc"
+
+Ali:  1-pozitsiyaga "X" qo'shadi   op_A = ins(1, "X")   -> "aXbc"
+Vali: 2-pozitsiyadagi "c" ni o'chiradi op_V = del(2, 1)  -> "ab"
+
+Operatsiyalar tarmoq orqali almashadi va "naiv" qo'llanadi:
+
+Alida:  "aXbc" + del(2, 1)
+        2-pozitsiyada endi "b" turibdi (X qo'shilgani uchun surilgan)
+        -> "aXc"            <- Vali "c" ni o'chirmoqchi edi, "b" o'chdi!
+
+Valida: "ab" + ins(1, "X")
+        -> "aXb"
+
+Natija:  Ali ko'radi "aXc",  Vali ko'radi "aXb"
+         Ikki nusxa HAR XIL, va hech biri to'g'ri emas.
+         To'g'ri javob (ikkala niyat saqlangan): "aXb"`}</Calc>
+
+Muammoning ildizi — **pozitsiya mutlaq manzil emas**. “2-pozitsiya”
+faqat operatsiya yaratilgan paytdagi hujjat holatiga nisbatan ma’noga
+ega. Vali `del(2, 1)` deganda, u “**mening** hujjatimdagi 2-belgi, ya’ni
+‘c’” ni nazarda tutgan. Ali hujjatiga yetib kelganda, u yerda oldiga
+“X” qo‘shilgan — va xuddi shu raqam endi boshqa belgini ko‘rsatadi.
+
+Bu Slack darsidagi xabarlar tartibi muammosiga o‘xshaydi, lekin
+qattiqroq. Slack’da ikki xabar turli tartibda kelsa, ular baribir o‘sha
+ikki xabar — faqat ko‘rsatish tartibi farq qiladi. Bu yerda esa
+operatsiyaning **ma’nosi** tartibga bog‘liq: bir xil ikki operatsiya
+turli tartibda qo‘llansa, turli natija beradi. Matematik tilda:
+operatsiyalar **kommutativ emas**.
+
+### 2.3 Uch talab: yaqinlashish, sabab-oqibat, niyat
+
+1998-yilda Sun va hamkasblari bu sohadagi talablarni uchta xususiyatga
+ajratishgan (CCI modeli). Ular butun dars davomida o‘lchov bo‘ladi.
+
+| Xususiyat | Ma’nosi | 2.2 dagi misolda |
+| --- | --- | --- |
+| Yaqinlashish (convergence) | Bir xil operatsiyalar to‘plamini olgan barcha nusxalar bir xil | Buzildi: “aXc” va “aXb” |
+| Sabab-oqibat (causality) | Agar B operatsiya A ni ko‘rib yaratilgan bo‘lsa, hamma joyda A dan keyin qo‘llanadi | Muammo yo‘q (ikkalasi mustaqil) |
+| Niyat (intention) | Har bir operatsiyaning ta’siri uni yaratgan paytdagi niyatga mos | Buzildi: Alida “b” o‘chdi, “c” emas |
+
+Uchinchi xususiyat eng nozik, chunki uni formal ta’riflash qiyin.
+“Niyat saqlandi” ni qanday tekshirish mumkin? Amalda u shunday
+tushuniladi: har bir operatsiya **o‘zi ko‘rgan belgilarga** ta’sir
+qilishi kerak — Vali “c” ni ko‘rib o‘chirgan, demak “c” o‘chishi kerak,
+hujjatda oldiga nima qo‘shilganidan qat’i nazar.
+
+Yaqinlashish esa oddiyroq bo‘lib ko‘rinadi, lekin uni **yolg‘iz**
+ta’minlash oson va foydasiz: masalan, “ziddiyatda ikkala o‘zgarishni
+ham bekor qil” yoki “server nusxasini hammaga qayta yubor” — ikkalasi
+ham yaqinlashadi, lekin foydalanuvchi o‘zgarishlarini yo‘qotadi.
+Haqiqiy qiyinlik — **uchalasini birga** ta’minlash.
+
+<Callout type="info" title="Nega oddiy qulf ishlamaydi">
+Eng birinchi fikr: kimdir paragrafni tahrirlayotganda uni qulflash.
+Bu yaqinlashishni kafolatlaydi — bir paytda faqat bitta yozuvchi.
+Lekin 1.2-dagi birinchi talab buziladi: qulf olish uchun serverga
+borib kelish kerak (~50–200 ms), va har bir tugma bosilishi shuncha
+kutadi. Qulf kichik bo‘lsa (bitta belgi) — juda ko‘p so‘rov, katta
+bo‘lsa (butun hujjat) — boshqalar kutadi. Microsoft Word’ning
+dastlabki birgalikdagi rejimi va ko‘p wiki tizimlari paragraf
+qulflarini ishlatgan — ular ishlaydi, lekin “jonli” tahrirlash hissini
+bermaydi.
+</Callout>
+
+<Calc title="To'qnashuv — istisno emasmi?" result="Ikki kishi birga yozganda — sekundiga ~1.8 parallel juftlik, daqiqasiga ~100. To'qnashuv odatiy holat">{`Faraz: ikki kishi bir vaqtda yozmoqda, har biri ~3 operatsiya/s
+Tarmoq kechikishi: bir tomonga ~100 ms
+
+Qachon ikki operatsiya "parallel" (bir-birini ko'rmagan)?
+  A operatsiyasi t_a da, B niki t_b da yaratilgan.
+  Agar |t_a - t_b| < 100 ms bo'lsa, hech biri ikkinchisini
+  yaratilish paytida ko'rmagan (hali yetib kelmagan).
+  -> "ko'r" oyna kengligi: 2 x 100 ms = 0.2 s
+
+Parallel juftliklar soni (sekundiga):
+  A ning har bir operatsiyasi uchun oynaga B dan: 3 x 0.2 = 0.6 ta
+  3 (A operatsiyalari) x 0.6 = ~1.8 juftlik/s
+
+Bir daqiqa birga yozishda: ~100 parallel juftlik
+Mobil tarmoqda (bir tomonga 300 ms): ~5.4 juftlik/s, ~320/daqiqa
+
+Demak: "to'qnashuv kamdan-kam, qo'lda hal qilamiz" (Git uslubi)
+  bu yerda ishlamaydi. Har bir juftlik AVTOMATIK, millisekundlarda
+  hal bo'lishi kerak.`}</Calc>
+
+Hisob shuni ko‘rsatadiki, parallellik — **odatiy** holat, istisno emas.
+Git’dagi birlashtirish ziddiyatlari kamdan-kam va odam tomonidan hal
+qilinadi; bu yerda ular har soniyada sodir bo‘ladi va
+foydalanuvchi ularni umuman sezmasligi kerak. Keyingi bo‘limlar shuning
+uchun avtomatik, deterministik birlashtirish usullari haqida.
+
+<Check q="Nega 'har bir o'zgarishni serverga yuborib, javobni kutib, keyin ekranga chiqarish' yondashuvi 2.2 dagi muammoni hal qiladi, lekin baribir yaroqsiz?">
+Hal qiladi, chunki server **yagona tartibni** belgilaydi: Alining va
+Valining operatsiyalari serverga navbat bilan keladi, server ularni shu
+tartibda qo‘llaydi, va har ikki mijoz server tasdiqlagan holatni ko‘radi.
+Hech kim “ko‘r” operatsiya yaratmaydi — har bir operatsiya server
+holatiga nisbatan yaratiladi (aslida bu qulfning bir turi).
+
+Yaroqsiz, chunki har bir harf **serverga borib kelish** vaqtini kutadi.
+1.2-dagi talab — 16 ms; eng yaqin serverga aylanish ~20–50 ms,
+mobil tarmoqda 100–300 ms. Tez yozadigan odam sekundiga 5–8 harf
+bosadi, va har biri 200 ms kechiksa, matn yozilishi bilan ekran
+o‘rtasida sezilarli “sudralish” paydo bo‘ladi. Undan ham yomoni —
+tarmoq uzilsa, yozish umuman to‘xtaydi.
+
+Bu darsning asosiy kelishuvi shu yerdan kelib chiqadi: **mijoz
+server tartibini kutmasdan qo‘llaydi** (optimistik), va keyin server
+tartibi bilan **moslashadi**. OT ham, CRDT ham — bu moslashishni
+qanday qilishning ikki usuli.
+</Check>
+
+## 3. v0: eng sodda ishlaydigan yechim
+
+Muharrir butun matnni brauzerda saqlaydi, har 2 soniyada uni serverga
+yuboradi, va har 5 soniyada serverdan yangi nusxani so‘raydi. 2000-yillar
+o‘rtasidagi ilk onlayn muharrirlar (jumladan, Google Docs’ning salafi
+Writely) taxminan shunday boshlagan.
+
+```python
+@app.put("/docs/{doc_id}")
+def save(doc_id, body, user):
+    check_can_edit(user, doc_id)
+    db.execute("""UPDATE docs SET content = %s, version = version + 1,
+                  updated_by = %s, updated_at = now() WHERE id = %s""",
+               body["content"], user.id, doc_id)
+    db.insert("revisions", doc=doc_id, content=body["content"], by=user.id)
+    return {"version": db.value("SELECT version FROM docs WHERE id = %s", doc_id)}
+
+@app.get("/docs/{doc_id}")
+def load(doc_id, user, since_version=0):
+    check_can_view(user, doc_id)
+    row = db.row("SELECT content, version FROM docs WHERE id = %s", doc_id)
+    if row.version == since_version:
+        return {"unchanged": True}                 # so'rov-javob, lekin bo'sh
+    return {"content": row.content, "version": row.version}
+
+# Brauzerda:
+#   har 2 s:  agar matn o'zgargan bo'lsa -> PUT butun matn
+#   har 5 s:  GET ?since_version=v  -> yangi bo'lsa, ekranni almashtir
+```
+
+Bu kod bitta foydalanuvchi uchun **mukammal ishlaydi**, va unda uchta
+to‘g‘ri g‘oya bor.
+
+Birinchi — **avtomatik saqlash**. “Saqlash” tugmasi yo‘q; har bir
+o‘zgarish bir necha soniyada serverda. Bu 2006-yilda desktop
+muharrirlaridan katta farq edi va keyingi har bir versiyada qoladi.
+
+Ikkinchi — **versiya raqami**. Har saqlashda oshadi va mijoz “menda
+v17 bor, yangisi bormi?” deb so‘ray oladi. Keyinchalik bu raqam
+“revision” sifatida butun OT protokolining markaziga aylanadi (5-bo‘lim).
+
+Uchinchi — **tarix jadvali**. Har saqlash yangi qator; eski versiyaga
+qaytish mumkin. Faqat u butun matn nusxalari bilan to‘lib ketadi —
+4-bo‘limda hisoblaymiz.
+
+## 4. Nima sindi
+
+### 4.1 Ikki kishi — oxirgi saqlagan yutadi
+
+Ali va Vali bir hujjatni ochdi. Ali birinchi paragrafni, Vali oxirgisini
+tahrirlaydi — hatto bir-biriga yaqin ham emas.
+
+<Calc title="Oxirgi yozuvchi yutsa, qancha yo'qoladi" result="Ikki faol muharrirda deyarli har bir saqlash ikkinchisining ~2-5 s ishini o'chiradi">{`t = 0.0  Ali va Vali ikkalasi v10 ni oldi
+t = 1.5  Ali birinchi paragrafga 10 so'z yozdi
+t = 1.8  Vali oxirgi paragrafga 8 so'z yozdi
+t = 2.0  Ali: PUT butun matn (v10 + Ali o'zgarishi) -> v11
+t = 2.3  Vali: PUT butun matn (v10 + Vali o'zgarishi) -> v12
+         v12 da Alining 10 so'zi YO'Q (Vali ularni hech qachon ko'rmagan)
+t = 5.0  Ali GET -> v12 ni oldi, ekranini almashtirdi
+         Ali o'z 10 so'zi g'oyib bo'lganini ko'radi
+
+Ehtimol: ikkalasi faol yozsa, har 2 s oynada ikkalasining ham
+o'zgarishi bor -> deyarli HAR BIR tsiklda kimningdir ishi yo'qoladi.
+Yo'qolgan ish: oxirgi GET dan beri yozilgan hamma narsa (~2-5 s).`}</Calc>
+
+Bu **yo‘qolgan yangilanish** (lost update) — ma’lumotlar bazalaridagi
+klassik muammo, faqat bu yerda u 2 soniyalik oynada, har bir tsiklda
+sodir bo‘ladi. Ali va Vali hujjatning turli joylarini tahrirlagan —
+mantiqan ziddiyat yo‘q — lekin tizim “butun hujjat” darajasida
+ishlagani uchun ziddiyat paydo bo‘ldi. Muammo **granulyatsiyada**:
+saqlash birligi (butun hujjat) o‘zgarish birligidan (bir necha so‘z)
+juda katta.
+
+### 4.2 Versiya tekshiruvi: yo‘qotish o‘rniga rad etish
+
+Tabiiy tuzatish — optimistik parallellik nazorati: PUT so‘rovi “men
+v10 asosida yozdim” deydi, va agar serverda allaqachon v11 bo‘lsa,
+server rad etadi.
+
+```python
+db.execute("UPDATE docs SET content=%s, version=version+1 "
+           "WHERE id=%s AND version=%s", content, doc_id, base_version)
+if rowcount == 0:
+    return 409   # "Hujjat o'zgargan — qayta yuklang"
+```
+
+Endi hech narsa jimgina yo‘qolmaydi — lekin Vali “ziddiyat” xabarini
+oladi. Nima qiladi? Uchta variant bor va hammasi yomon:
+
+| Variant | Natija |
+| --- | --- |
+| Qayta yuklash | Valining so‘nggi 2 soniyadagi ishi yo‘qoladi (endi u buni ko‘radi, xolos) |
+| Majburan yozish | 4.1 ga qaytdik |
+| Matnli birlashtirish (diff3, Git kabi) | Turli paragraflarda ishlaydi; bir paragrafda — ziddiyat belgilari yoki noto‘g‘ri natija |
+
+Uchinchi variant eng qiziq. Git uslubidagi uch tomonlama birlashtirish
+(umumiy ajdod v10, Ali versiyasi, Vali versiyasi) satrlar darajasida
+ishlaydi. Turli paragraflardagi tahrirlar muammosiz birlashadi. Lekin
+bitta paragraf — bitta satr: ikkalasi bir paragrafga yozsa, diff3
+ziddiyat beradi va odamdan tanlashni so‘raydi. 2.3-dagi hisob:
+birga yozganda bu **har soniyada** bo‘ladi.
+
+Bu yerdan muhim xulosa: **hujjat darajasidagi yoki satr darajasidagi
+birlashtirish yetarli emas; birlashtirish tahrir darajasida bo‘lishi
+kerak.** Ya’ni “kim qaysi belgini qayerga qo‘ydi” — operatsiyalar
+(2.1) darajasida.
+
+### 4.3 Butun hujjatni yuborish
+
+<Calc title="Butun matn va operatsiyalar — trafik" result="30 KB hujjatda ~150x ko'p trafik; 1 MB hujjatda ~5 000x">{`Faraz: yozish ~3 belgi/s, saqlash har 2 s
+
+BUTUN MATN (v0):
+  30 KB hujjat: 30 KB / 2 s = 15 KB/s har faol yozuvchidan
+  1 MB hujjat (~170 bet): 500 KB/s = 4 Mbit/s — mobil tarmoqda og'ir
+  + har 5 s GET butun matn har bir tomoshabinga
+
+OPERATSIYALAR:
+  2 s da ~6 belgi -> bitta operatsiya ~100 bayt (metama'lumot bilan)
+  100 B / 2 s = ~50 B/s; tez-tez yuborilsa ~100 B/s gacha
+
+Nisbat:  15 KB/s / 100 B/s = 150x   (30 KB hujjat)
+         500 KB/s / 100 B/s = 5 000x (1 MB hujjat)
+
+TARIX (revisions jadvali, har saqlash butun nusxa):
+  1 soat faol yozish: 1 800 saqlash x 30 KB = 54 MB
+  (operatsiyalar bilan: 1 soat x ~3 x 3 600 x 40 B = ~430 KB — 125x kichik)`}</Calc>
+
+Hisob ikki narsani ko‘rsatadi. Trafik hujjat hajmiga **proporsional**
+o‘sadi — katta hujjatda har bir harf megabayt yuborishga aylanadi. Tarix
+ham xuddi shunday: har bir kichik tuzatish butun nusxani saqlaydi.
+Operatsiyalar bilan ikkalasi ham **o‘zgarish hajmiga** proporsional —
+bir harf, bir necha o‘n bayt, hujjat qanchalik katta bo‘lmasin.
+
+### 4.4 So‘rov-javob: boshqalar 3–5 soniya orqada
+
+Har 5 soniyada GET — Alining o‘zgarishi Valiga o‘rtacha qachon yetadi?
+
+<Calc title="Polling kechikishi va yuki" result="Hamkor o'zgarishni o'rtacha ~3.5 s keyin ko'radi; 20 M sessiya uchun ~4 M so'rov/s, ko'pi bo'sh">{`KECHIKISH (Ali yozgan paytdan Vali ekranigacha):
+  Alining saqlashigacha: o'rtacha 1 s (2 s intervalning yarmi)
+  Valining keyingi GET igacha: o'rtacha 2.5 s (5 s ning yarmi)
+  + tarmoq ~0.1 s
+  = ~3.6 s o'rtacha, eng yomoni ~7 s
+
+YUK:
+  20 M ochiq sessiya / 5 s = 4 M GET/s
+  Ulardan o'zgargan hujjatlar: ~25% faol, lekin ko'pi yolg'iz yozuvchi
+  -> 90%+ javob "o'zgarmagan"
+
+Maqsad (1.2): p50 < 200 ms. Farq ~18x.`}</Calc>
+
+Bu Slack va WhatsApp darslaridagi muammoning aynan o‘zi: so‘rov-javob
+(polling) kechikishni va yukni bir vaqtda yomonlashtiradi. Yechim ham
+bir xil — **doimiy ulanish** (WebSocket yoki shunga o‘xshash), va server
+o‘zgarishni o‘zi yuboradi. Lekin bu yerda bitta qo‘shimcha talab bor:
+yuborilgan narsa butun matn emas, **operatsiya** bo‘lishi kerak (4.3),
+va bu bizni to‘g‘ridan-to‘g‘ri 2.2-dagi muammoga qaytaradi.
+
+### 4.5 Operatsiyalarni shunchaki tarqatish
+
+Keling, 4.1–4.4 ning barcha tuzatishlarini birlashtiramiz: operatsiyalar,
+doimiy ulanish, lokal darhol qo‘llash. Mijoz tugma bosilganda operatsiyani
+o‘ziga qo‘llaydi va serverga yuboradi; server uni boshqa mijozlarga
+tarqatadi; ular ham qo‘llaydi.
+
+Bu aynan 2.2-dagi stsenariy: har bir mijoz boshqalarning operatsiyalarini
+**o‘z** holatiga qo‘llaydi, va pozitsiyalar siljigan bo‘ladi. Natija —
+yaqinlashish ham, niyat ham buziladi. Bundan tashqari, tarmoq xabarlarni
+turli mijozlarga turli tartibda yetkazishi mumkin (turli serverlar orqali):
+Ali operatsiyalarni A1, V1 tartibida, Vali V1, A1 tartibida ko‘radi —
+va 2.2 ko‘rsatganidek, tartib natijani o‘zgartiradi.
+
+Demak ikki narsa kerak: **yagona tartib** (hamma bir xil ketma-ketlikni
+qo‘llasin) va **pozitsiyalarni moslashtirish** (har bir operatsiya o‘zi
+ko‘rmagan operatsiyalardan keyin qo‘llanganda ham to‘g‘ri belgiga
+tegsin). 5-bo‘lim shu ikkisini qadam-baqadam quradi.
+
+<Check q="Nega 'ikki muharrir turli paragraflarda ishlasa ziddiyat yo'q' degan kuzatish v0 da yordam bermaydi, lekin operatsiyalar bilan yordam beradi?">
+v0 da saqlash va birlashtirish birligi — **butun hujjat**. Ikki versiya
+turli joylarda o‘zgargan bo‘lsa ham, tizim faqat “A versiyasi” va
+“B versiyasi” ni ko‘radi, va bittasini tanlaydi. Ziddiyatning yo‘qligi
+haqidagi ma’lumot — qaysi qismlar o‘zgargani — saqlashda **yo‘qolgan**.
+
+Operatsiyalar esa aynan shu ma’lumotni saqlaydi: `ins(12, "salom")` —
+“12-pozitsiyaga, 5 belgi”. Ikki operatsiya turli joylarga tegsa,
+ularni birlashtirish deyarli trivial: faqat keyingi operatsiyaning
+pozitsiyasini oldingisi qo‘shgan yoki o‘chirgan belgilar soniga
+suramiz. Bir joyga tegsa ham — qaysi belgilar ekanini bilamiz va
+qoida bilan hal qilamiz (5-bo‘lim, 4-qadam).
+
+Umumiy tamoyil — **ma’lumotni yo‘qotmaslik**: tizim o‘zgarishni
+“natija” sifatida emas, “qanday o‘zgarish” sifatida saqlasa,
+keyingi har qanday qaror (birlashtirish, tarix, bekor qilish)
+uchun kerakli ma’lumot bor. Bu Spotify darsidagi tinglashlar
+kitobi va Reddit’dagi ovozlar jurnali bilan bir xil g‘oya —
+hisoblagich emas, jurnal.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar uch guruhda. **Sinxronlash** (1–6): operatsiyalarni yagona
+tartibga keltirish va pozitsiyalarni moslashtirish — bu Google Docs’ning
+yuragi. **Saqlash va miqyos** (7–9): hujjat qayerda yashaydi va qanday
+tez ochiladi. **Hamkorlik tajribasi** (10–14): kursorlar, izohlar,
+bekor qilish, oflayn va tarix — foydalanuvchi ko‘radigan hamma narsa.
+
+<Step n={1} title="Doimiy ulanish va operatsiyalar" gain="O'zgarish hamkorga ~100 ms da yetadi, trafik o'zgarish hajmiga proporsional" cost="Millionlab ochiq ulanish; yagona tartib hali yo'q">
+Hujjat ochilganda mijoz serverga doimiy ulanish ochadi (WebSocket
+yoki uzun so‘rovlar). Butun matn faqat bir marta — ochishda — keladi.
+Keyin ikki yo‘nalishda faqat operatsiyalar oqadi:
+
+```
+Mijoz -> Server:  { rev: 41, op: [retain(120), insert("salom"), retain(880)] }
+Server -> Boshqalar: { rev: 42, op: ..., author: "ali" }
+```
+
+4.3 va 4.4 muammolari yo‘qoladi: trafik o‘zgarish hajmiga, kechikish
+tarmoq aylanishiga teng. Lekin 4.5 muammosi hali bor — va aynan shu
+qadamdan keyin u eng keskin ko‘rinadi, chunki endi operatsiyalar
+**tez** almashadi va parallellik har soniyada (2.3-dagi hisob).
+</Step>
+
+<Step n={2} title="Server — yagona tartib belgilovchi" gain="Barcha mijozlar operatsiyalarni bir xil tartibda ko'radi" cost="Har bir hujjat uchun bitta 'hakam' — server zanjirda">
+Har bir hujjatning serverda **revision** raqami bor: 0, 1, 2, ... Har
+bir qabul qilingan operatsiya keyingi raqamni oladi. Server — hujjatning
+yagona “yozuv kitobi”: operatsiyalar unga qaysi tartibda yozilgan bo‘lsa,
+**haqiqiy tartib** shu.
+
+Mijoz har bir operatsiyani yuborganda, u qaysi revision asosida
+yaratilganini aytadi: “men v41 ni ko‘rib, shu operatsiyani yaratdim”.
+Agar serverda hali ham v41 bo‘lsa — oddiy: qo‘llaydi, v42 bo‘ladi. Agar
+serverda allaqachon v43 bo‘lsa, demak mijoz v42 va v43 ni **ko‘rmagan**
+— ular parallel. Endi server operatsiyani ular hisobiga moslashtirishi
+kerak. Buning qanday qilinishi — keyingi qadam.
+
+Bu Slack darsidagi kanal ichidagi xabar tartibi (har kanal uchun bitta
+ketma-ketlik) va Kafka darsida ko‘riladigan bo‘lim offsetlari bilan bir
+xil g‘oya: **tartibni bitta joy belgilaydi**, qolganlar unga moslashadi.
+</Step>
+
+<Step n={3} title="Transformatsiya funksiyasi" gain="Parallel operatsiyalar to'g'ri pozitsiyaga siljiydi — 2.2 muammosi hal" cost="Har bir operatsiya turi juftligi uchun qoidalar; nozik chekka holatlar">
+Operatsion transformatsiyaning (OT) markazi — bitta funksiya:
+
+```
+transform(a, b) -> (a', b')
+
+a va b — BIR XIL holatga nisbatan yaratilgan ikki parallel operatsiya.
+a' — a ning "b allaqachon qo'llangan" holatga moslangan versiyasi.
+b' — b ning "a allaqachon qo'llangan" holatga moslangan versiyasi.
+
+Asosiy xususiyat (TP1):  apply(apply(S, a), b')  ==  apply(apply(S, b), a')
+  "Avval a, keyin moslangan b" va "avval b, keyin moslangan a"
+  BIR XIL natija beradi.
+```
+
+Oddiy operatsiyalar uchun qoidalar intuitiv:
+
+```
+ins(p1, s) va ins(p2, t):
+  p1 < p2  ->  ikkinchisi len(s) ga suriladi: ins(p2 + len(s), t)
+  p1 == p2 ->  kim birinchi? QAT'IY qoida kerak (masalan, server
+               tartibi yoki mijoz ID si) — aks holda ikki tomonda
+               turli tanlov, yaqinlashish buziladi
+
+ins(p1, s) va del(p2, n):
+  p1 <= p2       -> o'chirish len(s) ga suriladi
+  p1 >= p2 + n   -> qo'shish n ga orqaga suriladi
+  p2 < p1 < p2+n -> qo'shish o'chirilayotgan oraliq ICHIDA:
+                    qo'shilgan matn saqlanadi, o'chirish ikkiga bo'linadi
+
+del(p1, n1) va del(p2, n2):
+  ustma-ust tushmasa -> surish
+  ustma-ust tushsa   -> umumiy qism faqat BIR MARTA o'chiriladi
+```
+
+<Calc title="2.2 dagi misol — transformatsiya bilan" result="Ikkala tomonda 'aXb' — yaqinlashdi va ikkala niyat saqlandi">{`S = "abc"
+a = ins(1, "X")   (Ali)
+b = del(2, 1)     (Vali, "c" ni o'chirmoqchi)
+
+transform(a, b):
+  a' : ins(1) b dagi o'chirishdan (2) oldin -> o'zgarmaydi: ins(1, "X")
+  b' : del(2) a dagi qo'shishdan (1) keyin -> 1 ga suriladi: del(3, 1)
+
+Alida:  "aXbc" + b' = del(3, 1) -> 3-pozitsiya "c" -> "aXb"   OK
+Valida: "ab"   + a' = ins(1, "X")                  -> "aXb"   OK
+
+Yaqinlashish: ikkalasi "aXb".  Niyat: X qo'shildi, "c" o'chdi.`}</Calc>
+
+Transformatsiya o‘zi murakkab emas — bir necha o‘nlab satr kod. Lekin
+u **mutlaqo** to‘g‘ri bo‘lishi kerak: bitta chekka holatdagi xato
+(masalan, qo‘shish o‘chirish oralig‘ining aynan chegarasida) nusxalarni
+abadiy ajratadi, va bu faqat millionlab operatsiyadan keyin ko‘rinadi.
+Shuning uchun transformatsiya funksiyalari **tasodifiy testlar** bilan
+sinaladi: millionlab tasodifiy juftlik, TP1 har birida tekshiriladi
+(amaliyotdagi 2-daraja aynan shu).
+</Step>
+
+<Step n={4} title="Mijoz holat mashinasi: bitta operatsiya yo'lda" gain="Mijoz darhol yozadi, server tartibi bilan kafolatli moslashadi" cost="Mijozda uch holatli mantiq; yuborish tezligi aylanish vaqtiga bog'liq">
+Endi to‘liq protokol. U 1995-yildagi Xerox PARC’ning **Jupiter**
+tizimidan kelib chiqqan va Google Wave hamda Google Docs’da ishlatilgan
+g‘oyaga asoslangan. Mijoz uch holatdan birida:
+
+```
+SINXRON:            yo'lda operatsiya yo'q
+  foydalanuvchi op yaratdi -> qo'lla, serverga yubor -> TASDIQ_KUTISH(op)
+
+TASDIQ_KUTISH(yo'lda):
+  foydalanuvchi op yaratdi -> qo'lla, BUFERGA -> BUFER_BILAN(yo'lda, op)
+  serverdan tasdiq         -> SINXRON
+  serverdan begona op s    -> (yo'lda', s') = transform(yo'lda, s)
+                              s' ni qo'lla; yo'lda = yo'lda'
+
+BUFER_BILAN(yo'lda, bufer):
+  foydalanuvchi op yaratdi -> bufer = compose(bufer, op)
+  serverdan tasdiq         -> buferni yubor -> TASDIQ_KUTISH(bufer)
+  serverdan begona op s    -> ikki marta transform:
+                              (yo'lda', s1) = transform(yo'lda, s)
+                              (bufer', s2)  = transform(bufer, s1)
+                              s2 ni qo'lla
+```
+
+Kalit qoida: **bir paytda serverda faqat bitta tasdiqlanmagan operatsiya**.
+Qolganlari mijozda bitta buferga yig‘iladi. Server tomonida esa mantiq
+oddiy: kelgan operatsiya “v41 asosida” bo‘lsa, uni v42, v43, ... bilan
+ketma-ket transformatsiya qiladi, qo‘llaydi, tarixga yozadi va hammaga
+tarqatadi.
+
+<Calc title="Server qancha transformatsiya qiladi" result="Odatda 0-2 ta; mobil va ko'p hamkorda ~10-30 ta — baribir mikrosekundlar">{`Operatsiya "v41 asosida" keldi, serverda v(41 + k).
+Server k marta transform qiladi (k — mijoz ko'rmagan operatsiyalar soni).
+
+k ni baholash:
+  k ~= (boshqa hamkorlar operatsiyalari tezligi) x (aylanish vaqti)
+  2 kishi, 1 op/s har biri (5-qadamdagi yig'ish bilan), RTT 200 ms:
+    k ~= 1 x 0.2 = 0.2  -> ko'pincha 0
+  10 kishi faol, 1 op/s, mobil RTT 600 ms:
+    k ~= 9 x 0.6 = ~5
+  100 kishi, 1 op/s, RTT 300 ms:  k ~= 99 x 0.3 = ~30
+
+Bitta transform: operatsiya uzunligiga chiziqli, odatda < 10 mikrosekund
+  k = 30 -> ~0.3 ms serverda
+Hujjat boshiga 100 op/s x 0.3 ms = ~3% bitta yadrodan`}</Calc>
+</Step>
+
+<Deep title="Nega faqat bitta operatsiya yo'lda: TP2 dan qochish">
+Nega mijoz ikkinchi operatsiyani birinchisi tasdiqlanmaguncha
+yubormaydi? Chunki aks holda transformatsiya ancha qiyinlashadi.
+
+Serverda yagona tartib bor, va har bir operatsiya server tarixidagi
+**chiziqli** zanjir bo‘yicha transformatsiya qilinadi. Bunda faqat TP1
+xususiyati kerak (3-qadam). Markaziy serversiz, to‘liq taqsimlangan OT
+tizimlarida esa har bir tugun operatsiyalarni turli tartibda oladi, va
+operatsiya turli yo‘llar bo‘ylab transformatsiya qilinadi. U holda
+ikkinchi xususiyat kerak:
+
+```
+TP2: har qanday uchta parallel operatsiya a, b, c uchun
+  c ni "avval a, keyin b'" yo'li bo'ylab transformatsiya qilish
+  == c ni "avval b, keyin a'" yo'li bo'ylab transformatsiya qilish
+```
+
+TP2 ni qanoatlantiradigan transformatsiya funksiyalarini yozish ma’lum
+darajada qiyin bo‘lib chiqdi: 1990-yillarda nashr qilingan bir nechta
+algoritmlar keyinchalik aniq qarshi misollar bilan noto‘g‘ri deb
+ko‘rsatilgan (sohada bu “dOPT jumbog‘i” deb mashhur). Bu OT’ning
+“noto‘g‘ri ekani isbotlangan algoritmlar” degan obro‘sining manbai.
+
+Jupiter yondashuvi TP2 dan butunlay qochadi: server yagona tartibni
+belgilaydi, har bir mijoz faqat server bilan “ikki tomonlama” gaplashadi,
+va “bitta operatsiya yo‘lda” qoidasi mijoz va server holatlari
+o‘rtasidagi farqni doim **ikki chiziqli tarmoq** bilan cheklaydi.
+Natija: faqat TP1 kerak, va TP1 ni qanoatlantirish nisbatan oson
+(amaliyotda buni o‘zingiz yozasiz).
+
+Narxi — **server majburiy**. Ikki mijoz bir-biri bilan to‘g‘ridan-to‘g‘ri
+(serversiz) sinxronlasha olmaydi. Google Docs uchun bu muammo emas —
+hujjat baribir serverda saqlanadi. Lekin serversiz, peer-to-peer
+hamkorlik kerak bo‘lsa, bu yo‘l yopiq, va 7-bo‘limdagi CRDT kerak.
+</Deep>
+
+<Step n={5} title="Operatsiyalarni birlashtirish (compose)" gain="Tez yozishda xabarlar soni aylanish vaqtiga bog'liq, tugmalar soniga emas" cost="Bufer ichidagi o'zgarishlar boshqalarga bir oz kechikib yetadi">
+4-qadamdagi bufer tabiiy ravishda **siqadi**: tasdiq kutilayotganda
+foydalanuvchi 10 ta harf yozsa, ular 10 ta alohida xabar emas, bitta
+birlashtirilgan operatsiya bo‘ladi.
+
+```
+compose([retain(5), insert("s")], [retain(6), insert("a")])
+  = [retain(5), insert("sa")]
+
+compose(a, b): "avval a, keyin b" ga teng bitta operatsiya
+```
+
+<Calc title="Birlashtirish xabarlar sonini qancha kamaytiradi" result="Tez yozuvchi 7 belgi/s: RTT 100 ms da ~5 xabar/s, RTT 500 ms da ~2 xabar/s">{`Faraz: tez yozish, 7 belgi/s
+
+Birlashtirishsiz: 7 xabar/s har yozuvchidan
+
+Bitta operatsiya yo'lda (4-qadam):
+  yangi xabar faqat oldingisi tasdiqlanganda yuboriladi
+  -> xabarlar tezligi <= 1 / RTT
+  RTT 100 ms:  <= 10 xabar/s, lekin belgilar 7/s -> ~5 xabar/s
+               (ba'zi belgilar bitta xabarga tushadi)
+  RTT 500 ms:  <= 2 xabar/s, har birida ~3-4 belgi
+
+Tabiiy moslashuv: sekin tarmoqda xabarlar KAMROQ va KATTAROQ,
+tez tarmoqda — ko'p va kichik. Qo'shimcha "tiqilinch nazorati" kerak emas.`}</Calc>
+
+Bu chiroyli xususiyat: protokol o‘zi tarmoq sifatiga moslashadi.
+Sekin tarmoqda server va hamkorlar kamroq, lekin kattaroq o‘zgarishlarni
+oladi; tez tarmoqda — deyarli har harf alohida. Narxi — sekin
+tarmoqdagi yozuvchining o‘zgarishlari boshqalarga “bo‘laklab” yetadi
+(bir yo‘la 3–4 harf), lekin bu ko‘zga deyarli tashlanmaydi.
+</Step>
+
+<Step n={6} title="Operatsiya identifikatori va qayta ulanish" gain="Ulanish uzilsa ham operatsiya na yo'qoladi, na ikki marta qo'llanadi" cost="Server har mijozning oxirgi ketma-ketlik raqamini eslab qolishi kerak">
+Mobil tarmoqda ulanish uziladi. Mijoz operatsiyani yuborgan, lekin
+tasdiq kelmagan. Server uni oldimi? Qo‘lladimi? Bilib bo‘lmaydi (Spotify
+darsidagi “aynan bir marta” muammosi).
+
+Yechim — har bir operatsiyaga **mijoz tomonida** identifikator:
+`(mijoz_id, ketma-ketlik)`. Server har mijoz uchun oxirgi qo‘llangan
+raqamni saqlaydi.
+
+```
+Qayta ulanish:
+  Mijoz: "Men v41 gacha ko'rganman. Yo'ldagi operatsiyam: (m7, 18)"
+  Server: tarixda (m7, 18) bormi?
+    Bor (v43 sifatida qo'llangan):
+      -> v42..v48 ni yuboradi; v43 ni "sizniki, tasdiq" deb belgilaydi
+    Yo'q:
+      -> v42..v48 ni yuboradi; mijoz yo'ldagi operatsiyani ular
+         bo'yicha transform qilib, QAYTA yuboradi
+```
+
+Bu naqsh darsliklar bo‘ylab qayta-qayta uchraydi: Slack’da `client_msg_id`,
+WhatsApp’da xabar ID, Spotify’da `event_id`. Farqi — bu yerda qayta
+yuborishdan oldin **transformatsiya** ham kerak, chunki uzilish paytida
+boshqalar hujjatni o‘zgartirgan.
+</Step>
+
+<Step n={7} title="Bitta hujjat — bitta 'egasi' jarayon" gain="Hujjat holati xotirada, operatsiya qabul qilish mikrosekundlarda" cost="Hujjatni serverlar o'rtasida ko'chirish, egalikni qat'iy boshqarish">
+2-qadamdagi “server” — aslida minglab serverlar. Bitta hujjatning
+operatsiyalari **bitta joyda** tartiblanishi kerak, aks holda ikki
+server ikki xil “v42” ni tayinlaydi. Shuning uchun har bir ochiq
+hujjat vaqtincha bitta jarayonga (“hujjat egasi”) biriktiriladi:
+
+```
+hujjat_id -> izchil xeshlash -> egasi server
+Egasi:
+  - hujjatni xotirada ushlaydi (joriy matn + so'nggi tarix)
+  - kelgan operatsiyalarni transform qiladi, raqamlaydi
+  - bazaga yozadi (tasdiqdan OLDIN — 11-bo'lim)
+  - hamkorlarga tarqatadi
+Egalik — muddatli ijara (lease): egasi o'lsa, muddat tugagach
+  boshqa server oladi va holatni bazadan tiklaydi
+```
+
+<Calc title="Bitta serverga nechta hujjat sig'adi" result="Bitta server ~100 000-200 000 ochiq hujjat; 20 M hujjatga ~100-200 server — kichik klaster">{`XOTIRA — ochiq hujjat boshiga:
+  Matn ~30 KB (o'rtacha) + so'nggi ~1 000 operatsiya (~100 KB)
+  + ulanishlar va holat ~20 KB  -> ~150 KB
+  64 GB server, 50% foydalanish: 32 GB / 150 KB = ~210 000 hujjat
+
+HISOBLASH:
+  Bitta op: transform + qo'llash + seriyalash + bazaga yozish ~0.3 ms
+  32 yadro -> ~100 000 op/s serverga
+  Ochiq hujjatlarning ~25% i faol, har biri ~1-2 op/s
+  -> 100 000 op/s / (0.25 x 1.5) = ~260 000 ochiq hujjat
+
+Ikkala chegara yaqin: ~100 000-200 000 ochiq hujjat serverga (zaxira bilan)
+
+BUTUN TIZIM:
+  20 M ochiq hujjat / ~150 000 = ~130 server
+  Jami operatsiyalar 5 M/s / 100 000 = 50 server (to'liq yukda)
+  Zaxira va mintaqalar bilan: ~200-300 server`}</Calc>
+
+Bu Slack darsidagi “kanal serveri” va WhatsApp’dagi foydalanuvchi
+ulanish serveriga o‘xshash: **holatli** tugun, xotirada ishlaydi,
+bazaga faqat yozadi. Narxi ham o‘xshash: server qayta ishga tushsa,
+uning barcha hujjatlari boshqa serverlarga ko‘chishi kerak, va
+mijozlar qayta ulanadi (6-qadam).
+</Step>
+
+<Step n={8} title="Suratlar va operatsiyalar jurnali" gain="Katta tarixli hujjat ham ~50 ms da ochiladi" cost="Suratlar uchun qo'shimcha joy; ikki xil ma'lumotni izchil ushlash">
+Hujjatning haqiqiy manbasi — operatsiyalar jurnali (1.3: tarix matndan
+~50 barobar katta). Lekin hujjatni ochish uchun butun jurnalni boshidan
+qayta qo‘llash — sekin. Yechim: vaqti-vaqti bilan **surat** (snapshot)
+— “v12 000 dagi to‘liq matn” — saqlash.
+
+<Calc title="Hujjatni ochish: jurnalni qayta qo'llash va surat" result="Suratsiz ~20 s, har 1 000 operatsiyada surat bilan ~20 ms — ~1 000x tez">{`Hujjat: 30 KB, tarixda 40 000 operatsiya (1.3)
+Bitta operatsiyani qo'llash: matn uzunligiga chiziqli
+  30 KB matnda ~15 KB o'rtacha nusxalash -> ~0.5 mikrosekund/KB -> ~10 mks
+  (oddiy satr; maxsus tuzilma — daraxt yoki "arqon" — bilan tezroq)
+
+SURATSIZ:
+  Uzoq yillik hujjat, 2 M operatsiya: 2e6 x 10 mks = 20 s
+
+SURAT HAR 1 000 OPERATSIYADA:
+  Eng yaqin suratni o'qish (30 KB) + <= 1 000 op x 10 mks = ~10 ms
+  + bazadan o'qish ~10 ms  -> ~20 ms
+
+Saqlash narxi:
+  Har 1 000 op ~40 KB jurnal, surat ~30 KB -> ~75% qo'shimcha
+  Eski suratlarni siyraklashtirish (masalan, faqat har kuni bittasi)
+  -> qo'shimcha ~5-10% ga tushadi`}</Calc>
+
+Bu Kafka va ma’lumotlar bazalaridagi “jurnal + nazorat nuqtasi”
+(checkpoint) naqshi. Muhimi: **surat — kesh, jurnal — haqiqat**. Surat
+buzilsa yoki yo‘qolsa, uni jurnaldan qayta qurish mumkin; teskarisi
+yo‘q. Shuning uchun suratni yozish xatosi hujjatni buzmaydi, faqat
+sekinlashtiradi.
+</Step>
+
+<Step n={9} title="Boy matn: atributlar ham operatsiya" gain="Formatlash ham bir vaqtda, ziddiyatsiz" cost="Transformatsiya qoidalari ko'payadi; jadval va ro'yxatlar ancha murakkab">
+Qalin, kursiv, sarlavha uslubi — belgilar oralig‘iga qo‘yiladigan
+**atributlar**. 2.1-dagi yozuvda ular `retain(n, {bold: true})` sifatida
+ifodalanadi, va transformatsiya ularni ham siljitadi.
+
+| Parallel holat | Natija | Qoida |
+| --- | --- | --- |
+| Ali so‘zni qalin qiladi, Vali o‘sha so‘zga harf qo‘shadi | Qo‘shilgan harf ham qalin (agar ichida bo‘lsa) | Oraliq qo‘shish bilan kengayadi |
+| Ali qalin qiladi, Vali kursiv qiladi | Ikkalasi ham qo‘llanadi | Turli atributlar mustaqil |
+| Ali rangni qizil, Vali ko‘k qiladi | Server tartibida keyingisi | Bir atribut — oxirgi yozuvchi yutadi |
+| Ali qalin qiladi, Vali so‘zni o‘chiradi | So‘z o‘chadi | O‘chirilgan belgining atributi ahamiyatsiz |
+
+Uchinchi qator muhim: bu yerda “oxirgi yozuvchi yutadi” **to‘g‘ri**
+javob, chunki ikki niyatni birlashtirish mumkin emas (so‘z ham qizil,
+ham ko‘k bo‘la olmaydi). Asosiysi — natija **deterministik**: server
+tartibi hamma uchun bir xil, demak hamma bir xil rangni ko‘radi.
+
+Jadvallar, ro‘yxatlar va rasmlar esa matnga “maxsus belgilar” sifatida
+kiritiladi (jadval boshi, katak chegarasi, ...) va shu mexanizm bilan
+ishlaydi — lekin ularning **tuzilmaviy** qoidalari bor (katakni
+o‘chirib, jadvalni buzib bo‘lmaydi). Amalda aynan shu tuzilmaviy
+qoidalar OT kodining eng katta va eng nozik qismini tashkil qiladi.
+</Step>
+
+<Step n={10} title="Kursorlar va 'kim bor' — alohida kanal" gain="Hamkorlarning kursori jonli, lekin hujjat tarixini to'ldirmaydi" cost="Yana bir oqim; ko'p hamkorda kvadratik o'sish">
+Hamkorning kursori — hujjatdagi pozitsiya, va u ham operatsiyalar bilan
+**siljishi** kerak: Vali 10-pozitsiyada, Ali 5-pozitsiyaga 3 harf
+qo‘shdi — Valining kursori 13 ga o‘tadi. Buning uchun 3-qadamdagi
+transformatsiyaning soddalashtirilgan versiyasi yetarli.
+
+Lekin kursorlar **hujjatning bir qismi emas**: ular saqlanmaydi, tarixga
+yozilmaydi, revision olmaydi. Ular alohida, “uchuvchan” (ephemeral)
+kanal orqali yuboriladi — yo‘qolsa, keyingisi baribir keladi.
+
+<Calc title="100 kishilik hujjatda kursor xabarlari" result="Naiv: ~50 000 xabar/s bitta hujjatga; yig'ib yuborish bilan ~1 000 — 50x kam">{`Faraz: 100 hamkor, har biri kursorini ~5 marta/s siljitadi
+
+NAIV (har siljish har bir hamkorga alohida):
+  100 x 5 x 99 = ~49 500 xabar/s — faqat bitta hujjatga
+
+YIG'IB YUBORISH (server har qabul qiluvchiga har 100 ms da
+bitta xabarda barcha o'zgargan kursorlarni yuboradi):
+  100 qabul qiluvchi x 10 xabar/s = 1 000 xabar/s
+  har birida <= 99 kursor x ~20 bayt = <= 2 KB
+
+Qo'shimcha: kursorni faqat ko'rinadigan qismdagi hamkorlarga
+  yoki ~10 ta eng yaqin hamkorga to'liq tezlikda yuborish.`}</Calc>
+
+Bu Twitter darsidagi fan-out muammosining kichik, lekin **kvadratik**
+ko‘rinishi: N hamkor, har biri N−1 ga. Kichik N da sezilmaydi, 100 da
+esa hujjat operatsiyalaridan ko‘p trafik. Google Docs bitta hujjatdagi
+bir vaqtdagi foydalanuvchilarni ~100 bilan cheklashining sabablaridan
+biri shu (14-bo‘lim).
+</Step>
+
+<Step n={11} title="Izohlar matn bilan birga siljiydi" gain="Izoh har doim o'zi tegishli so'z yonida" cost="Ankerlar ham transformatsiya qilinadi; o'chirilgan matnga izoh"> 
+Izoh — matn oralig‘iga bog‘langan: “12–27 pozitsiyalar uchun: ‘bu
+raqam manbasi?’”. Matn o‘zgarsa, oraliq ham siljishi kerak — kursor
+kabi, lekin ikkita chegara bilan va **doimiy** saqlanadi.
+
+Ikki yondashuv bor. Birinchisi — ankerlarni alohida saqlab, har
+operatsiyada transformatsiya qilish (kursorlar kabi). Ikkinchisi —
+ankerlarni hujjatning o‘ziga **ko‘rinmas belgilar** sifatida kiritish:
+“izoh#77 boshi” va “izoh#77 oxiri”. Ikkinchisida transformatsiya bepul
+— ular oddiy belgilar kabi siljiydi.
+
+Qiziq chekka holat: izohlangan matn butunlay o‘chirildi. Izoh yo‘qolmasligi
+kerak (unda muhokama bor), lekin langari yo‘q. Odatiy yechim —
+izohni “asl matn o‘chirilgan” belgisi bilan yon panelda qoldirish va
+o‘chirilgan matnni izoh ichida ko‘rsatish.
+</Step>
+
+<Step n={12} title="Bekor qilish — faqat o'z o'zgarishlaringni" gain="Ctrl+Z hamkorning ishini o'chirmaydi" cost="Bekor qilish operatsiyasi ham transformatsiya qilinadi">
+Bitta muharrirda “bekor qilish” oddiy: oxirgi operatsiyaning teskarisini
+qo‘llash. Hamkorlikda esa savol: **kimning** oxirgi operatsiyasi? Agar
+Ali Ctrl+Z bossa va bu Valining so‘nggi yozganini o‘chirsa — bu xato.
+
+Qoida: har kim **faqat o‘z** operatsiyalarini bekor qiladi. Lekin Alining
+oxirgi operatsiyasidan keyin Vali ham yozgan bo‘lishi mumkin, demak
+teskari operatsiya ham keyingi operatsiyalar bo‘yicha siljishi kerak:
+
+```
+Ali:  ins(10, "salom")          (v50)
+Vali: ins(0, ">> ")             (v51)
+Ali Ctrl+Z:
+  teskari = del(10, 5)          (v50 holatiga nisbatan)
+  transform(teskari, Valining v51) -> del(13, 5)
+  qo'llash -> "salom" o'chdi, Valining ">> " qoldi
+```
+
+Muharrir bekor qilish stekida operatsiyalarning teskarisini saqlaydi
+va har bir **begona** operatsiya kelganda stekdagi hamma narsani u
+bo‘yicha transformatsiya qiladi. Bu 3-qadamdagi funksiyaning yana bir
+ishlatilishi — lekin to‘g‘ri bajarish nozik (quyidagi Deep).
+</Step>
+
+<Deep title="Bekor qilishning chekka holatlari">
+Hamkorlikdagi bekor qilish ikki nozik muammoga ega, va ikkalasi ham
+foydalanuvchi uchun “sehrli” ko‘rinishi kerak.
+
+**Birinchi: bekor qilinadigan narsa allaqachon yo‘q.** Ali “salom”
+yozdi, Vali o‘sha paragrafni butunlay o‘chirdi, keyin Ali Ctrl+Z bosdi.
+Teskari operatsiya — `del("salom")` — lekin “salom” allaqachon o‘chgan.
+Transformatsiya buni to‘g‘ri hal qiladi: o‘chirilgan belgilarni qayta
+o‘chirish **hech narsa** qilmaydi (3-qadamdagi del/del qoidasi —
+umumiy qism bir marta o‘chiriladi). Natija: Ctrl+Z hech narsa
+o‘zgartirmaydi — va bu to‘g‘ri.
+
+**Ikkinchi: bekor qilishni bekor qilish (qayta bajarish).** Ali Ctrl+Z
+bosdi (salom o‘chdi), keyin Ctrl+Y. Qayta bajarish = teskarining teskarisi
+= `ins("salom")`. Oraliqda Vali o‘sha joyga yozgan bo‘lsa, “salom”
+qayerga tushadi? Transformatsiya uni izchil joyga qo‘yadi, lekin
+foydalanuvchi kutgan joy bo‘lmasligi mumkin.
+
+Amaliy tizimlar bu muammolarni **guruhlash** bilan yumshatadi: bitta
+Ctrl+Z bitta harfni emas, “bir tahrir sessiyasi”ni (bir necha soniya
+yoki bir so‘z) bekor qiladi, va stek sezilarli begona o‘zgarishdan keyin
+tozalanishi mumkin. Akademik adabiyotda “tanlab bekor qilish” (selective
+undo) alohida yo‘nalish — u ixtiyoriy eski operatsiyani (faqat oxirgisini
+emas) bekor qilishga harakat qiladi va TP2 ga o‘xshash qo‘shimcha
+xususiyatlar talab qiladi.
+
+Umumiy dars: **operatsiya tarixi saqlansa, bekor qilish yangi operatsiya**
+bo‘ladi, tarixni o‘chirish emas. Tarix doim oldinga o‘sadi — 14-qadamdagi
+versiyani tiklash ham xuddi shunday.
+</Deep>
+
+<Step n={13} title="Oflayn tahrirlash — uzun bufer" gain="Samolyotda ham yozish, keyin avtomatik birlashtirish" cost="Uzoq ajralishdan keyin natija foydalanuvchi kutganidan farq qilishi mumkin">
+Oflayn rejim — 4-qadamdagi holat mashinasining **uzaytirilgan**
+ko‘rinishi. Ulanish yo‘q, demak tasdiq kelmaydi, va barcha lokal
+o‘zgarishlar buferda yig‘iladi (brauzer xotirasida, doimiy — sahifa
+yopilsa ham). Qayta ulanishda — 6-qadamdagi protokol.
+
+<Calc title="2 soatlik oflayn ishdan keyin qayta ulanish" result="~22 000 serverdagi operatsiya bo'yicha transformatsiya — ~0.2 s. Texnik jihatdan oson">{`Ali 2 soat oflayn yozdi. Shu vaqtda 3 hamkor onlayn ishladi.
+Serverda yangi operatsiyalar: 3 x ~1 op/s x 7 200 s = ~21 600
+
+Alining buferi: 2 soatlik ish, compose qilingan -> BITTA operatsiya
+  (5-qadam: bufer doim bitta operatsiyaga siqiladi)
+
+Qayta ulanish:
+  1. Server v(n) dan keyingi 21 600 operatsiyani yuboradi
+     (yoki ularni bitta compose qilingan operatsiyaga siqib: tezroq)
+  2. Mijoz buferni ular bo'yicha transform qiladi:
+     21 600 x ~10 mks = ~0.2 s   (siqilgan bo'lsa — millisekundlar)
+  3. Transform qilingan bufer serverga yuboriladi
+
+Trafik: 21 600 x 100 B = ~2 MB (yoki joriy surat + bitta op)`}</Calc>
+
+Texnik tomoni oson; qiyin tomoni — **ma’no**. Ikki soat davomida Vali
+Ali tahrirlagan bo‘limni butunlay qayta yozgan yoki o‘chirgan bo‘lishi
+mumkin. Transformatsiya deterministik va yaqinlashadi, lekin natija
+“Alining jumlalari endi boshqa paragraf o‘rtasida” bo‘lishi mumkin.
+Onlayn ishda bunday holat sezilmaydi (millisekundlik oynalar), oflaynda
+esa soatlik oyna — va birlashtirish tushunarsiz ko‘rinadi.
+
+Shuning uchun uzoq oflayn ishdan keyin tizimlar ko‘pincha qo‘shimcha
+signal beradi: “oflayn paytdagi o‘zgarishlaringiz birlashtirildi” va
+versiyalar tarixida alohida belgi (14-qadam), foydalanuvchi natijani
+tekshirishi uchun.
+</Step>
+
+<Step n={14} title="Versiyalar tarixi — jurnaldan guruhlangan" gain="Istalgan o'tgan holat, kim nimani yozgani — rang bilan" cost="Guruhlash va farqlarni hisoblash; tiklash ham yangi operatsiya">
+Operatsiyalar jurnali (8-qadam) allaqachon to‘liq tarix. Lekin 40 000
+ta bir harfli operatsiya foydalanuvchi uchun foydasiz. “Versiyalar
+tarixi” ularni **guruhlaydi**: bir muallifning ketma-ket, bir necha
+daqiqa ichidagi operatsiyalari — bitta versiya.
+
+```
+Jurnal (v1..v40 000) -> guruhlash:
+  "Ali, 14:02-14:19"   v1..v3 200
+  "Vali, 14:15-14:40"  v3 201..v7 900   (Ali bilan parallel, lekin alohida)
+  ...
+Versiya ko'rsatish: eng yaqin surat + operatsiyalar -> matn
+Farq ko'rsatish: guruh operatsiyalarining o'zi = nima qo'shildi/o'chdi (rang bilan)
+```
+
+**Versiyani tiklash** tarixni o‘chirmaydi. U “joriy matndan eski
+matnga” olib boradigan **yangi** operatsiyani hisoblaydi (farq) va uni
+oddiy operatsiya sifatida qo‘llaydi. Shunda tiklashning o‘zi ham tarixda
+qoladi va bekor qilinishi mumkin — va hamkorlar uni oddiy tahrir kabi
+oladi (ularning ochiq sessiyalari buzilmaydi).
+
+Nomlangan versiyalar (“Mijozga yuborilgan variant”) — shunchaki
+revision raqamiga yorliq; ular hech qachon siqilmaydi.
+</Step>
+
+<Check q="O'n to'rt qadamdan qaysi biri qolganlarining hammasi tayanadigan 'poydevor', va nega?">
+**2-qadam — server yagona tartibni belgilaydi** (revision raqamlari).
+
+3-qadamdagi transformatsiya faqat TP1 ni talab qiladi, chunki tartib
+chiziqli (4-qadam Deep). 4-qadamdagi holat mashinasi “server v42 da”
+degan tushunchaga tayanadi. 6-qadamdagi qayta ulanish “v41 dan
+keyingilarini yubor” deydi. 8-qadamdagi suratlar “v12 000 dagi matn”.
+12-qadamdagi bekor qilish “v50 dan keyingi begona operatsiyalar”.
+14-qadamdagi tarix — revision oraliqlari.
+
+Revision raqami — hujjat hayotining **yagona vaqt o‘qi**. Usiz har bir
+qadam “qaysi holatga nisbatan?” savoliga javob topa olmaydi.
+
+Bu tanlov bitta narxga ega: **har bir hujjatda markaziy hakam** bor
+(7-qadam), va u ishlamasa, hujjatni tahrirlab bo‘lmaydi (faqat lokal
+buferga yozish). CRDT (7-bo‘lim) aynan shu narxdan qochadi — tartibni
+markazsiz, matematik tuzilma orqali ta’minlaydi — va buning evaziga
+boshqa narx to‘laydi.
+</Check>
+
+## 6. OT ichkarisidan
+
+5-bo‘limda transformatsiyani oddiy `ins`/`del` juftliklari bilan ko‘rdik.
+Haqiqiy tizim 2.1-dagi **komponentli** operatsiyalar bilan ishlaydi
+(retain, insert, delete ro‘yxati). Bu bo‘lim — ular ustida transformatsiya
+va server algoritmi qanday yozilishi, va nega to‘g‘ri yozish qiyin.
+
+### 6.1 Komponentli transformatsiya: ikki ko‘rsatkich bilan yurish
+
+Ikki operatsiya bir xil hujjatga nisbatan: har biri hujjatning har bir
+belgisini “ko‘radi” (retain yoki delete orqali), va o‘z qo‘shimchalarini
+(insert) qo‘shadi. Transformatsiya ikkalasini **bir vaqtda** chapdan
+o‘ngga yuradi:
+
+```python
+def transform(a, b):            # a, b — bir xil hujjatga nisbatan
+    a2, b2 = [], []             # natija: a' va b'
+    i, j = iter(a), iter(b)
+    x, y = next(i), next(j)
+    while x or y:
+        if is_insert(x):        # a qo'shadi: b' bu belgilarni "o'tkazib" yuborsin
+            a2.append(x); b2.append(retain(len(x))); x = next(i); continue
+        if is_insert(y):        # b qo'shadi: a' o'tkazib yuborsin
+            a2.append(retain(len(y))); b2.append(y); y = next(j); continue
+        n = min(length(x), length(y))       # ikkalasi ham asl belgilarga tegadi
+        if retain(x) and retain(y):   a2.append(retain(n)); b2.append(retain(n))
+        elif delete(x) and retain(y): a2.append(delete(n))  # b' da bu belgilar yo'q
+        elif retain(x) and delete(y): b2.append(delete(n))
+        # ikkalasi ham o'chirgan: hech biriga hech narsa (bir marta o'chdi)
+        x, y = consume(x, n), consume(y, n)
+    return a2, b2
+```
+
+To‘rt satrdagi qoidalar butun transformatsiya: **qo‘shish** boshqasiga
+“o‘tkazib yubor” bo‘lib o‘tadi, **ikkalasi o‘chirgan** belgi hech kimda
+qayta o‘chirilmaydi, qolgani — bir-biriga surish. Birinchi ikki `if`
+ning **tartibi** esa bog‘lash qoidasi (tie-break): ikkalasi bir joyga
+qo‘shsa, `a` niki oldinga tushadi. Serverda `a` odatda allaqachon
+qabul qilingan (tarixdagi) operatsiya — shunda qoida “server tartibi
+yutadi” bo‘ladi va hamma joyda bir xil.
+
+<Calc title="Transformatsiya narxi" result="O(|a| + |b|) komponent — odatiy operatsiyada 3-5 komponent, bir necha mikrosekund">{`Komponentli operatsiya odatda: [retain(p), insert/delete, retain(rest)]
+  -> 3 komponent, hujjat uzunligidan qat'i nazar
+
+transform(a, b): har komponent bir marta ko'riladi -> ~6-10 qadam
+compose(a, b): xuddi shunday chiziqli
+
+Hujjat uzunligi faqat retain SONIDA (bitta butun son), ro'yxat
+uzunligida emas: 1 MB hujjatdagi bitta harf ham 3 komponent.
+
+Narx: ~1-5 mikrosekund (JavaScript/Python da biroz ko'proq)
+Server k = 30 ta transform (5-bo'lim, 4-qadam): ~0.1 ms`}</Calc>
+
+### 6.2 Server algoritmi
+
+<Flow nodes={["Mijoz: op (asos = v41)", "Egasi: tarixdan v42..v45", "Ketma-ket transform", "Qo'llash -> v46", "Jurnalga yozish", "Muallifga tasdiq", "Boshqalarga op'"]} caption="Server bitta operatsiyani qabul qilishi: tartib qat'iy — avval yozish, keyin tasdiq va tarqatish" />
+
+```python
+def receive(doc, client_id, seq, base_rev, op):
+    if doc.applied_seq.get(client_id, -1) >= seq:     # qayta yuborilgan (5-bo'lim, 6-qadam)
+        return ack_again(client_id, seq)
+    for past in doc.history[base_rev:]:                # mijoz ko'rmaganlar
+        _, op = transform(past, op)                    # tarixdagi op birinchi: bog'lashda u oldinda
+    validate(op, len(doc.text))                         # uzunliklar mos kelishi kerak
+    doc.text = apply(doc.text, op)
+    doc.history.append(Entry(op, client_id, seq))
+    journal.append(doc.id, len(doc.history), op)        # bardoshli yozuv — TASDIQDAN OLDIN
+    doc.applied_seq[client_id] = seq
+    send(client_id, Ack(rev=len(doc.history)))
+    broadcast(doc, exclude=client_id, msg=Op(rev=len(doc.history), op=op))
+```
+
+Uchta nozik joy bor. Birinchisi — `history[base_rev:]` da **faqat
+begona** operatsiyalar bor. Nega? Mijoz yangi operatsiyani faqat
+oldingisi tasdiqlangandan keyin yuboradi (4-qadam), va tasdiq v41
+bo‘lsa, ulanish tartibli (FIFO) bo‘lgani uchun mijoz v41 gacha bo‘lgan
+barcha begona operatsiyalarni ham allaqachon olgan. Demak yangi
+operatsiya “v41 asosida”, va v42 dan keyingilar — mijoz ko‘rmagan
+begona operatsiyalar. Bu “bitta yo‘lda” qoidasining yana bir foydasi.
+
+Ikkinchisi — `validate`: mijoz yuborgan operatsiya transformatsiyadan
+keyin joriy hujjat uzunligiga mos kelishi kerak. Mos kelmasa — mijozda
+xato (yoki zararli mijoz, 12-bo‘lim), va operatsiya rad etiladi; mijoz
+hujjatni qayta yuklaydi.
+
+Uchinchisi — **tartib**: jurnalga yozish tasdiq va tarqatishdan **oldin**.
+Aks holda server tasdiqlab, keyin qulasa, mijoz “saqlandi” deb o‘ylaydi,
+lekin operatsiya yo‘q (11-bo‘lim).
+
+### 6.3 To‘g‘rilikni qanday bilamiz
+
+OT kodidagi xato — eng yomon turdagi xato: u **jimgina** nusxalarni
+ajratadi. Foydalanuvchi o‘zida bir matn ko‘radi, hamkori boshqasini,
+va hech kim buni darhol sezmaydi.
+
+<Callout type="xato" title="OT xatosi test paytida deyarli ko'rinmaydi">
+Qo‘lda yozilgan testlar odatda aniq holatlarni tekshiradi: “ikki qo‘shish
+bir joyda”, “qo‘shish o‘chirish ichida”. Haqiqiy xatolar esa holatlar
+**kesishganda** chiqadi. Amaliyotdagi mutatsiya tajribasi: transformatsiyaga
+“qo‘shish faqat bir harfdan uzun o‘chirish bilan uchrashganda noto‘g‘ri
+tartiblanadi” degan kichik xato kiritilsa, u 9 ta aniq testning
+**hammasidan** o‘tadi — lekin tasodifiy TP1 testi 20 000 juftlikdan
+~2 500 tasida, simulyator esa deyarli har bir stsenariyda uni ushlaydi.
+Yagona ishonchli usul — **tasodifiy (fuzz) testlar**: millionlab
+tasodifiy operatsiya juftligi va ketma-ketliklari, har birida TP1 va
+yaqinlashish tekshiriladi.
+</Callout>
+
+Ishlab chiqarishda esa ikkinchi himoya qatlami bor: **nazorat yig‘indisi**.
+Server har N revision’da hujjat matnining xeshini operatsiya bilan
+birga yuboradi; mijoz o‘zidagi matn xeshini hisoblab solishtiradi.
+Farq bo‘lsa — ajralish aniqlandi: mijoz hujjatni serverdan qayta
+yuklaydi, va hodisa xato sifatida qayd qilinadi (15-bo‘lim).
+
+<Calc title="Nazorat yig'indisi narxi" result="Har 50 revisionda xesh — mijoz CPU sining ~0.1% i, ajralish ~1 daqiqa ichida aniqlanadi">{`Hujjat 30 KB, xesh (masalan, 64-bitli tez xesh): ~5 mikrosekund
+Har revisionda: 100 op/s x 5 mks = 0.5 ms/s -> 0.05% CPU (100 hamkorda)
+Har 50 revisionda: ~0.001%
+
+Katta hujjat (1 MB): xesh ~150 mks
+  har 50 revisionda, 1 op/s -> 3 mks/s — sezilmaydi
+
+Aniqlash vaqti: 50 revision / (1-2 op/s) = 25-50 s
+Qo'shimcha trafik: 8 bayt har 50 xabarda — nol`}</Calc>
+
+<Deep title="Google Wave va 2010-yilgi yangi muharrir">
+Google’ning OT tajribasi **Google Wave** (2009) loyihasidan kelgan:
+xat, chat va hujjatni birlashtirishga uringan mahsulot. Wave jamoasi
+Jupiter g‘oyasini (5-bo‘lim, 4-qadam) XML-ga o‘xshash boy hujjat
+modeliga qo‘llagan va protokolini ochiq e’lon qilgan. Mahsulot sifatida
+Wave 2010-yilda to‘xtatilgan, lekin uning OT yondashuvi yashab qolgan.
+
+2010-yilda Google Docs yangi muharririni chiqardi, va rasmiy blog
+turkumida uning asosiy g‘oyalari tasvirlangan: hujjat — operatsiyalar
+ketma-ketligi, har bir tahrir operatsiya sifatida serverga yuboriladi,
+server ularni transformatsiya qilib tartiblaydi, va hamkorlar
+o‘zgarishlarni **harfma-harf** ko‘radi. Bu Writely davridagi (2006)
+“har necha soniyada saqlash” modelidan (3-bo‘lim) tub o‘tish edi.
+
+Muharrirning ikkinchi muhim qarori — **o‘z maket (layout) dvigateli**.
+Brauzerning tayyor tahrirlash elementi (contenteditable) ishlatilmagan:
+matnni sahifalarga bo‘lish, jadvallar, kursorni aniq joylashtirish
+o‘z kodi bilan qilingan. Sababi — model va ko‘rinishni to‘liq nazorat
+qilish: OT hujjat modeli ustida ishlaydi, va brauzer DOM’i o‘zgarishlarni
+o‘z bilganicha qilsa (masalan, avtomatik tuzatish), model bilan ko‘rinish
+ajraladi. 2021-yilda Google Docs sahifani chizishni HTML’dan **canvas**
+asosidagi chizishga o‘tkazishini e’lon qilgan — xuddi shu yo‘nalishdagi
+keyingi qadam.
+
+Umumiy dars: **hamkorlik uchun model birinchi, ko‘rinish ikkinchi**.
+Operatsiyalar faqat bitta, aniq belgilangan modelga qo‘llansa ishonchli;
+ko‘rinish — shu modelning chizmasi, xolos.
+</Deep>
+
+<Check q="Nega transformatsiyada ikki qo'shish bir joyga tushganda 'kim oldin' qoidasi qat'iy va hamma joyda bir xil bo'lishi shart?">
+Chunki bu yerda **to‘g‘ri javob yo‘q** — “ab” ham, “ba” ham ikkala
+niyatni saqlaydi. Muhimi faqat hamma **bir xil** tanlashi.
+
+Tasavvur qiling: serverda qoida “server tarixidagi operatsiya oldin”,
+mijozda esa “mening operatsiyam oldin”. Ali “a”, Vali “b” ni bir joyga
+qo‘shdi. Server “a” ni birinchi qabul qildi. Server nusxasi: “ab”
+(a oldin). Valining mijozi Alining “a” sini olganda o‘z qoidasi bilan
+“b” ni oldinga qo‘yadi: “ba”. Nusxalar ajraldi — va hech qanday keyingi
+operatsiya ularni birlashtirmaydi.
+
+Shuning uchun bog‘lash qoidasi protokolning bir qismi: odatda “server
+allaqachon qabul qilgan operatsiya oldin”. Mijoz buni biladi: server
+yuborgan har bir begona operatsiya, mijozning yo‘ldagi operatsiyasidan
+**oldin** tartiblangan (aks holda server uni mijoz operatsiyasidan keyin
+qo‘llagan va tasdiq birinchi kelgan bo‘lardi). Shunday qilib, ikkala
+tomonda ham bir xil tartib — va bir xil natija.
+
+Umumiy dars: taqsimlangan tizimda **deterministik tanlov** “to‘g‘ri
+tanlov”dan muhimroq. Bu Slack darsidagi bir xil vaqt tamg‘ali xabarlar
+va Spotify’dagi “oxirgisi yutadi” Connect holati bilan bir xil g‘oya.
+</Check>
+
+## 7. CRDT: pozitsiya o‘rniga abadiy identifikator
+
+OT muammoni “pozitsiyalarni har safar qayta hisoblash” bilan hal qiladi.
+CRDT (Conflict-free Replicated Data Type — ziddiyatsiz takrorlanuvchi
+ma’lumot turi) boshqa yo‘ldan boradi: **pozitsiyadan umuman voz kechadi**.
+2.2-dagi muammoning ildizi — “2-pozitsiya” nisbiy manzil ekani edi.
+Agar har bir belgi abadiy, o‘zgarmas **nomga** ega bo‘lsa-chi?
+
+### 7.1 G‘oya: har belgi — ID, qo‘shish — “kimdan keyin”
+
+```
+Har belgi: (id, belgi, o'chirilganmi)
+  id = (mijoz, hisoblagich) — butun dunyoda noyob, hech qachon o'zgarmaydi
+
+"abc" = [(A1,'a'), (A2,'b'), (A3,'c')]
+
+Operatsiyalar pozitsiyasiz:
+  ins(keyin=A1, yangi=(B1,'X'))    "A1 dan keyin X qo'sh"
+  del(A3)                           "A3 ni o'chirilgan deb belgila"
+
+2.2 misoli CRDT bilan:
+  Ali:  ins(keyin=A1, (L1,'X'))     Vali: del(A3)
+  Istalgan tartibda qo'llansa:
+    [(A1,'a'), (L1,'X'), (A2,'b'), (A3,'c', o'chirilgan)]  -> "aXb"
+  Tartib ahamiyatsiz — operatsiyalar KOMMUTATIV.
+```
+
+Kalit — “A3 ni o‘chir” har doim aynan “c” ni o‘chiradi, oldiga nima
+qo‘shilganidan qat’i nazar. Transformatsiya kerak emas, chunki manzil
+siljimaydi. Va eng muhimi: **server kerak emas**. Operatsiyalar istalgan
+tartibda, istalgan yo‘l bilan (peer-to-peer, USB fleshka orqali, bir
+oydan keyin) kelishi mumkin — bir xil to‘plamni olgan barcha nusxalar
+bir xil natijaga keladi. Matematik kafolat: holatlar **yarim panjara**
+(semilattice) hosil qiladi va birlashtirish kommutativ, assotsiativ va
+idempotent.
+
+Ikki nozik joy bor. Birinchisi — **bir joyga parallel qo‘shish**: Ali va
+Vali ikkalasi “A1 dan keyin” qo‘shdi. Qaysi oldin? Deterministik qoida
+kerak (masalan, ID lar taqqoslanadi) — 6-bo‘limdagi Check’ning CRDT
+versiyasi. Ikkinchisi — **o‘chirilgan belgilar yo‘qolmaydi**: ular
+“qabr toshi” (tombstone) sifatida qoladi, chunki boshqa mijoz hali
+“A3 dan keyin qo‘sh” operatsiyasini yuborishi mumkin, va A3 topilishi
+kerak.
+
+### 7.2 Narxi: metama’lumot va qabr toshlari
+
+<Calc title="CRDT hujjatining xotira narxi" result="Naiv: matndan ~100-150x katta. Ketma-ketliklarni birlashtirish bilan: ~2-5x">{`Hujjat: 30 KB matn, tarixda 40 000 operatsiya (1.3)
+  ~30 000 tirik belgi + ~10 000 o'chirilgan (qabr toshi)
+
+NAIV (har belgi alohida ob'ekt):
+  id (mijoz 8 B + hisoblagich 8 B)     16 B
+  "kimdan keyin" id                     16 B
+  belgi (UTF-16)                         2 B
+  o'chirilgan bayrog'i, ko'rsatkichlar  ~16-30 B
+  ob'ekt sarlavhasi (JS/Java)           ~16-30 B
+  -> ~70-100 B har belgiga
+  40 000 x ~100 B = ~4 MB  (matn: 30 KB -> ~130x)
+
+KETMA-KETLIKLARNI BIRLASHTIRISH (Yjs kabi kutubxonalar):
+  Bir mijozning ketma-ket yozgan belgilari -> BITTA yozuv:
+    (id=(A, 100), uzunlik=57, matn="...57 belgi...")
+  Odatiy yozishda ~10-50 belgi bitta yozuvga tushadi
+  -> ~1 000-4 000 yozuv x ~60 B + matn 30 KB = ~100-270 KB (~3-9x)
+  Qabr toshlari ham birlashadi (o'chirilgan oraliq = bitta yozuv)
+
+OT bilan solishtiring: xotirada faqat matn (30 KB) + qisqa tarix`}</Calc>
+
+Hisob CRDT’ning asosiy narxini ko‘rsatadi: **har bir belgi o‘z tarixini
+olib yuradi**. Dastlabki CRDT algoritmlari (2006–2011: WOOT, Logoot, RGA)
+matndan yuz barobar katta tuzilmalar yaratgan, va bu ularni katta
+hujjatlar uchun amaliy emas deb hisoblashga sabab bo‘lgan. Keyingi
+o‘n yillikdagi muhandislik (ketma-ketliklarni birlashtirish, ixcham
+kodlash) bu nisbatni bir necha barobarga tushirdi — va CRDT amaliy
+bo‘ldi.
+
+Qabr toshlarini tozalash esa qiyin muammo bo‘lib qoladi: o‘chirilgan
+belgini haqiqatan olib tashlash uchun **barcha** nusxalar uni ko‘rgan
+bo‘lishi kerak (aks holda kimdir “A3 dan keyin” yuboradi va A3 topilmaydi).
+Markaziy serversiz “hamma ko‘rdi” ni bilish — o‘z-o‘zidan taqsimlangan
+kelishuv muammosi.
+
+<Deep title="Aralashib ketish anomaliyasi">
+CRDT’ning yaqinlashishi matematik kafolatlangan — lekin yaqinlashish
+**niyat saqlanishi** degani emas (2.3). 2019-yilda Kleppmann va
+hamkasblari bir nechta mashhur matn CRDT algoritmlarida quyidagi
+muammoni ko‘rsatishgan:
+
+```
+Boshlang'ich: "Salom !"      (probeldan keyin bo'sh joy)
+Ali (oflayn):  bo'sh joyga "Ali"  yozadi   -> "Salom Ali!"
+Vali (oflayn): bo'sh joyga "Vali" yozadi   -> "Salom Vali!"
+
+Kutilgan birlashma:  "Salom AliVali!"  yoki  "Salom ValiAli!"
+Ba'zi algoritmlarda: "Salom AVlaiil!"   <- harflar aralashgan
+```
+
+Sabab: ba’zi algoritmlar (masalan, pozitsiyani kasr son bilan ifodalovchi
+Logoot va LSEQ) har bir belgi uchun “ikki qo‘shni orasidagi” manzilni
+mustaqil tanlaydi, va ikki mijozning manzillari tasodifan aralashadi.
+Natija yaqinlashgan (hamma bir xil ko‘radi), lekin ma’nosiz.
+
+RGA tipidagi algoritmlar (“kimdan keyin” — 7.1-dagi kabi) bu muammoning
+oldinga yozish qismidan xoli: Alining har keyingi harfi o‘zining oldingi
+harfidan keyin, shuning uchun “Ali” bir butun bo‘lib qoladi. Lekin
+teskari yo‘nalishda yozishda (kursorni chapga siljitib) o‘xshash muammo
+qolgan. 2023-yilda Weidner va Kleppmann **Fugue** algoritmini taklif
+qilishgan — u aralashishni ikki yo‘nalishda ham minimallashtiradi.
+
+OT’da bu muammo amalda kamroq ko‘rinadi, chunki (1) server tartibi
+va bitta yo‘ldagi operatsiya parallellik oynasini qisqa tutadi, va
+(2) 5-bo‘limdagi compose ketma-ket harflarni bitta qo‘shishga yig‘adi.
+Uzoq oflayn ishda esa (5-bo‘lim, 13-qadam) har ikki usulda ham
+birlashma foydalanuvchini hayratga solishi mumkin.
+
+Dars: **“yaqinlashadi” — zaruriy, lekin yetarli emas.** Hamkorlik
+algoritmini baholashda “natija bir xilmi?” dan tashqari “natija
+odam uchun ma’nolimi?” degan savol ham kerak — va bu ikkinchisini
+formal isbotlash ancha qiyin.
+</Deep>
+
+### 7.3 OT yoki CRDT?
+
+<Versus
+  left={{ title: "OT (Google Docs yondashuvi)", points: [
+    "Server majburiy: u tartibni belgilaydi (Jupiter)",
+    "Xotirada faqat matn va qisqa tarix",
+    "Faqat TP1 kerak — transformatsiyani to'g'ri yozish mumkin",
+    "Server — ruxsatlarni tekshirish va validatsiya uchun tabiiy joy",
+    "Peer-to-peer yoki uzoq oflayn birlashtirish noqulay",
+  ] }}
+  right={{ title: "CRDT (Yjs, Automerge va boshqalar)", points: [
+    "Server ixtiyoriy: istalgan tartib va yo'l bilan birlashadi",
+    "Har belgi metama'lumot bilan; qabr toshlari to'planadi",
+    "Yaqinlashish matematik kafolatlangan (lekin niyat — alohida savol)",
+    "Oflayn-birinchi (local-first) ilovalar uchun tabiiy",
+    "Ruxsat va validatsiya — har bir nusxada yoki qo'shimcha server",
+  ] }}
+/>
+
+Tanlov asosan bitta savolga bog‘liq: **tizimda baribir markaziy server
+bormi?** Google Docs uchun javob “ha”: hujjat serverda saqlanadi,
+ruxsatlar serverda tekshiriladi, versiyalar tarixi serverda. Server
+bor ekan, uning tartib belgilash qobiliyatidan foydalanish tabiiy —
+va OT’ning asosiy zaif tomoni (server majburiyligi) narx emas. Bundan
+tashqari, 2010-yilda ixcham CRDT’lar hali mavjud emas edi.
+
+Serverga bog‘liqlik istalmagan joyda (shaxsiy yozuvlar ilovalari, qurilmalar
+o‘rtasida to‘g‘ridan-to‘g‘ri sinxronlash, uzoq oflayn ish) CRDT tabiiyroq.
+Amalda ko‘p zamonaviy tizimlar **aralash**: masalan, Figma 2019-yilgi
+blogida o‘z “multiplayer” tizimini CRDT g‘oyalaridan ilhomlangan, lekin
+server hakam bo‘lgan tizim sifatida tasvirlagan — ob’ekt xususiyatlari
+darajasida “oxirgi yozuvchi yutadi”, tartibni esa server belgilaydi.
+Bu dizayn matn emas, grafik ob’ektlar uchun: u yerda harfma-harf
+birlashtirish kerak emas.
+
+<Calc title="Qaysi biri qachon arzonroq" result="Onlayn hamkorlikda farq kichik; 1 M belgili hujjat va uzoq tarixda OT xotirada ~5-10x kam">{`1 M belgili hujjat (Google Docs chegarasi), faol tahrirlanadi:
+
+OT serverda (5-bo'lim, 7-qadam):
+  matn ~1-2 MB + so'nggi tarix ~1 MB = ~3 MB
+  mijozda: matn + kutilayotgan op'lar = ~2 MB
+
+CRDT, ixcham (7.2 dagi ~3-9x):
+  ~5-15 MB har nusxada (server ham, har mijoz ham)
+  + yillar davomida o'chirilganlar: qabr toshlari o'sadi
+
+Onlayn birga yozish (10 kishi):
+  OT: server har op uchun ~k transform (mikrosekundlar)
+  CRDT: har mijoz har op ni o'z tuzilmasiga qo'shadi (mikrosekundlar)
+  -> farq sezilmaydi
+
+Asosiy farq xotira va arxitekturada, tezlikda emas.`}</Calc>
+
+<Check q="CRDT 'server kerak emas' desa, nega Yjs yoki Automerge ishlatadigan ilovalarda ham odatda server bor?">
+Chunki server faqat **tartib** uchun emas edi. CRDT tartib muammosini
+yo‘qotadi, lekin serverning boshqa vazifalari qoladi.
+
+**Yetkazish va saqlash.** Ali va Vali bir vaqtda onlayn bo‘lmasa, Alining
+operatsiyalari Valiga qanday yetadi? Kimdir ularni saqlab turishi kerak
+— bu relay server (WhatsApp darsidagi kabi).
+
+**Ruxsatlar.** Kim o‘qiy oladi, kim yoza oladi? CRDT har qanday to‘g‘ri
+formatdagi operatsiyani qabul qiladi. Ruxsatsiz mijozning operatsiyasini
+rad etish uchun uni tekshiradigan ishonchli tomon kerak.
+
+**Zaxira va tarix.** Barcha qurilmalar yo‘qolsa, hujjat qayerda?
+
+**Qabr toshlarini tozalash.** 7.2: “hamma ko‘rdi” ni bilish uchun
+markaziy nuqta eng oddiy yo‘l.
+
+Farq shundaki, CRDT bilan server **aqlsiz** bo‘lishi mumkin: u
+operatsiyalarni tushunmaydi, faqat saqlaydi va tarqatadi (shifrlangan
+holda ham — WhatsApp’dagi kabi uchidan-uchiga shifrlash mumkin!).
+OT’da esa server hujjatni tushunishi, transformatsiya qilishi shart.
+Bu maxfiylik uchun jiddiy farq: OT bilan server matnni ko‘rmasdan
+ishlay olmaydi.
+</Check>
+
+## 8. Saqlash: jurnal, suratlar va tarix
+
+5-bo‘limning 8-qadami asosiy g‘oyani berdi: jurnal — haqiqat, surat —
+kesh. Bu bo‘lim butun tizim miqyosida nima saqlanadi va u vaqt o‘tishi
+bilan qanday o‘sadi.
+
+### 8.1 Uch qatlam
+
+| Qatlam | Nima | Qancha yashaydi | Qayerda |
+| --- | --- | --- | --- |
+| Jonli holat | Joriy matn + so‘nggi operatsiyalar | Hujjat ochiq ekan | Egasi serverning xotirasi (5-bo‘lim, 7-qadam) |
+| Jurnal | Har bir qabul qilingan operatsiya, revision bilan | Abadiy (yoki siqilgan holda) | Izchil, takrorlangan ma’lumotlar bazasi |
+| Suratlar | Ba’zi revisionlardagi to‘liq matn | Yangisi tez, eskisi siyrak | Ob’ekt ombori yoki o‘sha baza |
+
+Jurnal yozuvi **tasdiqdan oldin** bardoshli bo‘lishi kerak (6.2), shuning
+uchun uning kechikishi to‘g‘ridan-to‘g‘ri “hamkor qachon ko‘radi”
+vaqtiga qo‘shiladi. Bu yerda muhim savdo bor: bitta ma’lumot markazida
+takrorlash — ~1–5 ms, bir nechta mintaqada izchil takrorlash — o‘nlab
+millisekund. Hujjatlar tizimi odatda birinchisini tanlaydi (hujjat
+egasi yaqinida), mintaqa uzilishiga esa asinxron nusxa bilan tayyorlanadi.
+
+### 8.2 Butun tizim hajmi
+
+<Calc title="Butun tizim: matnlar, jurnallar, suratlar" result="Matnlar ~bir necha PB, jurnallar ~50x — siqish va siyraklashtirish bilan ~10x ga tushadi">{`FARAZ: 5 mlrd hujjat (yillar davomida yaratilgan), o'rtacha 30 KB
+  Matnlar: 5e9 x 30 KB = 150 TB  (+ rasmlar alohida, ular ko'proq)
+
+JURNALLAR (1.3: tarix matndan ~50x):
+  150 TB x 50 = ~7.5 PB
+
+  Lekin hujjatlarning ko'pi eski va hech qachon ochilmaydi.
+  Siqish (compaction): 30 kundan eski operatsiyalar
+    -> "vaqt oynalari" bo'yicha birlashtiriladi (masalan, har soatga bitta
+       compose qilingan operatsiya, har muallif uchun)
+    -> ~10x kichik: ~0.75 PB
+
+SURATLAR:
+  Faol hujjatlar uchun har 1 000 op; eski hujjatlar uchun faqat oxirgisi
+  -> matn hajmidan ~1.5-2x: ~300 TB
+
+Jami: ~1-1.5 PB. YouTube (yiliga +4 EB) bilan solishtiring:
+  ~3 000 barobar kichik.`}</Calc>
+
+Siqish — muhim qaror, chunki u **ma’lumotni yo‘qotadi**: 30 kundan
+keyin “14:03:17 da Ali ‘a’ harfini yozdi” darajasidagi tafsilot yo‘qoladi,
+faqat “14:00–15:00 oralig‘ida Ali shu o‘zgarishlarni qildi” qoladi.
+Versiyalar tarixi (5-bo‘lim, 14-qadam) buni sezmaydi — u baribir
+guruhlab ko‘rsatadi. Lekin “harfma-harf qayta o‘ynash” yoki eski revision
+asosidagi operatsiyani transformatsiya qilish endi mumkin emas. Shuning
+uchun siqish faqat **hech bir mijoz ulanmagan** va ulanish ehtimoli
+yo‘q eski revisionlar uchun qilinadi.
+
+<Callout type="maslahat" title="Siqishdan oldin: kim eski revisionga tayanishi mumkin?">
+Uchta iste’molchi bor: (1) uzoq oflayn mijoz (5-bo‘lim, 13-qadam) —
+u v1 200 asosidagi buferni olib keladi va v1 200 dan keyingi barcha
+operatsiyalar kerak; (2) nomlangan versiyalar — ularning revisioni
+aniq tiklanishi kerak; (3) huquqiy saqlash talablari (masalan, korporativ
+arxiv). Siqish qoidasi uchalasini hisobga olishi kerak: masalan,
+“30 kundan eski, hech bir qurilmada bu revisionga asoslangan oflayn
+bufer qayd etilmagan, nomlangan versiya emas”. Oflayn mijoz juda eski
+revision bilan kelsa — xavfsiz yechim uning buferini **alohida
+nusxa** yoki taklif sifatida taqdim etish.
+</Callout>
+
+<Deep title="Siqish qanday ishlaydi: compose bilan vaqt oynalari">
+Siqish 5-bo‘lim, 5-qadamdagi `compose` ning yana bir ishlatilishi.
+Ketma-ket operatsiyalar zanjiri bitta ekvivalent operatsiyaga
+birlashtiriladi:
+
+```
+Jurnal (v10 001 .. v10 900), 14:00-15:00, mualliflar Ali va Vali aralash
+
+1. Revision tartibida guruhlash: (muallif, soat) bo'yicha ketma-ket bo'laklar
+   [Ali: v10 001..v10 340] [Vali: v10 341..v10 360] [Ali: v10 361..v10 900]
+2. Har bo'lakni compose:  op_A1, op_V1, op_A2  (3 ta operatsiya, 900 o'rniga)
+3. Yangi jurnal yozuvlari: revisionlar oralig'i bilan
+   { rev: 10 001-10 340, author: ali, op: op_A1 }
+   ...
+4. Eski yozuvlar o'chiriladi (tranzaksiyada, suratlar tekshirilgandan keyin)
+```
+
+Uchta nozik joy. **Birinchi:** mualliflar navbatlashgan bo‘lsa (Ali, Vali,
+Ali), faqat ketma-ket bo‘laklar birlashtiriladi — aks holda tartib
+buziladi va natija boshqa matn beradi. **Ikkinchi:** compose qilingan
+operatsiya “kimning qaysi harfi” ma’lumotini yo‘qotadi, lekin “kim
+qaysi qismni yozgan” (rangli tarix) saqlanadi, chunki bo‘lak muallifi
+ma’lum. **Uchinchi:** siqishdan keyin v10 200 asosidagi operatsiyani
+transformatsiya qilib bo‘lmaydi — oraliq revisionlar yo‘q (8.2
+Callout’dagi oflayn bufer muammosi).
+
+Tekshiruv oddiy va majburiy: siqishdan oldin va keyin yakuniy matn
+xeshi bir xil bo‘lishi kerak. Siqish — ma’lumotni o‘zgartiradigan fon
+jarayoni, va uning xatosi foydalanuvchi hech qachon ko‘rmagan eski
+revisionlarni jimgina buzadi.
+</Deep>
+
+<Check q="Nega versiyalar tarixini 'har 5 daqiqada butun matn nusxasi' sifatida saqlash (v0 dagi kabi) operatsiyalar jurnalidan yomonroq, garchi soddaroq bo'lsa ham?">
+Uchta sabab, har biri raqam bilan.
+
+**Hajm.** Har 5 daqiqada 30 KB nusxa — bir soatda 360 KB; bir oy
+davomida kuniga 2 soat tahrirlangan hujjatda ~21 MB. Operatsiyalar
+jurnali siqilgan holda (8.2) ~10 barobar kichik. Katta hujjatda
+(1 MB) farq yanada keskin: har 5 daqiqada 1 MB.
+
+**Aniqlik.** Nusxalar oralig‘idagi hamma narsa yo‘qoladi: kim nimani
+yozganini ajratib bo‘lmaydi (ikki kishi 5 daqiqa ichida yozsa, farq —
+ikkalasining aralashmasi). Jurnalda har operatsiyaning muallifi bor.
+
+**Ishlatish.** Tarix faqat ko‘rsatish uchun emas: oflayn mijoz eski
+revisionga nisbatan operatsiyani olib keladi (5-bo‘lim, 13-qadam), bekor
+qilish teskari operatsiyalarni transformatsiya qiladi (12-qadam).
+Nusxalardan operatsiya hosil qilish — matnli farq (diff) — niyatni
+yo‘qotadi: “Ali ‘salom’ yozdi” o‘rniga “bu yerda 5 belgi paydo bo‘ldi”.
+
+Umumiy qoida yana takrorlanadi: **o‘zgarishlarni saqlang, natijalarni
+esa ulardan hisoblang** — natijalar (suratlar) faqat tezlik uchun kesh.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Muharrir (brauzer / ilova)", boxes: ["Hujjat modeli", "Maket va chizish", "OT holat mashinasi", "Bekor qilish steki", "Oflayn bufer"], note: "Har tugma — lokal operatsiya, <16 ms. Server tartibi bilan keyin moslashadi." },
+    { name: "Ulanish qatlami", boxes: ["WebSocket shlyuzlari", "Autentifikatsiya", "Hujjat egasiga yo'naltirish"], note: "Holatsiz; ulanishni hujjat_id bo'yicha to'g'ri egaga uzatadi." },
+    { name: "Hujjat egalari", boxes: ["Transformatsiya", "Revision tayinlash", "Tarqatish", "Kursorlar (uchuvchan)", "Nazorat yig'indisi"], note: "Har ochiq hujjat — bitta jarayonda, muddatli ijara bilan." },
+    { name: "Saqlash", boxes: ["Operatsiyalar jurnali", "Suratlar", "Izohlar va ankerlar", "Versiya yorliqlari"], note: "Jurnal — haqiqat; yozuv tasdiqdan oldin." },
+    { name: "Yon tizimlar", boxes: ["Ruxsatlar (ACL)", "Qidiruv indeksi", "Eksport (PDF, DOCX)", "Imlo va grammatika", "Siqish va arxiv"], note: "Asinxron — jurnalni o'qiydi, tahrirlash yo'lida emas." },
+  ]}
+/>
+
+Diagrammaning markaziy qatlami — **hujjat egalari** — Slack darsidagi
+kanal serverlari va WhatsApp’dagi ulanish serverlariga o‘xshaydi:
+holatli, xotirada ishlaydi, har bir ob’ekt (hujjat) aniq bitta joyda.
+Farq — ular faqat xabar tarqatmaydi, balki **mantiq** bajaradi
+(transformatsiya), va ularning xatosi hujjatni buzadi.
+
+Oxirgi qatlam muhim ajratishni ko‘rsatadi: qidiruv indeksi, eksport,
+imlo tekshiruvi — hammasi jurnalni **o‘qiydigan** asinxron iste’molchilar.
+Ular sekin bo‘lsa yoki ishlamasa, tahrirlash davom etadi. Bu Spotify
+darsidagi “hodisalar jurnali va undan hisoblangan narsalar” bilan bir
+xil tuzilma: bitta tartiblangan jurnal, ko‘p mustaqil o‘quvchi.
+
+### 9.1 Tugma bosishdan hamkor ekranigacha
+
+<Calc title="Kechikish byudjeti: Ali harf bosdi, Vali qachon ko'radi" result="Lokal ~5 ms; hamkor ekranida ~40-60 ms (bir shahar), ~180-220 ms (qit'alararo); mobil tarmoq +50-150 ms">{`Ali (lokal):
+  Tugma -> model -> maket -> chizish:             ~2-8 ms   (< 16 ms)
+
+Ali -> server (bir shahar, RTT 20 ms; qit'alararo RTT 150 ms):
+  Buferda kutish (oldingi op tasdig'i):          0-20 ms  (o'rtacha ~10)
+  Tarmoq (bir tomon):                           10 ms  |  75 ms
+  Shlyuz -> egasi:                               ~1-2 ms
+  Transform + qo'llash:                          ~0.1 ms
+  Jurnalga bardoshli yozish:                     ~5-10 ms
+Server -> Vali:
+  Tarqatish:                                     ~1 ms
+  Tarmoq (bir tomon):                           10 ms  |  75 ms
+Vali:
+  Transform (yo'ldagi op bo'yicha) + qo'llash + chizish: ~5-10 ms
+                                                ------------------
+  Bir shahar:   ~40-60 ms  (+ yozish tezligiga qarab bufer)
+  Qit'alararo:  ~180-220 ms
+  + mobil tarmoq qo'shimchasi: ~50-150 ms`}</Calc>
+
+Byudjet ikki narsani ko‘rsatadi. Birinchisi — server ichidagi vaqtning
+eng katta qismi **jurnalga yozish**, transformatsiya emas. Ikkinchisi
+— asosiy hissa **masofa**: qit’alararo hamkorlikda har tomonga 75 ms.
+Hujjat egasini hamkorlarning “og‘irlik markazi”ga yaqin joylashtirish
+(masalan, ko‘pchilik tahrirlovchilar qaysi mintaqada bo‘lsa) — muhim
+optimallashtirish, va egalikni ko‘chirish (5-bo‘lim, 7-qadam) buni
+mumkin qiladi.
+
+<Timeline
+  rows={[
+    { when: "1989", what: "Ellis va Gibbs: OT g'oyasi (GROVE tizimi)", why: "Birinchi marta 'operatsiyani parallel operatsiyalar bo'yicha o'zgartirish' taklif qilingan." },
+    { when: "1995", what: "Xerox PARC Jupiter: markaziy server + ikki tomonlama OT", why: "TP2 dan qochadigan amaliy protokol — keyinchalik Wave va Docs uchun asos (5-bo'lim, 4-qadam)." },
+    { when: "1998", what: "Sun va boshq.: CCI modeli", why: "Yaqinlashish, sabab-oqibat, niyat — sohaning 'to'g'rilik' ta'rifi (2.3)." },
+    { when: "2006", what: "Google Writely'ni sotib oladi -> Google Docs", why: "Avtomatik saqlash va bir nechta muharrir, lekin harfma-harf emas (3-bo'lim)." },
+    { when: "2006-2011", what: "Birinchi matn CRDT'lari: WOOT, Logoot, RGA", why: "Serversiz yaqinlashish — lekin katta metama'lumot (7.2)." },
+    { when: "2009", what: "Google Wave", why: "Boy hujjat modeli ustida OT; protokol ochiq e'lon qilingan (6.3 Deep)." },
+    { when: "2010", what: "Google Docs yangi muharriri", why: "Harfma-harf hamkorlik, o'z maket dvigateli, server tomonida OT." },
+    { when: "2019-2023", what: "Ixcham CRDT'lar amaliy bo'ladi; aralashish anomaliyasi va Fugue", why: "Yjs, Automerge kabi kutubxonalar; CRDT 'niyat' muammolari o'rganiladi (7.2 Deep)." },
+    { when: "2021", what: "Docs chizishni canvas'ga o'tkazishini e'lon qiladi", why: "Model va ko'rinishni to'liq nazorat qilish yo'nalishidagi keyingi qadam." },
+  ]}
+/>
+
+Tarix bir tendensiyani ko‘rsatadi: **algoritmlar 1990-yillarda, amaliy
+tizimlar 2010-yillarda**. OT va CRDT g‘oyalari o‘n yillab ilmiy maqolalarda
+yashagan; ularni ishonchli mahsulotga aylantirish uchun ikki narsa kerak
+bo‘lgan — brauzerlarda doimiy ulanishlar (WebSocket, 2011) va OT
+xatolarini topadigan tasodifiy test madaniyati.
+
+<Check q="Diagrammada qidiruv indeksi va eksport jurnalni asinxron o'qiydi. Nega ular hujjat egasi ichida, tahrirlash bilan sinxron ishlamaydi?">
+Chunki ular tahrirlash yo‘lining ikki asosiy talabini buzardi.
+
+**Kechikish.** 9.1-dagi byudjetda har millisekund hisobda. Qidiruv
+indeksini yangilash (tokenlash, indeks bazasiga yozish) — o‘nlab
+millisekund; har operatsiya uni kutsa, hamkorlar kechikib ko‘radi.
+Asinxron o‘quvchi esa indeksni bir necha soniya kechikib yangilaydi —
+qidiruv uchun bu sezilmaydi.
+
+**Nosozlikdan himoya.** Qidiruv xizmati ishlamasa, sinxron dizaynda
+tahrirlash ham to‘xtaydi. Asinxron dizaynda indeks shunchaki orqada
+qoladi va keyin jurnaldan “quvib yetadi”: u o‘zining oxirgi o‘qigan
+revisionini eslaydi (Kafka’dagi iste’molchi offseti kabi).
+
+Umumiy naqsh: **yozish yo‘lida faqat to‘g‘rilik uchun zarur ish**
+(transform, validatsiya, jurnal). Qolgan hamma narsa — qidiruv,
+eksport, imlo, statistika, siqish — tartiblangan jurnalning mustaqil
+o‘quvchilari. Bu Spotify darsidagi tinglashlar kitobi va Reddit’dagi
+ovozlar navbati bilan bir xil tuzilma.
+</Check>
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Foydalanuvchi nimani ko‘radi | Himoya |
+| --- | --- | --- |
+| Mijoz tarmog‘i uzildi | “Oflayn” belgisi; yozish davom etadi | Doimiy bufer, qayta ulanish protokoli (5-bo‘lim, 6 va 13-qadam) |
+| Shlyuz qayta ishga tushdi | Qisqa “qayta ulanmoqda” | Holatsiz shlyuz; mijoz boshqasiga ulanadi |
+| Hujjat egasi o‘ldi | 5–15 s “saqlanmoqda...” | Ijara muddati, yangi ega jurnaldan tiklaydi (10.2) |
+| Jurnal bazasi sekin | Hamkorlar kechikib ko‘radi, “saqlanmoqda” uzoq | Tasdiq jurnal yozuviga bog‘liq — sekinlik ko‘rinadi, yo‘qotish yo‘q |
+| OT xatosi — nusxa ajraldi | Hamkorlarda turli matn | Nazorat yig‘indisi, avtomatik qayta yuklash (6.3, 10.3) |
+| Ikki ega bir hujjatda | Eng xavfli: ikki xil tarix | Fencing — jurnalga shartli yozish (10.2 Deep) |
+
+Jadvalning uchinchi ustunidagi umumiy tamoyil: **foydalanuvchi yozishi
+hech qachon to‘xtamaydi**. Har qanday server nosozligida lokal
+muharrir ishlayveradi, o‘zgarishlar buferda to‘planadi, va tizim
+tiklanganda birlashtiriladi. Nosozlik faqat “boshqalar qachon ko‘radi”
+va “saqlandi belgisi” ga ta’sir qiladi. Bu Spotify darsidagi “kuchli
+mijoz” g‘oyasining hujjatlar versiyasi.
+
+### 10.2 Hujjat egasi o‘lganda
+
+<Timeline
+  rows={[
+    { when: "0 s", what: "Ega server to'satdan o'chdi", why: "Xotiradagi holat yo'qoldi. Jurnalga yozilgan hamma narsa xavfsiz (6.2: yozish tasdiqdan oldin)." },
+    { when: "0-10 s", what: "Mijozlar ulanish uzilganini sezadi, buferga yozadi", why: "Foydalanuvchi 'saqlanmoqda...' ko'radi, lekin yozishda davom etadi." },
+    { when: "~10 s", what: "Ijara muddati tugaydi", why: "Boshqa server egalikni oladi. Muddat qisqa bo'lsa — tez tiklanish, lekin tarmoq tebranishida keraksiz almashish." },
+    { when: "+50 ms", what: "Yangi ega holatni tiklaydi", why: "Eng yaqin surat + jurnal dumi (5-bo'lim, 8-qadam). Oxirgi revision — jurnaldagi oxirgi yozuv." },
+    { when: "+0-5 s", what: "Mijozlar tasodifiy kechikish bilan qayta ulanadi", why: "Hammasi bir soniyada ulansa — yangi ega va shlyuzlar ortiqcha yuklanadi (Slack darsidagi bo'ron)." },
+    { when: "+qayta ulanish", what: "Yo'ldagi operatsiyalar qayta yuboriladi", why: "Identifikator bo'yicha: allaqachon jurnalda bo'lsa — faqat tasdiq; yo'q bo'lsa — transform va qo'llash (5-bo'lim, 6-qadam)." },
+  ]}
+/>
+
+<Calc title="Ijara muddatini tanlash" result="10 s ijara: kutilgan uzilish ~12-15 s; 2 s: ~3-5 s, lekin tarmoq tebranishida yolg'on almashishlar ko'payadi">{`Tiklanish vaqti ~= ijara muddati + tiklash + qayta ulanish
+  10 s + 0.05 s + ~2 s (o'rtacha jitter) = ~12 s
+   2 s + 0.05 s + ~2 s                   = ~4 s
+
+Yolg'on almashish: ega tirik, lekin ijarani yangilay olmadi
+  (tarmoq tebranishi, GC pauzasi 1-3 s)
+  Ijara 2 s: har uzoq GC pauza -> egalik ko'chadi -> hamma qayta ulanadi
+  Ijara 10 s: faqat haqiqiy o'limda
+
+Faraz: server yiliga 2 marta o'ladi, GC/tarmoq pauzalari >2 s — kuniga 1 marta
+  2 s ijara:  yiliga ~365 keraksiz ko'chish (har biri ~150 000 hujjat!)
+  10 s ijara: yiliga ~2 ko'chish, har biri ~12 s uzilish
+
+-> Odatda ~10 s: kamdan-kam uzoqroq uzilish > tez-tez qisqa uzilish`}</Calc>
+
+<Deep title="Ikki ega: bo'lingan miya va fencing">
+Eng xavfli stsenariy: eski ega o‘lmagan, faqat **muzlab qolgan** (masalan,
+uzoq to‘xtash yoki tarmoqdan vaqtincha uzilish). Uning ijarasi tugadi,
+yangi ega ishlay boshladi. Keyin eski ega “uyg‘onadi” — u o‘zini hali
+ham ega deb o‘ylaydi va xotirasidagi navbatdagi operatsiyani v5 001
+sifatida yozmoqchi. Yangi ega esa allaqachon v5 001 ni boshqa operatsiya
+bilan yozgan.
+
+Agar ikkalasi ham jurnalga yozsa — hujjatning **ikki xil tarixi** paydo
+bo‘ladi, va mijozlar qaysi egaga ulanganiga qarab turli matn ko‘radi.
+Bu “bo‘lingan miya” (split brain).
+
+Himoya — jurnalni **hakam** qilish:
+
+```
+Har egalik davri raqamlanadi (epoch): 1, 2, 3, ...
+Yangi ega egalikni olganda: epoch = oldingi + 1 (koordinator orqali)
+
+Jurnalga yozish SHARTLI:
+  append(doc, rev=5001, epoch=7, op)
+  baza: "rev 5001 hali yo'q VA hujjatning joriy epoch'i <= 7" bo'lsagina yoz
+  aks holda -> rad
+
+Eski ega (epoch 6) v5 001 ni yozmoqchi -> rad -> u o'zi ega emasligini
+  tushunadi va barcha ulanishlarni yopadi.
+```
+
+Bu “fencing token” naqshi: vaqtga (ijara muddati) emas, **monoton
+raqamga** tayanadi, chunki soatlar va pauzalar ishonchsiz. Kafolat
+bitta joyda — jurnalning shartli yozuvida. Ijara faqat “kim ishlashi
+kerak” ni tez aniqlaydi; “kim haqiqatan yoza oladi” ni esa baza hal
+qiladi. Redis darsidagi taqsimlangan qulflar va Kafka darsida
+ko‘riladigan “lider epoch’i” — xuddi shu g‘oya.
+</Deep>
+
+### 10.3 Mijoz ajralib qolsa
+
+6.3-dagi nazorat yig‘indisi mijoz nusxasi ajralganini aniqlaydi. Keyin
+nima? Eng oddiy javob — “serverdan qayta yuklash”. Lekin mijozda
+**hali yuborilmagan** o‘zgarishlar bo‘lishi mumkin, va ular noto‘g‘ri
+holatga nisbatan yaratilgan.
+
+<Deep title="Ajralishdan keyin foydalanuvchi ishini yo'qotmaslik">
+Ajralish aniqlanganda mijoz ikki xil ma’lumotga ega: server tasdiqlagan
+revision (ishonchli) va lokal bufer (ajralgan holatga nisbatan yaratilgan,
+ya’ni ishonchsiz). Uch variant:
+
+**Buferni tashlash.** Oddiy va xavfsiz, lekin foydalanuvchi so‘nggi
+soniyalardagi ishini yo‘qotadi — va bu aynan tizim xatosi tufayli.
+
+**Buferni transformatsiya qilib yuborish.** Bufer ajralgan holatga
+nisbatan; uni server holatiga moslash uchun “ajralgan holat → server
+holati” farqini bilish kerak — bu esa xatoning o‘zi. Xavfli.
+
+**Buferni matn sifatida saqlab, taklif qilish.** Mijoz serverdan toza
+holatni yuklaydi, va lokal o‘zgarishlarni **matnli farq** sifatida
+(masalan, “siz yozgan, lekin saqlanmagan qism”) foydalanuvchiga
+ko‘rsatadi, yoki avtomatik ravishda “taklif” (11.3) sifatida kiritadi.
+Foydalanuvchi o‘zi tasdiqlaydi.
+
+Amaliy tizimlar odatda uchinchisini tanlaydi va, eng muhimi, hodisani
+**xato sifatida qayd qiladi** (hujjat ID, revisionlar, ikkala xesh,
+so‘nggi operatsiyalar). Ajralishlar juda kam bo‘lishi kerak (15-bo‘lim
+metrikasi), va har biri OT kodidagi haqiqiy xatoni ko‘rsatadi — uni
+tuzatish uchun aynan shu yozuvlar kerak.
+</Deep>
+
+<Callout type="ogoh" title="'Saqlandi' belgisi — va'da">
+Muharrirdagi “Barcha o‘zgarishlar saqlandi” yozuvi foydalanuvchi uchun
+kafolat: brauzerni yopsam, hech narsa yo‘qolmaydi. Demak u faqat
+**jurnalga bardoshli yozilgan** operatsiya tasdig‘idan keyin chiqishi
+kerak — xotirada qo‘llangandan keyin emas. Va bufer bo‘sh bo‘lmasa,
+brauzer yopilishida ogohlantirish kerak (“saqlanmagan o‘zgarishlar
+bor”). Bu kichik UI qarori butun 6.2-dagi tartibga (yozish → tasdiq)
+bog‘liq; tartib buzilsa, belgi yolg‘on gapiradi.
+</Callout>
+
+<Check q="Nega ega server jurnalga yozishni tasdiq va tarqatishdan keyin (tezlik uchun) qila olmaydi?">
+Chunki unda uchta turli narsa ajralib qoladi: **muallif** “saqlandi”
+deb o‘ylaydi, **hamkorlar** operatsiyani ko‘rgan va uning ustiga o‘z
+operatsiyalarini qurgan, **jurnalda** esa u yo‘q.
+
+Ega shu paytda o‘lsa: yangi ega jurnaldan tiklaydi — v5 001 yo‘q.
+Hamkorlar esa v5 001 ni qo‘llagan va “v5 001 asosida” yangi
+operatsiyalar yuboradi. Yangi ega uchun bu kelajakdagi revision —
+ular rad etiladi yoki, yomonroq, boshqa v5 001 ga nisbatan noto‘g‘ri
+transformatsiya qilinadi. Muallif esa o‘z operatsiyasini qayta yubormaydi
+— u allaqachon tasdiqlangan.
+
+Natija: yo‘qolgan tahrir va, ehtimol, ajralgan nusxalar. Buning oldini
+olish uchun bitta qoida: **tashqi dunyoga (tasdiq, tarqatish) faqat
+bardoshli yozilgan narsa chiqadi**. Bu ma’lumotlar bazalaridagi
+“write-ahead log” qoidasi, WhatsApp’dagi “server qabul qildi” belgisi
+va Kafka’dagi “acks=all” ning aynan o‘zi. Narxi — 9.1-dagi byudjetda
+~5–10 ms, va bu hamkorlik uchun sezilmaydi.
+</Check>
+
+## 11. Xavfsizlik va ruxsatlar
+
+### 11.1 Rollar va har bir operatsiyani tekshirish
+
+| Rol | Nima qila oladi | Qaysi operatsiyalar qabul qilinadi |
+| --- | --- | --- |
+| Egasi | Hammasi + ruxsatlarni o‘zgartirish, o‘chirish | Hammasi |
+| Muharrir | Matn, formatlash, izohlar | Matn va atribut operatsiyalari, izohlar |
+| Izohlovchi | Izoh va takliflar | Faqat izoh va “taklif” operatsiyalari |
+| O‘quvchi | Faqat o‘qish | Hech narsa (kursor ham ko‘rsatilmasligi mumkin) |
+
+Muhim tamoyil: ruxsat **har bir operatsiyada** serverda tekshiriladi,
+faqat hujjat ochilganda emas. Mijoz — ishonchsiz: izohlovchining brauzeri
+o‘zgartirilgan bo‘lsa, u matn operatsiyasini yuborishi mumkin. Server
+uni turi bo‘yicha rad etishi kerak.
+
+<Flow nodes={["Operatsiya keldi", "Sessiya: kim?", "ACL keshi: rol", "Operatsiya turi rolga mosmi?", "Hajm va tezlik chegaralari", "Transform va qo'llash"]} caption="Har bir operatsiya transformatsiyadan oldin tekshiriladi — tekshiruvlar arzon, xato narxi yuqori" />
+
+### 11.2 Havola orqali ulashish
+
+“Havolasi bor har kim ko‘ra oladi” — eng qulay va eng xavfli ulashish
+turi. Uning xavfsizligi butunlay havolaning **taxmin qilib bo‘lmasligiga**
+tayanadi.
+
+<Calc title="Hujjat ID sini taxmin qilish" result="~44 belgili ID (~250+ bit) — taxmin qilish amalda imkonsiz; xavf taxmin emas, havolaning tarqalishi">{`Google Docs hujjat ID si: ~44 belgi, URL-xavfsiz alifbo (~64 belgi)
+  -> 44 x 6 = ~264 bit (tuzilma tufayli haqiqiy entropiya biroz kam)
+
+Hujumchi: sekundiga 1 mlrd taxmin (hech qanday tezlik chegarasisiz!)
+Mavjud hujjatlar: ~5 mlrd = ~2^32
+Bitta hujjatni topish ehtimoli sekundiga: 2^32 x 2^30 / 2^264 = 2^-202
+
+Taqqoslash: URL qisqartiruvchi darsida 7 belgili kod (~42 bit)
+  u yerda taxmin qilish MUMKIN edi — shuning uchun qisqa havola
+  maxfiy hujjatga ishora qilmasligi kerak.
+
+Haqiqiy xavf: havolaning o'zi tarqaladi — yuborilgan xat,
+  chat tarixi, ochiq forumga joylash, brauzer tarixi.`}</Calc>
+
+Hisob muhim farqni ko‘rsatadi: kriptografik uzunlikdagi ID bilan
+**taxmin** qilish imkonsiz, lekin “havolasi bor har kim” rejimida
+**havola — parol**. U xatlarda, chatlarda, skrinshotlarda tarqaladi
+va qaytarib olinmaydi. Shuning uchun tizimlar qo‘shimcha himoya beradi:
+havola rejimini istalgan paytda o‘chirish (va shu zahoti barcha
+ochiq sessiyalarga ta’sir qilish — 11.3), faqat tashkilot ichidagilarga
+cheklash, va kim ochganini ko‘rsatish.
+
+<Deep title="Ruxsat olib tashlandi — hujjat esa ochiq">
+Ali Valiga muharrirlik bergan edi, keyin olib tashladi. Vali hujjatni
+hozir ochib, yozmoqda. Nima bo‘lishi kerak?
+
+Kutilgan xulq: Vali bir necha soniya ichida yoza olmasligi kerak.
+Muammo — ruxsatlar **keshlanadi**: har bir operatsiyada ruxsat bazasiga
+borish (11.1 Flow) juda qimmat, shuning uchun ega server sessiya
+boshida rolni oladi va xotirada saqlaydi.
+
+```
+Variant A: kesh TTL (masalan, 60 s)
+  Vali olib tashlangandan keyin yana <= 60 s yoza oladi. Oddiy, lekin
+  60 s — sezilarli (maxfiy hujjat uchun juda uzoq)
+
+Variant B: ruxsat o'zgarishi hodisasi
+  ACL xizmati -> "hujjat D, foydalanuvchi V: rol o'zgardi" -> D ning egasi
+  Ega darhol Valining sessiyasini yangilaydi: rol = yo'q
+    -> keyingi operatsiyasi rad, ulanish yopiladi
+  Kechikish: ~soniyadan kam. Lekin hodisa yo'qolsa -> A ga qaytish kerak
+
+Amalda: B + qisqa TTL (A) zaxira sifatida
+```
+
+Ikkinchi nozik joy — **Valining buferi**. U ruxsat olib tashlangan
+paytda yozgan, hali yuborilmagan operatsiyalar. Ular rad etiladi — va
+Valining ekranida yozgan matni “g‘oyib bo‘ladi”. To‘g‘ri UI: “Sizda endi
+tahrirlash ruxsati yo‘q; saqlanmagan o‘zgarishlaringizni nusxalab
+olishingiz mumkin”.
+
+Bu umumiy naqsh: **uzoq yashovchi ulanish ruxsatni tekshirish vaqtini
+ulanish vaqtidan ajratadi.** HTTP so‘rovida har so‘rov tekshiriladi;
+WebSocket’da esa bir marta tekshirib, soatlab ishlash vasvasasi bor.
+Slack darsidagi kanaldan chiqarilgan foydalanuvchi — xuddi shu muammo.
+</Deep>
+
+### 11.3 Takliflar va zararli mijozlar
+
+“Taklif” rejimi izohlovchiga matnni o‘zgartirmasdan o‘zgarish **taklif
+qilish** imkonini beradi: yangi matn yashil, o‘chiriladigan qism chizilgan
+holda ko‘rinadi, va muharrir uni qabul yoki rad etadi.
+
+<Deep title="Takliflar: operatsiya ustidagi operatsiya">
+Taklif texnik jihatdan qiziq: u matnni **o‘zgartirmaydi**, lekin boshqa
+matn operatsiyalari bilan birga siljishi, va qabul qilinganda haqiqiy
+operatsiyaga aylanishi kerak.
+
+Amaliy yondashuv — taklifni hujjatga **maxsus atributli** matn sifatida
+kiritish:
+
+```
+Taklif "qo'shish":  ins("yangi so'z", {taklif: id17, tur: "qo'shish", muallif: "vali"})
+  -> matnda bor, lekin ko'rsatishda yashil, "haqiqiy" matn hisoblanmaydi
+Taklif "o'chirish": retain(n, {taklif: id18, tur: "o'chirish"})
+  -> matn joyida, chizilgan ko'rinadi
+
+Qabul qilish:
+  qo'shish  -> atributni olib tashlash (matn "haqiqiy" bo'ladi)
+  o'chirish -> del(n)
+Rad etish:
+  qo'shish  -> del(n)
+  o'chirish -> atributni olib tashlash
+```
+
+Bu yondashuvning afzalligi: takliflar uchun **yangi transformatsiya
+qoidalari kerak emas** — ular oddiy matn va atributlar, 5-bo‘lim,
+9-qadamdagi mexanizm bilan siljiydi. Ruxsat tekshiruvi esa operatsiya
+turiga qarab: izohlovchi faqat `taklif` atributli qo‘shish va atribut
+operatsiyalarini yubora oladi (11.1).
+
+Nozik joy — **taklif ichida taklif** va taklif qilingan matnni
+boshqa muharrir oddiy tahrirlashi. Bu yerda qoidalar mahsulot qarori:
+masalan, taklif qilingan matnni tahrirlash faqat taklif muallifiga
+ruxsat etiladi.
+</Deep>
+
+Zararli yoki buzilgan mijozga qarshi uch chegara kerak: **hajm**
+(bitta operatsiyada, masalan, 1 MB dan ortiq qo‘shish rad — hujjat
+chegarasi ~1 M belgi), **tezlik** (bitta sessiyadan sekundiga yuzlab
+operatsiya — bot yoki xato), va **tuzilma** (validate, 6.2: uzunliklar
+mos kelmasa rad). Bular arzon va har bir operatsiyada — chunki bitta
+buzuq operatsiya butun hujjatni buzishi mumkin.
+
+<Callout type="xato" title="Server OT'ni 'ishonchli mijoz' uchun yozmang">
+Transformatsiya kodi odatda mijoz va serverda bir xil (masalan,
+JavaScript). Vasvasa: “mijoz ham shu kodni ishlatadi, demak operatsiyalar
+har doim to‘g‘ri”. Lekin serverga kelgan har bir bayt — hujumchi
+yozgan bo‘lishi mumkin: manfiy uzunlik, hujjatdan uzun retain, 100 MB
+qo‘shish, noma’lum atribut. Server har bir operatsiyani **tuzilma
+bo‘yicha** tekshirishi kerak, go‘yo uni hech qachon ko‘rmagan mijoz
+yozgandek.
+</Callout>
+
+<Check q="Izohlovchi rolidagi foydalanuvchi oddiy matn operatsiyasini yuborsa, uni qayerda rad etish kerak — mijozda, shlyuzda yoki hujjat egasida?">
+**Hujjat egasida**, transformatsiyadan oldin — va faqat u yerda
+ishonchli.
+
+Mijozda tekshirish — faqat qulaylik (UI tugmalarini o‘chirish); u
+hech narsani himoya qilmaydi, chunki mijoz o‘zgartirilishi mumkin.
+
+Shlyuzda tekshirish mumkin, lekin shlyuz holatsiz va hujjatni
+tushunmaydi: u operatsiya turini ko‘rishi mumkin, lekin rolni har
+safar so‘rashi (qimmat) yoki keshlashi (eskirgan) kerak. Bundan tashqari,
+takliflar kabi holatlarda (11.3) operatsiya turi **hujjat mazmuniga**
+bog‘liq: “bu atribut o‘zgarishi taklif atributimi yoki oddiy formatlashmi?”
+— buni faqat hujjatni biladigan ega aytadi.
+
+Ega esa rolni sessiya boshida oladi, ruxsat o‘zgarishi hodisalarini
+tinglaydi (11.2 Deep), va hujjatning to‘liq modeliga ega. Tekshiruv
+arzon (xotirada) va to‘liq. Umumiy qoida: **ruxsat tekshiruvi
+ma’lumotni eng yaxshi tushunadigan va o‘zgartiradigan joyda** bo‘lishi
+kerak — bu yerda hujjat egasi.
+</Check>
+
+## 12. Iqtisod: bir hujjat qancha turadi
+
+YouTube’da iqtisod trafik haqida, Spotify’da — huquq to‘lovlari haqida
+edi. Hujjatlar tizimida savol boshqacha: xarajat **nimaga** proporsional?
+
+<Calc title="Butun tizim va bir foydalanuvchi narxi" result="Infratuzilma yiliga ~bir necha million dollar — faol foydalanuvchi boshiga yiliga ~bir necha sent">{`HISOBLASH (hujjat egalari, 5-bo'lim, 7-qadam):
+  ~300 server (zaxira bilan) x ~5 000 dollar/yil = ~1.5 M dollar/yil
+Shlyuzlar (20 M ulanish, ~200 000 ulanish serverga): ~100 server -> ~0.5 M
+
+JURNAL BAZASI (yozish ~5 M op/s, 3 nusxa):
+  ~100-200 server -> ~1 M dollar/yil
+
+SAQLASH (8.2: ~1-1.5 PB, 3 nusxa -> ~4 PB):
+  ~0.02 dollar/GB/oy x 4e6 GB x 12 = ~1 M dollar/yil
+
+Jami (tartib jihatidan): ~4-5 M dollar/yil
+
+Faraz: ~100 M kunlik faol foydalanuvchi
+  5e6 / 1e8 = ~0.05 dollar = ~5 sent yiliga foydalanuvchi boshiga
+
+(Rasmlar, eksport, qidiruv, imlo modellari — alohida va ehtimol kattaroq.)`}</Calc>
+
+Raqamlar taxminiy, lekin xulosa mustahkam: **hamkorlikdagi tahrirlashning
+o‘zi — deyarli bepul**. Yuz million kishining harfma-harf sinxronlashuvi
+bir necha yuz serverga sig‘adi. Bu Spotify darsidagi xulosaga o‘xshaydi
+(infratuzilma — daromadning ~1%), lekin sababi boshqa: bu yerda
+ma’lumot hajmi kichik (hujjat ~30 KB), va operatsiyalar arzon
+(mikrosekundlar).
+
+Undan chiqadigan mahsulot qarori: xarajat **foydalanuvchilar soniga**
+emas, **eng og‘ir hujjatlarga** bog‘liq. O‘rtacha hujjat hech narsa
+turmaydi; 1 M belgili, 100 kishi tahrirlayotgan, 10 yillik tarixli
+hujjat esa bitta serverning sezilarli qismini egallashi mumkin.
+Chegaralar (100 muharrir, 1 M belgi) shu uzun dumni nazorat qiladi.
+
+<Deep title="Nega 100 hamkor va ~1 M belgi chegarasi">
+Ikkala chegara ham serverdan ko‘ra ko‘proq **mijozni** himoya qiladi.
+
+**~1 M belgi.** Bu taxminan 400–500 bet. Server uchun muammo emas
+(operatsiyalar retain orqali uzunlikdan deyarli mustaqil, 6.1). Lekin
+brauzerda har bir operatsiyadan keyin maket (sahifalarga bo‘lish,
+qatorlarga bo‘lish) yangilanishi kerak. Yaxshi muharrir faqat o‘zgargan
+qismni qayta hisoblaydi, lekin ba’zi o‘zgarishlar (hujjat boshidagi
+uslub, katta jadval) butun maketni siljitadi. 500 betni qayta
+sahifalash — yuzlab millisekund; 16 ms talabi (1.2) buziladi. Xotirada
+ham: matn, maket daraxti, bekor qilish steki, izohlar — o‘nlab MB.
+
+**~100 hamkor.** 10-qadamdagi kursor hisobini eslang (kvadratik o‘sish).
+Undan tashqari, har bir mijoz boshqa 99 kishining operatsiyalarini
+qabul qilib, transformatsiya qilib, **chizishi** kerak: sekundiga ~100
+operatsiya — har biri maket yangilanishi. Kuchsiz noutbuk yoki telefon
+buni ko‘tarmaydi. Server tomonida ham k (5-bo‘lim, 4-qadam) o‘sadi.
+
+Chegaradan oshganda nima bo‘ladi? Yangi kelganlar **o‘qish rejimida**
+ochiladi — ular operatsiyalarni oladi, lekin yubormaydi, va ularning
+kursori boshqalarga ko‘rsatilmaydi. Bu 13.2-dagi ommaviy hujjat
+rejimining boshlanishi.
+
+Umumiy dars: **chegara — arxitektura qarori**, cheklov emas. U tizimni
+“o‘rtacha holat uchun yaxshi” loyihalash imkonini beradi, va eng og‘ir
+holatlarni boshqa rejimga (o‘qish) yo‘naltiradi.
+</Deep>
+
+<Callout type="info" title="Bepul mahsulotning xarajat modeli">
+Hujjatlar muharriri ko‘pincha bepul yoki paketning bir qismi. Bunday
+mahsulotda muhandislik qarori “bu xususiyat qancha turadi?” emas,
+“bu xususiyat **eng yomon holatda** qancha turadi?” savoliga tayanadi.
+Versiyalar tarixi o‘rtacha hujjatda ~1.6 MB (1.3); lekin avtomatik
+skript har soniyada hujjatni yangilasa, bir yilda ~30 M operatsiya.
+Shuning uchun siqish (8.2), tezlik chegaralari (11.3) va hujjat
+hajmi chegaralari — bu xarajatlarni boshqarishning asosiy vositalari.
+</Callout>
+
+## 13. Sig‘im rejalashtirish
+
+Umumiy yuk (1.3) muammo emas — hujjatlar mustaqil va gorizontal
+bo‘linadi. Sig‘im savollari **bitta** hujjat haddan tashqari
+mashhurlashganda paydo bo‘ladi.
+
+### 13.1 Qizg‘in hujjat: 100 kishi bir vaqtda
+
+<Calc title="100 faol muharrir — ega server va mijozlar uchun" result="Ega uchun ~10 000 xabar/s — oson; har mijoz uchun ~100 op/s qabul va chizish — asosiy chegara">{`Faraz: 100 kishi faol yozadi (masalan, dars yoki uchrashuv qaydlari)
+  har biri ~1 op/s (5-qadamdagi yig'ish bilan)
+
+EGA SERVER:
+  Kiruvchi: 100 op/s
+  Transform: har op k ~= 99 x 0.3 s = ~30 ta -> 3 000 transform/s
+    x ~5 mks = 15 ms/s — bitta yadroning 1.5%
+  Chiquvchi: 100 op x 99 qabul qiluvchi = ~9 900 xabar/s
+  + kursorlar (10-qadam, yig'ilgan): ~1 000 xabar/s
+  -> ~11 000 xabar/s, ~2 MB/s — bitta server uchun kichik
+
+HAR BIR MIJOZ:
+  Qabul: 99 op/s + kursorlar
+  Har op: transform (yo'ldagi op bo'yicha) + qo'llash + maket
+  Maket yangilanishi 2-5 ms -> 99 x 3.5 ms = ~350 ms/s = 35% CPU
+  -> kuchsiz qurilmada sezilarli sekinlashish`}</Calc>
+
+Hisob muhim nosimmetriyani ko‘rsatadi: server uchun 100 kishi — arzimas,
+**mijoz** uchun esa og‘ir. Yechim mijoz tomonida: kelgan operatsiyalarni
+**yig‘ib chizish** (bir kadrda — 16 ms — kelgan barcha operatsiyalarni
+qo‘llab, maketni bir marta yangilash), va ko‘rinmaydigan qismlar uchun
+maketni kechiktirish. Shunda 99 op/s → ~60 maket yangilanishi/s, va
+har biri faqat o‘zgargan qismga.
+
+### 13.2 Ommaviy hujjat: 50 000 o‘quvchi
+
+Ba’zan hujjat ommaviy tarqaladi: tadbir dasturi, ochiq ro‘yxat, jonli
+yangilanadigan qo‘llanma. Minglab odam uni bir vaqtda ochadi, lekin
+tahrirlovchilar — bir necha kishi.
+
+<Calc title="Bitta hujjat, 50 000 ochiq sessiya" result="Naiv: bitta egaga 50 000 ulanish va har op 50 000 xabar. O'qish rejimi + tarqatish daraxti bilan — bir necha serverga bo'linadi">{`Faraz: 5 muharrir, ~1 op/s har biri; 50 000 o'quvchi
+
+NAIV (hammasi bitta egaga ulangan):
+  Ulanishlar: 50 000 — bitta hujjat uchun (odatda: <= 100)
+  Chiquvchi: 5 op/s x 50 000 = 250 000 xabar/s bitta jarayondan
+  + ochilish: 50 000 x 30 KB surat = 1.5 GB — birinchi daqiqada
+
+O'QISH REJIMI + TARQATISH:
+  Ochilish: surat CDN yoki kesh qatlamidan (har 10 s da yangilanadi)
+  O'quvchilar egaga emas, "tarqatuvchi" serverlarga ulanadi:
+    ega -> 10 tarqatuvchi -> har biri 5 000 o'quvchiga
+  Egadan chiquvchi: 5 op/s x 10 = 50 xabar/s
+  Har tarqatuvchi: 5 x 5 000 = 25 000 xabar/s — oddiy fan-out
+  O'quvchilarga op'lar yig'ib yuboriladi (har 1 s da bitta xabar):
+    har tarqatuvchi 5 000 xabar/s, jami 50 000 — naivdan 5 barobar kam,
+    va yuk 10 serverga bo'lingan`}</Calc>
+
+<Flow nodes={["Muharrirlar (<= 100)", "Hujjat egasi", "Tarqatuvchilar", "O'quvchilar (minglab)", "Surat keshi (ochilish uchun)"]} caption="Ommaviy hujjat: yozish yo'li o'zgarmaydi, o'qish yo'li Twitter tasmasi kabi fan-out bo'ladi" />
+
+<Versus
+  left={{ title: "Tahrirlash sessiyasi", points: [
+    "Egaga to'g'ridan-to'g'ri ulanish",
+    "Har op darhol, harfma-harf",
+    "O'z kursori boshqalarga ko'rinadi",
+    "OT holat mashinasi, bufer, transform",
+    "Hujjat boshiga ~100 gacha",
+  ] }}
+  right={{ title: "O'qish sessiyasi", points: [
+    "Tarqatuvchi yoki keshga ulanish",
+    "Op'lar yig'ilgan, ~1 s kechikish bilan",
+    "Kursor ko'rsatilmaydi (yoki faqat son: '4 000 kishi ko'rmoqda')",
+    "Faqat qo'llash — transform kerak emas (yo'ldagi op yo'q)",
+    "Amalda cheksiz — fan-out daraxti bilan",
+  ] }}
+/>
+
+O‘qish sessiyasining eng muhim xususiyati — **unda yo‘ldagi operatsiya
+yo‘q**, demak transformatsiya ham yo‘q. O‘quvchi shunchaki server
+tartibidagi operatsiyalarni ketma-ket qo‘llaydi — bu oddiy replikatsiya.
+Shuning uchun o‘qish yo‘lini Twitter darsidagi fan-out va YouTube’dagi
+CDN texnikalari bilan istalgancha kengaytirish mumkin. Qiyin qism
+(transformatsiya) faqat kichik, cheklangan muharrirlar guruhida qoladi.
+
+<Deep title="Hamma bir vaqtda ochganda: surat va operatsiyalar 'tikishi'">
+O‘quvchi hujjatni surat bilan ochadi (masalan, 10 soniya oldingi v8 000),
+keyin tarqatuvchidan jonli operatsiyalarni oladi (v8 031 dan boshlab).
+Oraliqdagi v8 001–v8 030 qayerdan keladi?
+
+```
+1. O'quvchi suratni oladi: "v8 000 dagi matn"
+2. Tarqatuvchiga ulanadi: "men v8 000 danman"
+3. Tarqatuvchi o'zining so'nggi operatsiyalar buferidan (masalan,
+   oxirgi 1 000 op) v8 001..v8 030 ni yuboradi, keyin jonli oqim
+4. Surat juda eski bo'lsa (buferdan tashqarida) -> yangiroq surat
+```
+
+Bu Kafka darsidagi “offset bo‘yicha o‘qish” va 5-bo‘lim, 6-qadamdagi
+qayta ulanish bilan bir xil g‘oya: **revision raqami — universal
+koordinata**. Surat, bufer, jonli oqim — hammasi bitta tartiblangan
+ketma-ketlikning turli qismlari, va o‘quvchi ularni revision bo‘yicha
+bexato tikadi.
+
+Nozik joy — **ruxsatlar**: ommaviy hujjat keyinchalik yopilsa
+(“havola bilan kirish o‘chirildi”), kesh va tarqatuvchilardagi
+nusxalar ham darhol o‘chishi kerak. Bu 11.2 Deep’dagi muammoning
+katta miqyosdagi ko‘rinishi — va CDN keshlari uchun alohida bekor
+qilish mexanizmi kerak.
+</Deep>
+
+<Callout type="maslahat" title="Tahrirlash va o'qishni birinchi kundan ajrating">
+Ko‘p tizimlarda “o‘qish” — shunchaki ruxsati kam tahrirlash sessiyasi:
+bir xil ulanish, bir xil ega, bir xil protokol. Bu kichik miqyosda
+qulay, lekin 13.2 dagi hodisada tizim birinchi bo‘lib aynan shu yerda
+sinadi. O‘qish sessiyasini alohida yo‘l sifatida loyihalash (surat +
+revision bo‘yicha oqim) arzon — va keyinchalik uni keshlar va tarqatish
+daraxti bilan kengaytirish mumkin, tahrirlash yo‘liga tegmasdan.
+</Callout>
+
+## 14. Kuzatuv: tezlik va to‘g‘rilik
+
+Hujjatlar tizimida ikki turdagi metrika bor: **tezlik** (foydalanuvchi
+nimani sezadi) va **to‘g‘rilik** (nusxalar bir xilmi, hech narsa
+yo‘qolmadimi). Ikkinchisi odatiy tizimlarda deyarli uchramaydi.
+
+### 14.1 Metrikalar
+
+| Metrika | Nima o‘lchanadi | Odatiy maqsad |
+| --- | --- | --- |
+| Tugma → ekran | Lokal operatsiyadan chizishgacha, p99 | < 16 ms (1.2) |
+| Operatsiya tasdig‘i | Yuborishdan tasdiqqacha, p50 / p99 | < 100 ms / < 1 s |
+| Hamkor ko‘rishi | Muallif tugmasidan hamkor ekranigacha | < 200 ms p50 (9.1) |
+| “Saqlanmoqda” davomiyligi | Bufer bo‘sh bo‘lmagan vaqt ulushi | Kichik; o‘sishi — muammo belgisi |
+| Ajralishlar | Nazorat yig‘indisi farqlari, million operatsiyaga | Nolga yaqin (har biri — xato) |
+| Rad etilgan operatsiyalar | Validatsiya xatosi (6.2), sabab bo‘yicha | Nolga yaqin |
+| Qayta ulanishlar | Sessiya boshiga, sabab bo‘yicha | Barqaror; keskin o‘sish — deploy yoki tarmoq |
+| Oflayn birlashtirish hajmi | Qayta ulanishdagi bufer va k | Taqsimot — 13-qadam UI qarorlari uchun |
+
+Uchinchi qatorni o‘lchash qiyin: muallif va hamkor turli qurilmalarda,
+soatlari mos emas. Amaliy usul — **server vaqti bo‘yicha** ikki yarimni
+alohida o‘lchash: “muallif tugmasidan server qabul qilguncha” (mijoz
+tomonidan, o‘z soati bilan, farq sifatida) va “server tarqatgandan
+hamkor chizguncha” (hamkor tomonidan). Ikkalasining yig‘indisi —
+taxminiy, lekin yetarli baho.
+
+<Calc title="Ajralish darajasi: qancha 'normal'?" result="Hatto milliardga 1 ta xato ham kuniga ~400 buzilgan sessiya — shuning uchun maqsad amalda nol">{`Operatsiyalar: ~5 M/s (1.3) -> kuniga 5e6 x 86 400 = ~4.3e11
+
+Faraz: OT kodida kamdan-kam chekka holat, ehtimoli 1e-9 har operatsiyaga
+  4.3e11 x 1e-9 = ~430 ajralish kuniga
+
+Har ajralish:
+  - hamkorlar turli matn ko'radi (10.3 gacha, ~25-50 s — 6.3)
+  - avtomatik tiklash, ehtimol foydalanuvchi ishining bir qismi yo'qoladi
+  - foydalanuvchi ishonchi: "hujjat o'zi o'zgarib qoldi"
+
+1e-12 da: kuniga ~0.4 — haftasiga ~3 ta hodisa, har biri tahlil qilinadi.
+
+Xulosa: "juda kamdan-kam" xato ham miqyosda KUNDALIK hodisa.
+Ajralishlar metrikasi — xato hisoblagichi, "normal daraja" yo'q.`}</Calc>
+
+### 14.2 Foydalanuvchi ko‘radigan xatolar
+
+<Deep title="Kursor sakrashi va 'o'zi o'zgargan' matn">
+OT va sinxronlash xatolari foydalanuvchiga ko‘pincha **g‘alati xulq**
+sifatida ko‘rinadi, “xato” sifatida emas. Uchta klassik belgi:
+
+**Kursor sakrashi.** Ali yozayotgan paytda Vali yuqoriroqda matn
+qo‘shdi, va Alining kursori boshqa joyga o‘tib ketdi — Alining keyingi
+harfi noto‘g‘ri joyga tushdi. Sabab: begona operatsiya qo‘llanganda
+**lokal kursor** transformatsiya qilinmagan (5-bo‘lim, 10-qadam — faqat
+hamkorlar kursori uchun emas, o‘zinikiga ham kerak). Test: ikkala
+mijoz bir vaqtda yozadigan skript, kursor pozitsiyasini tekshirib.
+
+**Ikki marta qo‘shilgan matn.** Qayta ulanishdan keyin paragraf ikki
+marta paydo bo‘ldi. Sabab: yo‘ldagi operatsiya serverda allaqachon
+qo‘llangan, lekin idempotentlik tekshiruvi ishlamagan (5-bo‘lim,
+6-qadam). Metrika: bir xil `(mijoz, ketma-ketlik)` bilan ikki marta
+qo‘llangan operatsiyalar — nol bo‘lishi kerak.
+
+**Ochganda boshqa, yangilaganda boshqa.** Hujjat surat va jurnal
+dumidan tiklanadi (5-bo‘lim, 8-qadam). Agar surat yozishda xato bo‘lsa
+(masalan, noto‘g‘ri revision bilan belgilangan), yangi ochgan mijoz
+boshqalardan farq qiladi. Metrika: yangi ochilgan sessiyadagi birinchi
+nazorat yig‘indisi farqi — surat xatosini boshqa ajralishlardan ajratadi.
+
+Uchala holatda ham kalit — **foydalanuvchi shikoyati kelishidan oldin**
+aniqlash. “Hujjat o‘zi o‘zgardi” degan shikoyatni takrorlash deyarli
+imkonsiz; nazorat yig‘indisi va idempotentlik hisoblagichlari esa uni
+aniq hujjat va revisiongacha ko‘rsatadi.
+</Deep>
+
+<Callout type="ogoh" title="Deploy — eng xavfli payt">
+OT kodi mijoz va serverda bir xil bo‘lishi kerak. Yangi versiya
+chiqarilganda bir paytda **eski mijozlar** (sahifani yangilamaganlar)
+va **yangi server** ishlaydi. Agar transformatsiya qoidalari o‘zgargan
+bo‘lsa (masalan, yangi atribut yoki bog‘lash qoidasi), eski mijoz va
+yangi server bir xil operatsiya juftligini turlicha transformatsiya
+qiladi — ajralish. Himoya: protokol versiyasi har xabarda, server eski
+mijozlarni eski qoidalar bilan qo‘llab-quvvatlaydi yoki ularni sahifani
+yangilashga majburlaydi; va ajralishlar metrikasi deploy paytida
+alohida kuzatiladi.
+</Callout>
+
+<Check q="Nega 'hamkor ko'rishi' kechikishini bitta mijozning soati bilan o'lchab bo'lmaydi, va nima qilinadi?">
+Chunki hodisa **ikki qurilmada** sodir bo‘ladi: tugma Alining
+noutbukida, chizish Valining telefonida. Ularning soatlari farq qiladi
+— bir necha yuz millisekund, ba’zan soniyalar — va o‘lchanadigan
+kattalik (~100–200 ms) shu xato bilan bir tartibda. Alining soatida
+“14:00:00.000 da bosildi”, Valining soatida “14:00:00.050 da chizildi”
+— 50 ms mi yoki 500 ms mi, bilib bo‘lmaydi.
+
+Yechim — o‘lchovni **bitta soatli** bo‘laklarga ajratish. Alining
+mijozi: “tugmadan tasdiqqacha” (o‘z soati bilan ikki nuqta — farq
+ishonchli). Server: “qabul qilishdan tarqatishgacha” (server soati).
+Valining mijozi: “xabar kelishidan chizishgacha” (o‘z soati). Tarmoqning
+bir tomonlama kechikishi esa aylanish vaqtining yarmi sifatida
+baholanadi. Yig‘indi — ishonchli taxmin.
+
+Bu Spotify darsidagi mijoz va server soatlari muammosi bilan bir xil:
+**taqsimlangan tizimda vaqt tamg‘alarini turli mashinalar o‘rtasida
+ayirmang**. Bitta mashina ichidagi farqlar ishonchli, mashinalararo —
+yo‘q.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Butun hujjatni saqlash va 'oxirgi yozuvchi yutadi'", pro: "Eng oddiy; bitta foydalanuvchida mukammal", con: "Ikki muharrirda har 2 s kimningdir ishi yo'qoladi (4.1)" },
+    { choice: "Operatsiyalarni transformatsiyasiz tarqatish", pro: "Tez va oddiy; test paytida ko'pincha ishlaydi", con: "Birinchi parallel juftlikda nusxalar ajraladi (2.2) — va bu har soniyada" },
+    { choice: "Tasdiqni jurnalga yozishdan oldin yuborish", pro: "Kechikish ~5-10 ms kam", con: "Ega o'lsa — tasdiqlangan operatsiya yo'q, hamkorlar ajralgan (10.3 Check)" },
+    { choice: "Kursorlarni hujjat operatsiyalari kabi saqlash", pro: "Bitta mexanizm, bitta kanal", con: "Tarix kursor siljishlari bilan to'ladi; 100 kishida kvadratik trafik (5-bo'lim, 10-qadam)" },
+    { choice: "Ruxsatni faqat hujjat ochilganda tekshirish", pro: "Har op uchun tekshiruv narxi yo'q", con: "Olib tashlangan muharrir sessiya yopilguncha yozadi (11.2 Deep)" },
+  ]}
+/>
+
+**Birinchi qator** jozibali, chunki u bitta foydalanuvchi bilan
+sinalganda benuqson. Muammo faqat ikkinchi muharrir paydo bo‘lganda
+ko‘rinadi — va 2.3-dagi hisob ko‘rsatadiki, u holda ziddiyat istisno
+emas, qoida. Bu antinaqshning chuqur sababi — **saqlash birligini
+o‘zgarish birligidan katta tanlash**: tizim nima o‘zgarganini bilmaydi,
+faqat natijani.
+
+**Ikkinchi qator** eng xavfli, chunki u sinovda **ishlaydi**: ikki
+dasturchi navbat bilan yozsa, parallellik yo‘q, va hamma narsa to‘g‘ri.
+Tez tarmoqda, laboratoriyada “ko‘r” oyna millisekundlar — ajralish
+kamdan-kam. Ishlab chiqarishda, mobil tarmoqda, oyna yuzlab millisekund,
+va ajralish har daqiqada. Test ssenariylariga **ataylab** kechikish va
+parallellik qo‘shish kerak.
+
+**Uchinchi qator** kichik optimallashtirish kabi ko‘rinadi — 9.1-dagi
+byudjetda ~10% tejash. Lekin u tizimning eng muhim kafolatini buzadi:
+“tasdiqlangan — saqlangan”. Nosozlik kamdan-kam (ega o‘lishi), lekin
+har biri bir nechta hujjatni ajratadi va foydalanuvchi ishini
+yo‘qotadi.
+
+**To‘rtinchi qator** “hamma narsa operatsiya” degan chiroyli g‘oyaning
+ortiqcha qo‘llanishi. Kursor — **holat** (hozir qayerda), tarix emas.
+Uni tarixga yozish versiyalar tarixini befoyda qiladi va jurnalni
+bir necha barobar kattalashtiradi. Uchuvchan ma’lumot uchun uchuvchan
+kanal.
+
+**Beshinchi qator** uzoq yashovchi ulanishlarning umumiy tuzog‘i
+(Slack darsida ham uchragan): HTTP dunyosida har so‘rov tekshiriladi
+va bu “bepul” edi; doimiy ulanishda tekshiruv ulanish boshiga ko‘chadi,
+va ruxsat o‘zgarishi yo‘qolib qoladi.
+
+<Callout type="xato" title="Oltinchi antinaqsh: o'z OT'ingizni testsiz yozish">
+“Transformatsiya — bir necha o‘nlab satr, jadvalga qarab yozaman”.
+Bu to‘g‘ri — va aynan shuning uchun xavfli. 6.3-dagi Callout: xatolar
+uchta holat kesishganda chiqadi, va qo‘lda yozilgan testlar ularni
+qamrab olmaydi. Amaliyotdagi mutatsiya tajribasi ko‘rsatadiki, faqat
+uzunroq o‘chirishlarda namoyon bo‘ladigan kichik xato barcha aniq
+testlardan o‘tib ketadi, lekin tasodifiy TP1 testi uni darhol ushlaydi. Qoida:
+transformatsiya kodi **birinchi kundan** fuzz testlari bilan, va har
+o‘zgarishda millionlab tasodifiy juftlik bilan tekshiriladi. Yoki —
+yaxshi sinalgan tayyor kutubxonani ishlating.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "OT, markaziy server", pro: "Xotira kichik, faqat TP1, server — tabiiy hakam va ruxsat nuqtasi", con: "Serversiz ishlamaydi; server hujjatni ko'rishi shart" },
+    { choice: "CRDT", pro: "Istalgan tartib va yo'l, oflayn-birinchi, uchidan-uchiga shifrlash mumkin", con: "Metama'lumot va qabr toshlari; niyat anomaliyalari (7.2 Deep)" },
+    { choice: "Bitta hujjat — bitta ega", pro: "Oddiy tartib, xotirada tez", con: "Egalik boshqaruvi, failover paytida ~10 s uzilish" },
+    { choice: "Bitta operatsiya yo'lda", pro: "TP2 kerak emas; xabarlar tarmoqqa moslashadi", con: "Sekin tarmoqda o'zgarishlar bo'laklab yetadi" },
+    { choice: "Jurnal + suratlar + siqish", pro: "Tez ochilish, to'liq tarix, boshqariladigan hajm", con: "Siqish tafsilotni yo'qotadi; eski revisionga asoslangan oflayn bufer muammosi" },
+    { choice: "Tahrirlash va o'qish yo'llarini ajratish", pro: "O'qish cheksiz kengayadi, tahrirlash sodda qoladi", con: "Ikki protokol; o'quvchilar ~1 s kechikish bilan" },
+  ]}
+/>
+
+Jadvalni ikki guruhga ajratib o‘qing. Birinchi ikki qator — **asosiy
+arxitektura tanlovi**: markazlashgan (OT) yoki markazsiz (CRDT). Bu
+tanlov qolgan hamma narsani belgilaydi: server bo‘lsa — egalar, jurnal,
+ruxsatlar tabiiy; bo‘lmasa — har bir nusxa o‘zi to‘liq tizim.
+
+Qolgan to‘rt qator — **markazlashgan tanlov ichidagi** muhandislik
+qarorlari. Ularning umumiy mazmuni: bitta hujjat ichida hamma narsani
+**chiziqli va oddiy** saqlash (bitta ega, bitta tartib, bitta yo‘ldagi
+operatsiya), murakkablikni esa hujjatlar **orasiga** (sharding, egalik
+ko‘chishi) va **atrofiga** (suratlar, o‘qish yo‘li, siqish) chiqarish.
+
+<Callout type="ogoh" title="Qaysi metrikani optimallashtiryapsiz?">
+Hamkorlikdagi muharrirda to‘rtta raqobatdosh maqsad bor:
+
+**Lokal javob tezligi** — maksimallashtirsangiz, har narsa optimistik,
+mijozda — va **mijoz murakkabligi** va ajralish xavfi oshadi.
+
+**Hamkorlarga yetish tezligi** — maksimallashtirsangiz, operatsiyalarni
+yig‘masdan, darhol yuborasiz, jurnal yozuvini qisqartirasiz — va
+**trafik va bardoshlilikni** qurbon qilasiz.
+
+**To‘g‘rilik (yaqinlashish, yo‘qotmaslik)** — maksimallashtirsangiz,
+jurnal tasdiqdan oldin, nazorat yig‘indilari, qat’iy validatsiya — va
+**kechikishning** bir qismini qurbon qilasiz.
+
+**Miqyos (hamkorlar soni, hujjat hajmi)** — maksimallashtirsangiz,
+murakkab fan-out, mijozda yig‘ib chizish — va **soddalikni** qurbon
+qilasiz.
+
+Odatiy tartib: **to‘g‘rilik > lokal javob > hamkorlarga yetish > miqyos**.
+To‘g‘rilik buzilsa, foydalanuvchi hujjatga ishonmaydi; lokal javob
+sekin bo‘lsa, yozish noqulay; hamkorlarga yetish 200 ms o‘rniga 500 ms
+bo‘lsa, deyarli sezilmaydi; miqyos esa chegaralar bilan (12-bo‘lim Deep)
+boshqariladi.
+</Callout>
+
+Intervyuda bu tanlovni qanday asoslash kerak? Talablardan boshlang,
+algoritmdan emas. “Foydalanuvchilar asosan onlayn, hujjatlar serverda,
+ruxsatlar markaziy” — OT va hujjat egasi tabiiy. “Qurilmalar uzoq
+vaqt oflayn, server matnni ko‘rmasligi kerak, peer-to-peer sinxronlash” —
+CRDT. Keyin narxni aniq ayting: OT uchun — egalik boshqaruvi va failover
+paytidagi uzilish; CRDT uchun — metama’lumot, qabr toshlari va niyat
+anomaliyalari. Eng kuchli javob — “qaysi talab o‘zgarsa, men qarorni
+o‘zgartirgan bo‘lardim” degan jumla bilan tugaydi.
+
+## 17. Intervyu savollari
+
+### 17.1 Mexanizm
+
+<QA q="Ikki foydalanuvchi bir vaqtda tahrirlasa, nega operatsiyalarni shunchaki tarqatish ishlamaydi?">
+Chunki pozitsiya — nisbiy manzil. “abc” da Ali `ins(1, "X")`, Vali
+`del(2, 1)` (“c” ni o‘chirish) qildi. Alida Valining operatsiyasi
+qo‘llanganda 2-pozitsiyada endi “b” turibdi (X qo‘shilgani uchun) —
+noto‘g‘ri harf o‘chadi: Alida “aXc”, Valida “aXb”. Nusxalar abadiy
+ajraladi va niyat buziladi. Operatsiyalar kommutativ emas: bir xil
+juftlik turli tartibda turli natija beradi. Yechim — yagona tartib
+va pozitsiyalarni moslashtirish (OT) yoki pozitsiyasiz manzillar (CRDT).
+</QA>
+
+<QA q="Transformatsiya funksiyasi nima va qanday xususiyatni qanoatlantirishi kerak?">
+`transform(a, b) → (a', b')`: bir xil holatga nisbatan yaratilgan
+ikki parallel operatsiyani bir-biri qo‘llangan holatga moslaydi. Asosiy
+xususiyat — TP1: `apply(apply(S, a), b') == apply(apply(S, b), a')`,
+ya’ni ikki tartib bir xil natija beradi. Qoidalar: oldingi qo‘shish
+keyingisini suradi, oldingi o‘chirish orqaga suradi, o‘chirish ichidagi
+qo‘shish saqlanadi, ustma-ust o‘chirishning umumiy qismi bir marta
+o‘chiriladi, bir joyga ikki qo‘shishda qat’iy bog‘lash qoidasi (odatda
+server tartibi) ishlatiladi.
+</QA>
+
+<QA q="Jupiter protokolida mijoz nega bir paytda faqat bitta tasdiqlanmagan operatsiya yuboradi?">
+Shunda mijoz va server holatlari orasidagi farq doim ikki chiziqli
+zanjir bilan cheklanadi, va server har bir kelgan operatsiyani o‘z
+tarixining chiziqli qismi bo‘yicha transformatsiya qiladi — faqat TP1
+kerak. Ko‘p operatsiya bir vaqtda yo‘lda bo‘lsa, turli yo‘llar bo‘ylab
+transformatsiya natijalari mos kelishi uchun TP2 kerak bo‘lardi, va
+uni to‘g‘ri qanoatlantirish tarixan juda qiyin bo‘lgan. Qolgan lokal
+o‘zgarishlar buferda compose qilinadi; bu xabarlar sonini tabiiy
+ravishda aylanish vaqtiga moslaydi.
+</QA>
+
+<QA q="Mijoz serverdan begona operatsiya olganda, uning yo'ldagi operatsiyasi va buferi bilan nima qiladi?">
+Ikki marta transformatsiya: `(s1, yo‘lda') = transform(s, yo‘lda)`,
+keyin `(s2, bufer') = transform(s1, bufer)`, va `s2` ni o‘z matniga
+qo‘llaydi. Yo‘ldagi va bufer operatsiyalari endi begona operatsiyadan
+keyingi holatga nisbatan. Server begona operatsiyani tarixida mijoz
+operatsiyasidan oldin tartiblagani uchun bog‘lash qoidasida u oldinda
+— ikkala tomonda bir xil tanlov. Kursor ham `s2` bo‘yicha siljitiladi.
+</QA>
+
+<QA q="compose nima va u qayerda ishlatiladi?">
+Ketma-ket ikki operatsiyani bitta ekvivalentiga birlashtiradi:
+`apply(apply(d, a), b) == apply(d, compose(a, b))`. Uch joyda: mijoz
+buferi (tasdiq kutilganda yozilgan harflar bitta operatsiya bo‘ladi),
+siqish (jurnaldagi eski operatsiyalarni vaqt oynalari bo‘yicha
+birlashtirish), va uzoq oflayndan keyin qayta ulanishda server
+operatsiyalarini bittaga siqib yuborish. Chiziqli vaqtda ishlaydi,
+chunki retain son sifatida saqlanadi.
+</QA>
+
+<QA q="CRDT matn uchun qanday ishlaydi va OT'dan asosiy farqi nima?">
+Har belgiga abadiy noyob ID beriladi (mijoz, hisoblagich); qo‘shish —
+“ID X dan keyin”, o‘chirish — “ID Y ni qabr toshi qil”. Manzillar
+siljimaydi, shuning uchun operatsiyalar kommutativ: istalgan tartibda,
+serversiz, bir xil natija. Farq: OT tartibni server orqali, CRDT
+tuzilma orqali ta’minlaydi. OT’da xotira kichik, lekin server majburiy;
+CRDT’da server ixtiyoriy, lekin har belgida metama’lumot va o‘chirilgan
+belgilar saqlanadi, niyat anomaliyalari (aralashib ketish) mumkin.
+</QA>
+
+<QA q="Hamkorning kursori qanday qilib to'g'ri joyda qoladi?">
+Kursor — pozitsiya, va u har bir qo‘llangan operatsiya bo‘yicha
+transformatsiya qilinadi: oldingi qo‘shish uni suradi, oldingi o‘chirish
+orqaga tortadi, kursorni o‘z ichiga olgan o‘chirish uni o‘chirish
+boshiga qo‘yadi. Kursorlar hujjat tarixiga yozilmaydi: ular alohida
+uchuvchan kanal orqali, yig‘ilgan holda (masalan, har 100 ms) yuboriladi.
+O‘z kursoringiz ham begona operatsiyalar bo‘yicha siljishi kerak — aks
+holda “kursor sakrashi” xatosi.
+</QA>
+
+<QA q="Hamkorlikdagi muharrirda Ctrl+Z qanday ishlaydi?">
+Faqat o‘z operatsiyalaringizni bekor qiladi. Bekor qilish steki
+operatsiyalarning teskarisini saqlaydi va har begona operatsiya kelganda
+stekdagi hamma narsani u bo‘yicha transformatsiya qiladi. Ctrl+Z —
+transformatsiya qilingan teskarini yangi operatsiya sifatida qo‘llash;
+tarix o‘chmaydi, oldinga o‘sadi. Chekka holatlar: bekor qilinadigan
+matn allaqachon boshqa kishi tomonidan o‘chirilgan (natija — hech narsa),
+va bekor qilishni qayta bajarish oraliqda o‘zgargan joyga tushadi.
+Amalda Ctrl+Z harfni emas, bir tahrir sessiyasini bekor qiladi.
+</QA>
+
+<QA q="Boy matndagi formatlash ziddiyatlari qanday hal bo'ladi?">
+Formatlash — belgilar oralig‘iga atribut qo‘yadigan operatsiya
+(`retain(n, {bold: true})`), va u matn operatsiyalari bilan birga
+transformatsiya qilinadi. Turli atributlar mustaqil: biri qalin,
+ikkinchisi kursiv qilsa — ikkalasi ham. Bir atributga turli qiymat
+(qizil va ko‘k) — server tartibida oxirgisi yutadi: bu yerda niyatlarni
+birlashtirib bo‘lmaydi, muhimi deterministik natija. O‘chirilgan
+belgining formatlanishi ahamiyatsiz. Jadvallar va ro‘yxatlar esa
+qo‘shimcha tuzilmaviy qoidalar talab qiladi.
+</QA>
+
+<QA q="'Taklif' rejimini OT ustida qanday qurasiz?">
+Taklifni yangi operatsiya turi sifatida emas, maxsus atributli matn
+sifatida: taklif qilingan qo‘shish — `taklif` atributli insert (yashil
+ko‘rinadi, “haqiqiy” matn hisoblanmaydi), taklif qilingan o‘chirish —
+matn joyida, `taklif: o‘chirish` atributi bilan (chizilgan). Qabul
+qilish — atributni olib tashlash yoki haqiqiy `del`; rad etish —
+teskarisi. Afzallik: yangi transformatsiya qoidalari kerak emas, takliflar
+oddiy matn va atribut kabi siljiydi. Ruxsat: izohlovchi faqat `taklif`
+atributli operatsiyalarni yubora oladi.
+</QA>
+
+### 17.2 Miqyos
+
+<QA q="Millionlab hujjatni qanday masshtablaysiz, agar bitta hujjat bitta joyda tartiblanishi kerak bo'lsa?">
+Hujjatlar mustaqil, shuning uchun ularni serverlarga bo‘lish oson:
+har ochiq hujjat izchil xeshlash bilan bitta “ega” jarayonga muddatli
+ijara bilan biriktiriladi. Ega hujjatni xotirada ushlaydi, operatsiyalarni
+transformatsiya qiladi, revision tayinlaydi, jurnalga yozadi, tarqatadi.
+Bitta server ~100 000–200 000 ochiq hujjatni ko‘taradi; 20 M ochiq
+hujjatga bir necha yuz server. Ulanishlar holatsiz shlyuzlar orqali
+to‘g‘ri egaga yo‘naltiriladi.
+</QA>
+
+<QA q="Hujjat egasi o'lsa nima bo'ladi va ikki ega muammosi qanday hal qilinadi?">
+Ijara (~10 s) tugagach boshqa server egalikni oladi va holatni surat
++ jurnal dumidan tiklaydi (~50 ms). Mijozlar bu vaqtda buferga yozishda
+davom etadi, keyin tasodifiy kechikish bilan qayta ulanadi va yo‘ldagi
+operatsiyalarni identifikator bilan qayta yuboradi. Eski ega faqat
+muzlagan bo‘lsa — fencing: har egalik davri raqamlanadi (epoch), va
+jurnalga yozish shartli (“rev N hali yo‘q va epoch mos”). Eski ega
+yozolmaydi va o‘zi to‘xtaydi. Kafolat soatlarga emas, jurnalning shartli
+yozuviga tayanadi.
+</QA>
+
+<QA q="Katta tarixli hujjat qanday tez ochiladi?">
+Jurnal — haqiqat, suratlar — kesh. Har ~1 000 operatsiyada to‘liq matn
+surati saqlanadi; ochishda eng yaqin surat + ≤1 000 operatsiya qo‘llanadi
+(~20 ms) — butun tarixni qayta o‘ynash (millionlab operatsiya, soniyalar)
+o‘rniga. Eski suratlar siyraklashtiriladi, eski jurnal esa compose bilan
+vaqt oynalari bo‘yicha siqiladi (~10 barobar). Siqish faqat hech bir
+oflayn mijoz yoki nomlangan versiya tayanmaydigan revisionlar uchun.
+</QA>
+
+<QA q="100 kishi bir hujjatni tahrirlasa, qayerda muammo boshlanadi?">
+Serverda emas: 100 op/s, har biri ~30 transform — bitta yadroning bir
+necha foizi; chiquvchi ~10 000 xabar/s. Muammo mijozda: har brauzer
+sekundiga ~99 begona operatsiyani qabul qilib, transformatsiya qilib,
+maketni yangilashi kerak — kuchsiz qurilmada CPU ning uchdan biri.
+Yechimlar: bir kadr ichidagi operatsiyalarni yig‘ib chizish, ko‘rinmas
+qismlar maketini kechiktirish, kursor yangilanishlarini yig‘ish. Va
+chegara: ~100 dan oshganlar o‘qish rejimida.
+</QA>
+
+<QA q="Minglab odam ochgan ommaviy hujjatni qanday xizmat qilasiz?">
+Tahrirlash va o‘qish yo‘llarini ajratib. Muharrirlar (≤100) egaga
+to‘g‘ridan-to‘g‘ri ulanadi. O‘quvchilar hujjatni kesh yoki CDN’dagi
+suratdan ochadi va “tarqatuvchi” serverlardan revision bo‘yicha
+operatsiyalar oqimini oladi (fan-out daraxti), yig‘ilgan holda ~1 s
+kechikish bilan. O‘quvchida yo‘ldagi operatsiya yo‘q, demak transformatsiya
+ham yo‘q — oddiy replikatsiya, istalgancha kengayadi. Surat va oqim
+revision raqami bo‘yicha tikiladi.
+</QA>
+
+<QA q="Hujjatlar tizimining asosiy xarajati nimaga bog'liq?">
+Foydalanuvchilar soniga emas, eng og‘ir hujjatlarga. O‘rtacha hujjat
+~30 KB matn va ~1.6 MB tarix — deyarli bepul; butun tizim sekundiga
+~5 M operatsiyani bir necha yuz serverda ko‘taradi, faol foydalanuvchi
+boshiga yiliga bir necha sent. Xarajatni uzun dum belgilaydi: 1 M
+belgili, 100 kishilik, yillab avtomatik yangilanadigan hujjatlar.
+Shuning uchun chegaralar (hujjat hajmi, hamkorlar soni, tezlik), siqish
+va o‘qish rejimi — asosiy xarajat vositalari.
+</QA>
+
+<QA q="Qit'alararo hamkorlikda kechikishni qanday kamaytirasiz?">
+Kechikishning asosiy qismi masofa: Ali va Vali turli qit’alarda bo‘lsa,
+har tomonga ~75 ms. Server ichidagi eng katta hissa — jurnalga bardoshli
+yozish (~5–10 ms). Asosiy vosita — hujjat egasini hamkorlarning
+“og‘irlik markazi”ga yaqin joylashtirish va egalikni ko‘chirish imkoniyati;
+jurnalni esa egasi yaqinidagi zonalarda sinxron, uzoq mintaqaga asinxron
+takrorlash. Lokal javob bunga bog‘liq emas — u har doim ~16 ms dan kam,
+chunki optimistik.
+</QA>
+
+<QA q="Ajralishlar qanday aniqlanadi va 'normal daraja' bormi?">
+Server har N revisionda hujjat xeshini yuboradi, mijoz o‘zinikini
+solishtiradi; farq bo‘lsa — ajralish: mijoz qayta yuklaydi, saqlanmagan
+o‘zgarishlarni taklif sifatida saqlaydi, va hodisa hujjat, revision,
+xeshlar bilan qayd qilinadi. Normal daraja yo‘q: sekundiga ~5 M operatsiyada
+hatto milliarddan bir xato ham kuniga yuzlab buzilgan sessiya. Har
+ajralish — OT kodidagi haqiqiy xato. Ayniqsa deploy paytida (eski
+mijoz, yangi server) alohida kuzatiladi.
+</QA>
+
+### 17.3 Tajriba
+
+<QA q="Google Docs uchun nega OT tanlangan, CRDT emas?">
+Uch sabab. Tizimda baribir markaziy server bor (saqlash, ruxsatlar,
+tarix) — uning tartib belgilash qobiliyatidan foydalanish tabiiy, va
+OT’ning asosiy kamchiligi (server majburiyligi) narx emas. Jupiter
+yondashuvi faqat TP1 talab qiladi, uni to‘g‘ri yozish mumkin. Va 2010-yilda
+ixcham, katta hujjatlarga yaroqli CRDT’lar hali yo‘q edi — dastlabki
+algoritmlar matndan o‘nlab-yuzlab barobar katta metama’lumot yaratgan.
+Bugun loyiha boshlansa, oflayn-birinchi yoki uchidan-uchiga shifrlash
+talablari CRDT tomon og‘dirishi mumkin.
+</QA>
+
+<QA q="Mijoz bir hafta oflayn ishladi. Qayta ulanishda nima bo'ladi va qanday xavflar bor?">
+Texnik tomoni oson: bufer bitta compose qilingan operatsiya; server
+o‘tgan haftadagi operatsiyalarni (yoki ularni bittaga siqilganini)
+yuboradi, mijoz buferni transformatsiya qilib yuboradi — millisekundlar.
+Xavflar: (1) mijoz asoslangan revision siqilgan bo‘lsa — oraliq
+operatsiyalar yo‘q, transformatsiya imkonsiz; (2) natija deterministik,
+lekin ma’noli bo‘lmasligi mumkin — hamkorlar o‘sha bo‘limni qayta yozgan
+bo‘lsa, Alining jumlalari boshqa kontekstga tushadi. Yechim: siqish
+qoidasida oflayn buferlarni hisobga olish, va uzoq oflayndan keyin
+foydalanuvchiga birlashtirishni ko‘rsatish yoki taklif sifatida kiritish.
+</QA>
+
+<QA q="Serverdagi ruxsat tekshiruvini qayerda va qanchalik tez-tez qilasiz?">
+Har bir operatsiyada, hujjat egasida, transformatsiyadan oldin: rol
+operatsiya turiga mosmi (izohlovchi — faqat izoh va takliflar), hajm
+va tezlik chegaralari, tuzilma validatsiyasi. Rol sessiya boshida olinadi
+va keshlanadi, ruxsat o‘zgarishi hodisasi esa uni darhol yangilaydi
+(qisqa TTL — zaxira). Faqat ochishda tekshirish — uzoq yashovchi
+ulanishning tuzog‘i: olib tashlangan muharrir sessiya yopilguncha
+yozaveradi. Mijoz tomonidagi tekshiruv — faqat UI qulayligi.
+</QA>
+
+<QA q="'Barcha o'zgarishlar saqlandi' belgisi qachon ko'rsatilishi kerak?">
+Faqat bufer bo‘sh va barcha operatsiyalar **jurnalga bardoshli yozilgan**
+tasdig‘ini olgandan keyin. Ega tasdiqni jurnal yozuvidan oldin yuborsa
+va o‘lsa, foydalanuvchi “saqlandi” deb o‘ylaydi, lekin operatsiya yo‘q,
+hamkorlar esa uni qo‘llagan — ajralish va yo‘qotish. Bufer bo‘sh bo‘lmasa,
+sahifadan chiqishda ogohlantirish kerak. Bu UI qarori butun “yozish →
+tasdiq → tarqatish” tartibiga tayanadi.
+</QA>
+
+<QA q="Emoji yoki o'zbekcha 'ʻ' bor hujjatda ajralish chiqdi. Nimani tekshirasiz?">
+Pozitsiya birligini. Brauzer (JavaScript) odatda UTF-16 kod birliklarida
+sanaydi, server boshqa tilda kod nuqtalarida yoki baytlarda sanashi
+mumkin. Emoji UTF-16 da ikki birlik, “ʻ” UTF-8 da ikki bayt — undan
+keyingi har operatsiya siljiydi. Protokolda birlik aniq yozilishi va
+mijoz, server, eksport — hammasida bir xil bo‘lishi kerak. Qo‘shimcha:
+kursor va o‘chirish ko‘rinadigan harf chegaralarida ushlanishi kerak,
+aks holda surrogat juftlik yoki emoji bo‘lagi qoladi.
+</QA>
+
+<QA q="OT kodini qanday test qilasiz?">
+Aniq testlar yetarli emas — ular faqat siz o‘ylagan holatlarni qamraydi.
+Asosiysi — tasodifiy xususiyat testlari: millionlab tasodifiy juftlikda
+TP1, compose tengligi, kursor chegaralari; va to‘liq protokol
+simulyatsiyasi: bir nechta mijoz, tasodifiy tarmoq kechikishlari,
+oxirida yaqinlashish va “har qo‘shilgan noyob token aynan bir marta”.
+Ishlab chiqarishda — nazorat yig‘indilari va ajralishlar metrikasi.
+Mutatsiya tajribasi: faqat uzun o‘chirishlarda ko‘rinadigan xato aniq
+testlardan o‘tadi, tasodifiy test esa darhol ushlaydi.
+</QA>
+
+<QA q="Yangi versiyani chiqarganda OT bilan qanday xavf bor?">
+Bir paytda eski mijozlar (sahifani yangilamaganlar) va yangi server
+ishlaydi. Transformatsiya qoidalari o‘zgargan bo‘lsa (yangi atribut,
+boshqa bog‘lash qoidasi, boshqa pozitsiya birligi), bir xil juftlik
+ikki tomonda turlicha transformatsiya qilinadi — ajralish. Himoya:
+har xabarda protokol versiyasi, server bir muddat eski qoidalarni ham
+qo‘llab-quvvatlaydi yoki eski mijozni yangilashga majburlaydi, deploy
+bosqichma-bosqich va ajralishlar metrikasi alohida kuzatiladi.
+</QA>
+
+<QA q="Nega kursorlarni hujjat operatsiyalari sifatida jurnalga yozmaslik kerak?">
+Kursor — holat (hozir qayerda), tarix emas. Uni jurnalga yozish
+versiyalar tarixini befoyda siljishlar bilan to‘ldiradi, jurnalni bir
+necha barobar kattalashtiradi, va har siljishga revision beradi — bu
+transformatsiya yukini oshiradi. Bundan tashqari, kursor trafigi
+hamkorlar soniga kvadratik o‘sadi (100 kishida naiv ~50 000 xabar/s).
+To‘g‘ri yo‘l — alohida uchuvchan kanal, yig‘ilgan yuborish, yo‘qolsa
+keyingisi baribir keladi.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/google-docs/`
+da: `ot.py` — operatsiya yozuvi va yordamchilar tayyor, to‘rtta funksiya
+TODO; `sim.py` — darsdagi Jupiter holat mashinasi bilan tayyor
+simulyator; `check.py` — 17 ta tekshiruv. Faqat Python standart
+kutubxonasi.
+
+<Task title="1-daraja: ajralishni o'z ko'zingiz bilan">
+Ikki brauzer oynasida bitta oddiy “jonli muharrir” oching — masalan,
+100 satrlik WebSocket serveri, u kelgan operatsiyani (`ins`/`del`
+pozitsiya bilan) boshqa oynaga **transformatsiyasiz** yuboradi. Server
+har xabarni 500 ms kechiktirsin. Ikkala oynada bir paragrafga bir
+vaqtda yozing.
+
+**Tekshiruv mezoni:** (1) ikki oynadagi matn farq qilgan skrinshot;
+(2) farqni keltirib chiqargan aniq operatsiyalar juftligi (jurnaldan)
+va uni 2.2-dagi hisob kabi qo‘lda tushuntirish; (3) kechikishni 50 ms
+ga tushirganda ajralish qancha kamayganini sanang va 2.3-dagi “ko‘r
+oyna” hisobi bilan solishtiring.
+</Task>
+
+<Task title="2-daraja: OT va Jupiter protokoli (asosiy topshiriq)">
+`ot.py` dagi `apply`, `transform`, `compose` va `transform_cursor` ni
+yozing. `python check.py` ularni darsdagi aniq misollar (2.2 dagi
+“aXb”, bog‘lash qoidasi, o‘chirish ichidagi qo‘shish), 20 000 tasodifiy
+juftlikdagi TP1 va to‘liq Jupiter simulyatsiyasi (2, 3 va 5 mijoz,
+400 stsenariy) bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 17/17 OK`. Shu jumladan: 1 M belgili
+hujjatda bitta transform 200 mikrosekunddan tez (retain — son, 6.1),
+va “faqat qo‘shish” rejimida har noyob token yakuniy matnda aynan bir
+marta. Keyin tajriba: bog‘lash qoidasini **faqat mijozda** teskarisiga
+o‘zgartiring (`sim.py` da `on_remote` dagi transform argumentlari
+tartibi) va nechta stsenariy ajralishini sanang — 6-bo‘limdagi Check’ni
+o‘z raqamingiz bilan tasdiqlang.
+</Task>
+
+<Task title="3-daraja: matn CRDT'si va xotira o'lchovi">
+RGA tipidagi CRDT yozing (7.1): har belgi `(mijoz, hisoblagich)` ID bilan,
+qo‘shish — “ID dan keyin”, o‘chirish — qabr toshi, bir joyga parallel
+qo‘shishda ID taqqoslash. `sim.py` ni serversiz variantga moslang:
+mijozlar operatsiyalarni bir-biriga tasodifiy tartibda (FIFO’siz)
+yuborsin.
+
+**Tekshiruv mezoni:** (1) 1 000 tasodifiy stsenariyda yaqinlashish;
+(2) 30 000 belgili matnni harfma-harf yozib, 25% ini o‘chirib, xotira
+hajmini o‘lchang — naiv (har belgi ob’ekt) va ketma-ketliklarni
+birlashtirgan variantda — va 7.2-dagi hisob (~130x va ~3–9x) bilan
+solishtiring; (3) 7.2 Deep’dagi “Salom Ali / Salom Vali” stsenariysini
+takrorlang va sizning algoritmingizda harflar aralashadimi — tekshiring.
+</Task>
+
+<Task title="4-daraja: sig'im va xarajat modeli">
+Jadval yoki skript: kirish — ochiq hujjatlar soni, faol ulushi,
+operatsiya tezligi, hamkorlar taqsimoti (ko‘pchilik 1, kamdan-kam 100),
+o‘quvchilar taqsimoti, server xotirasi va yadrolari, jurnal yozuv
+kechikishi. Chiqish — ega serverlar soni, shlyuzlar, jurnal bazasi
+yozuv yuki, kursor trafigi, yillik xarajat.
+
+**Tekshiruv mezoni:** (1) 5-bo‘lim 7-qadam va 12-bo‘limdagi hisoblarni
+takrorlang; (2) hamkorlar taqsimotining “og‘ir dumi”ni (100 kishilik
+hujjatlar ulushi) 0.001% dan 1% gacha o‘zgartirib, qaysi resurs birinchi
+tugashini ko‘rsating (kutilgan javob — mijoz CPU si va kursor trafigi,
+13.1); (3) 12-bo‘lim Deep’dagi 100 hamkor chegarasini o‘z modelingiz
+bilan asoslang yoki rad eting.
+</Task>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Operatsiya | Hujjatdagi bitta o‘zgarish: qo‘shish, o‘chirish, formatlash |
+| Retain / insert / delete | Operatsiya komponentlari: o‘tkazish, qo‘shish, o‘chirish |
+| Revision | Server tayinlagan operatsiya tartib raqami — hujjat vaqt o‘qi |
+| Yaqinlashish (convergence) | Bir xil operatsiyalarni olgan nusxalar bir xil |
+| Niyat saqlanishi | Operatsiya o‘zi ko‘rgan belgilarga ta’sir qiladi |
+| OT | Operatsion transformatsiya: parallel operatsiyalarni bir-biriga moslash |
+| TP1 / TP2 | Transformatsiya xususiyatlari: ikki tartib va uch operatsiya uchun |
+| Jupiter | Markaziy serverli, ikki tomonlama OT protokoli (1995) |
+| Compose | Ketma-ket ikki operatsiyani bittaga birlashtirish |
+| Bog‘lash qoidasi (tie-break) | Bir joyga ikki qo‘shishda kim oldin — deterministik |
+| CRDT | Ziddiyatsiz takrorlanuvchi ma’lumot turi: tartibsiz birlashadi |
+| Qabr toshi (tombstone) | O‘chirilgan, lekin ID si saqlangan belgi |
+| Aralashib ketish anomaliyasi | Parallel qo‘shilgan so‘zlar harflarining aralashishi |
+| Hujjat egasi | Hujjatni xotirada ushlab, tartiblaydigan yagona jarayon |
+| Ijara (lease) | Muddatli egalik huquqi |
+| Fencing token (epoch) | Eski egani yozishdan to‘xtatadigan monoton raqam |
+| Surat (snapshot) | Ma’lum revisiondagi to‘liq matn — jurnal ustidan kesh |
+| Siqish (compaction) | Eski operatsiyalarni vaqt oynalari bo‘yicha birlashtirish |
+| Uchuvchan kanal | Saqlanmaydigan ma’lumot (kursorlar) uchun alohida oqim |
+| Nazorat yig‘indisi | Matn xeshi — nusxalar ajralganini aniqlash uchun |
+| Taklif rejimi | Matnni o‘zgartirmasdan, qabul qilinadigan o‘zgarish taklifi |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Bir vaqtdagi hamkorlar | ~100 kishi | Google Docs yordam sahifasi |
+| Hujjat hajmi chegarasi | ~1.02 M belgi | Google Docs yordam sahifasi |
+| OT g‘oyasi | 1989 | Ellis va Gibbs, SIGMOD 1989 |
+| Jupiter protokoli | 1995 | Nichols va boshq., UIST 1995 |
+| CCI modeli | 1998 | Sun va boshq., ACM TOCHI 1998 |
+| Google Wave va OT | 2009–2010 | Google Wave protokol hujjatlari |
+| Yangi Docs muharriri | 2010 | Google Drive rasmiy blogi (2010) |
+| Canvas asosida chizish | 2021 e’loni | Google Workspace yangiliklari (2021) |
+| CRDT ta’rifi | 2011 | Shapiro va boshq., SSS 2011 |
+| Aralashib ketish anomaliyasi | 2019 | Kleppmann va boshq., PaPoC 2019 |
+| Fugue algoritmi | 2023 | Weidner va Kleppmann, arXiv 2023 |
+| Figma multiplayer | 2019 | Figma muhandislik blogi |
+| WebSocket | 2011 | RFC 6455 |
+| 2-daraja natijalari | 17/17; mutatsiyalar | `docs/amaliyot/google-docs/`, referens implementatsiya |
+
+Ochiq hujjatlar va faol yozuvchilar soni, operatsiyalar tezligi,
+xabar va jurnal yozuvi hajmlari, server sig‘imi, tarix/matn nisbati,
+saqlash va xarajat raqamlari — **illyustratsiya uchun taxminiy**.
+Ular tartib jihatidan ishonchli, lekin aniq emas. Darsning asosiy
+xulosalari — qiyinlik bitta hujjat ichida, bayt va hisoblash arzon,
+xarajatni uzun dum belgilaydi — bu raqamlarning bir necha barobarlik
+xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- C. A. Ellis, S. J. Gibbs (1989), “Concurrency Control in Groupware
+  Systems”, SIGMOD
+- David A. Nichols va boshq. (1995), “High-Latency, Low-Bandwidth
+  Windowing in the Jupiter Collaboration System”, UIST
+- Chengzheng Sun va boshq. (1998), “Achieving Convergence, Causality
+  Preservation, and Intention Preservation in Real-Time Cooperative
+  Editing Systems”, ACM TOCHI
+- Marc Shapiro va boshq. (2011), “Conflict-free Replicated Data Types”
+- Hyun-Gul Roh va boshq. (2011), “Replicated Abstract Data Types:
+  Building Blocks for Collaborative Applications” (RGA)
+- Martin Kleppmann va boshq. (2019), “Interleaving Anomalies in
+  Collaborative Text Editors”, PaPoC
+- Matthew Weidner, Martin Kleppmann (2023), “The Art of the Fugue:
+  Minimizing Interleaving in Collaborative Text Editing”
+- Google Drive blogi (2010), “What’s different about the new Google
+  Docs” turkumi
+- Google Wave Federation Protocol va OT hujjatlari (2009–2010)
+- Evan Wallace (2019), “How Figma’s multiplayer technology works”,
+  Figma blogi

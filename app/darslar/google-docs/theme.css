@@ -1,0 +1,47 @@
+/* Google Docs skini — hujjat muharriri uslubi (rasmiy brend materiali emas) */
+[data-skin="google-docs"] {
+  --skin-bg: #ffffff;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f1f3f4;
+  --skin-border: #dadce0;
+  --skin-text: #1f1f1f;
+  --skin-muted: #5f6368;
+  --skin-accent: #1a73e8;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(26, 115, 232, 0.35);
+  --skin-radius: 8px;
+  --skin-font: "Arial", "Helvetica Neue", Helvetica, ui-sans-serif, system-ui, sans-serif;
+  --skin-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --gd-canvas: #f9fbfd;
+  --gd-toolbar: #edf2fa;
+  --gd-hover: #e8eaed;
+  --gd-blue: #1a73e8;
+  --gd-page-shadow: 0 1px 3px 1px rgba(60, 64, 67, 0.15), 0 1px 2px rgba(60, 64, 67, 0.3);
+}
+
+/* Sarlavhalar — "Sarlavha 2" uslubi: oddiy, qalin, chapda chiziqsiz */
+[data-skin="google-docs"] .lesson-prose h2 {
+  letter-spacing: 0;
+}
+[data-skin="google-docs"] .lesson-prose h3 {
+  color: #434343;
+}
+
+/* Hamkorning kursori: miltillovchi chiziq */
+@keyframes gd-caret {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+[data-skin="google-docs"] .gd-caret {
+  animation: gd-caret 1.1s step-end infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="google-docs"] .gd-caret {
+    animation: none;
+  }
+}
+
+body:has([data-skin="google-docs"]) {
+  background: #f9fbfd;
+}

@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 9 ta dars tayyor:
+Hozir 10 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -48,9 +48,10 @@ Hozir 9 ta dars tayyor:
 07 — WhatsApp qanday ishlaydi (20 000 so'z)
 08 — YouTube qanday ishlaydi (19 000 so'z)
 09 — Spotify qanday ishlaydi (20 000 so'z)
+10 — Google Docs qanday ishlaydi (19 000 so'z)
 
-Yana 8 tasi rejada: Kafka, Amazon S3, Google Docs, Uber ETA, Airbnb,
-fond birjasi va boshqalar.
+Yana 7 tasi rejada: Kafka, Amazon S3, Uber ETA, Airbnb, fond birjasi
+va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -69,8 +70,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-9 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp, YouTube, Spotify), 8 tasi rejada. Internetsiz ham o'qish mumkin.
+10 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp, YouTube, Spotify, Google Docs), 7 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -306,6 +307,33 @@ Amaliyotda — 540 000 hodisalik oqimdan tinglashlar kitobini yozasiz
 va botlarni ushlaysiz.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/spotify/
+```
+
+---
+### 3.10 — Google Docs
+
+```
+Ikki kishi bitta hujjatda. Ikkalasida ham "abc".
+
+Ali 1-joyga "X" qo'shadi. Vali "c" ni o'chiradi.
+Ikkalasi bir vaqtda, bir-birini ko'rmasdan.
+
+O'zgarishlarni shunchaki almashsa:
+Alida — "aXc", Valida — "aXb".
+
+Hujjat ikkiga bo'lindi. Va Alida Vali o'chirmoqchi bo'lmagan harf
+o'chdi. Sabab — "2-pozitsiya" faqat Valining ekranida "c" edi.
+
+Google Docs buni har soniyada, har bir hamkor bilan hal qiladi —
+va siz buni hech qachon sezmaysiz.
+
+Yangi dars — Google Docs qanday ishlaydi (19 000 so'z):
+operatsion transformatsiya va Jupiter protokoli, CRDT va nega Google
+uni tanlamagan, bitta hujjat — bitta server, emoji nega hujjatni
+buzishi mumkin, 50 000 kishi ochgan hujjat. Amaliyotda — o'z OT'ingizni
+yozasiz va uni tasodifiy testlar bilan sinaysiz.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/google-docs/
 ```
 
 ---
