@@ -44,7 +44,7 @@ Hozir 4 ta dars tayyor:
 03 — Redis: 12 ta asosiy stsenariy (11 100 so'z)
 04 — Twitter tasmasi qanday ishlaydi (10 200 so'z)
 05 — Reddit qanday ishlaydi (14 000 so'z)
-06 — Slack qanday ishlaydi (17 000 so'z)
+06 — Slack qanday ishlaydi (19 500 so'z)
 
 Yana 11 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, WhatsApp,
 fond birjasi va boshqalar.
@@ -211,7 +211,7 @@ Sabab strukturaviy: xabar yo'naltirilgan (kanal a'zolariga),
 presence esa eshittirish (hammaga). Birinchisi chiziqli o'sadi,
 ikkinchisi kvadratik.
 
-Yangi dars — Slack qanday ishlaydi (17 000 so'z):
+Yangi dars — Slack qanday ishlaydi (19 500 so'z):
 WebSocket nima turadi (bitta bo'sh ulanish 35 KB), ulanish paytida
 155 MB yuborishning oqibati, qayta ulanish bo'roni va jitter,
 xabar tartibi, ts nega satr. Hammasi hisob-kitob bilan.

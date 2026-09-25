@@ -147,7 +147,7 @@ export const lessons: Lesson[] = [
     accent: "#4a154b",
     status: "tayyor",
     level: "murakkab",
-    minutes: 165,
+    minutes: 180,
     topics: [
       "WebSocket",
       "Ulanish iqtisodi",

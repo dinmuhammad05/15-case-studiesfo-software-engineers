@@ -172,6 +172,30 @@ narx bu yerda bir-biriga qarama-qarshi**, va ikkalasini birdan yaxshilaydigan
 tutqich yo‘q. Aynan shuning uchun protokolni almashtirish kerak — parametrni
 emas.
 
+<Versus
+  left={{ title: "Qisqa so‘rov (3 s)", points: [
+    "10 M mijoz → 3.3 M so‘rov/s, 34.6 Gbit/s",
+    "6 ta so‘rovdan 5 tasi bo‘sh",
+    "O‘rtacha kechikish 1.5 s — byudjetdan 3 barobar ko‘p",
+    "Serverda holat yo‘q: istalgan node javob beradi",
+    "Deploy va yiqilish bepul — keyingi so‘rov boshqa joyga boradi",
+  ] }}
+  right={{ title: "WebSocket", points: [
+    "10 M ochiq ulanish → ~350 GB xotira",
+    "Bo‘sh trafik faqat ping: 30 s da 2 bayt",
+    "Kechikish ~93 ms, protokol cheklamaydi",
+    "Serverda holat bor: kim, qayerda, nimaga obuna",
+    "Deploy va yiqilish qimmat — qayta ulanish bo‘roni",
+  ] }}
+/>
+
+Taqqoslashning eng muhim qatori — oxirgisi. Qisqa so‘rovning yagona, lekin
+katta ustunligi: **server holatsiz**. U yiqilsa, hech kim sezmaydi —
+keyingi so‘rov boshqa node’ga tushadi. WebSocket’ga o‘tish bilan biz bu
+ustunlikdan voz kechamiz va uning o‘rniga qayta ulanish, oqizish, jitter,
+metastabil nosozlik kabi butun bir muammolar oilasini olamiz. Darsning
+qolgan qismi asosan shu narxni to‘lash haqida.
+
 ### 2.2 WebSocket: ulanish qanday ochiladi
 
 WebSocket — alohida protokol emas, oddiy HTTP so‘rovidan **o‘sib chiqadigan**
@@ -248,6 +272,21 @@ mahsulot “60 soniya ichida oflayn ko‘rinadi” deyishga tayyor bo‘lsa,
 30 soniyalik ping yetarli. TCP keep-alive esa bu ishga yaramaydi: uning
 standart kutish vaqti 2 soat.
 </Deep>
+
+<Callout type="ogoh" title="Ping intervali yuk balanslagichdan qisqa bo'lsin">
+Ishlab chiqarishda eng ko‘p uchraydigan WebSocket xatosi kodda emas,
+**infratuzilma sozlamasida**. Ko‘p yuk balanslagichlar va proksilar bo‘sh
+turgan ulanishni ma’lum vaqtdan keyin **jimgina uzadi**: AWS ALB’da standart
+60 soniya, nginx’ning `proxy_read_timeout` i ham 60 soniya.
+
+Agar sizning ping intervalingiz 90 soniya bo‘lsa, har bir jim kanal har
+daqiqada uziladi va qayta ulanadi. Mijozlar buni sezmaydi (qayta ulanish
+avtomatik), lekin siz `reconnect_ratio` metrikasida tushunarsiz yuqori
+fon darajasini ko‘rasiz va sababini haftalab qidirasiz.
+
+Qoida: **ping intervali yo‘ldagi eng qisqa idle timeout’ning yarmidan
+kichik bo‘lsin.** 60 soniyalik balanslagich uchun 25–30 soniya.
+</Callout>
 
 ### 2.3 Ochiq ulanish qancha xotira yeydi
 
@@ -331,6 +370,50 @@ Bu **kardinallik muammosi**, hajm muammosi emas. Shuning uchun yechim ham
 xotira qo‘shish emas — ulanishlarni ko‘p node ga tarqatish va har bir
 node dagi ish hajmini cheklash.
 </Check>
+
+<Deep title="epoll: bitta oqim 200 000 soketni qanday kuzatadi">
+Bitta jarayon 200 000 ochiq soketni ushlab turadi. Ularning qaysi biriga
+ma’lumot kelganini qanday biladi? Bu savol 1999-yilda **C10K muammosi**
+nomi bilan mashhur bo‘lgan: o‘sha paytdagi serverlar 10 000 ulanishda
+yiqilardi.
+
+Uch avlod yechim bor va ularning farqi — butun zamonaviy real vaqt
+tizimlarining asosi.
+
+```
+1-AVLOD: har ulanishga bitta oqim (thread)
+  200 000 oqim x 8 MB stek (virtual) = 1.6 TB manzil maydoni
+  Kontekst almashinuvi: har biri ~2-5 us
+  Natija: 10 000 da allaqachon ishlamaydi
+
+2-AVLOD: select() / poll()
+  Bitta oqim, lekin HAR CHAQIRUVDA barcha soketlar ro'yxati yadroga beriladi
+  200 000 soket x har chaqiruv = O(n)
+  Sekundiga 1 000 hodisa bo'lsa: 200 000 x 1 000 = 2 x 10^8 tekshiruv/s
+  Natija: CPU faqat "kim tayyor?" degan savolga sarflanadi
+
+3-AVLOD: epoll (Linux), kqueue (BSD/macOS)
+  Soketlar yadroga BIR MARTA ro'yxatdan o'tkaziladi (epoll_ctl)
+  epoll_wait() faqat TAYYOR soketlarni qaytaradi
+  Narx: O(tayyorlar soni), O(jami) emas
+  200 000 soket, 1 000 tayyor -> 1 000 ta ish
+```
+
+Farq 200 barobar, va u **faol ulanishlar ulushidan** kelib chiqadi.
+Suhbat ilovasida ulanishlarning 99% i har qanday lahzada jim turadi —
+aynan epoll uchun ideal holat.
+
+Shuning uchun bu darsning 2.3-bo‘limidagi CPU chegarasi (7 million
+ulanish) xotira chegarasidan ancha uzoq: bo‘sh soketlar epoll’da deyarli
+tekin. Pul **bo‘sh turgan** ulanishlarga emas, **uyg‘ongan**larga
+to‘lanadi.
+
+Amaliy natija: WebSocket serveri uchun til yoki freymvork tanlayotganda
+birinchi savol — **u epoll/kqueue ustida bitta hodisa halqasi bilan
+ishlaydimi?** Node.js, Go runtime, Rust’ning tokio, Python’ning asyncio,
+Java’ning Netty — hammasi shunday. Har ulanishga oqim ochadigan eski
+freymvorklar esa bu miqyosda umuman o‘ynamaydi.
+</Deep>
 
 ## 3. v0: eng sodda ishlaydigan yechim
 
@@ -513,6 +596,21 @@ Uchalasi ham kerak. Faqat jitter bilan cheklansangiz, 3.1 TB baribir
 3.1 TB bo‘lib qoladi — u endi 40 soniyaga tarqaladi, xolos.
 </Deep>
 
+<Callout type="maslahat" title="Kvadratik o'sishni dizayn bosqichida qanday topish">
+Har bir yangi funksiya uchun bitta savol bering: **“bitta ulanish oladigan
+narsa a’zolar soniga proporsionalmi?”**
+
+Agar ha bo‘lsa, va ulanishlar soni ham a’zolarga proporsional bo‘lsa —
+sizda kvadratik narsa bor. Bu darsda uchtasi uchraydi: ulanishdagi holat
+(4.1), presence eshittirishi (6.1) va “hamma hammaning yozmoqda signalini
+oladi” (5-qadam, 10). Uchalasi ham kichik ish maydonida ko‘rinmaydi.
+
+Tekshiruvni qog‘ozda bajarish uchun ikkita raqam kifoya: eng katta
+ijarachingiz hajmi N va funksiyaning bitta ulanishga narxi f(N). Agar
+`N × f(N)` sizning tarmoq yoki xotira byudjetingizdan oshsa, funksiya
+tayyor emas — u faqat hali sinovdan o‘tmagan.
+</Callout>
+
 ### 4.2 Barcha ulanishlar bitta jarayonda
 
 `connections` lug‘ati xotirada, ya’ni:
@@ -609,7 +707,7 @@ va qo‘shimcha kechikish (odatda 1–3 ms, bir mintaqa ichida).
 4.2-dagi muammo: A gateway’idagi foydalanuvchi yozgan xabar B gateway’idagi
 a’zolarga bormaydi. Yechim — orada e’lon/obuna qatlami.
 
-<Flow nodes={["Mijoz", "Gateway A", "Pub/Sub", "Gateway B", "Mijoz"]} caption="Xabar endi gateway'lar orasidan o'tadi" />
+<Flow nodes={["Anvar", "Gateway A", "Pub/Sub", "Gateway B", "Bekzod"]} caption="Xabar endi gateway'lar orasidan o'tadi" />
 
 Har bir gateway o‘zida ochiq bo‘lgan kanallarga obuna bo‘ladi. Xabar kelganda
 u kanal mavzusiga e’lon qilinadi, va faqat **o‘sha kanalda ulangan mijozi bor**
@@ -680,6 +778,39 @@ bo‘ladi. Buni yashirish uchun mijoz oxirgi ko‘rgan foydalanuvchilarni
 mahalliy saqlaydi — lekin unda **eskirgan ism va avatar** muammosi tug‘iladi.
 Yechim — har bir obyektga versiya qo‘yish va kesh javobida uni tekshirish.
 </Step>
+
+<Deep title="Chekka kesh izchilligi: odam ismini o'zgartirsa nima bo'ladi">
+Chekka kesh 5.4-qadamdagi bo‘ronni o‘ldirdi, lekin yangi savol tug‘dirdi:
+kesh **qachon eskiradi**?
+
+Anvar ismini “Anvar K.” dan “Anvar Karimov” ga o‘zgartirdi. Bu o‘zgarish
+uchta joyga yetib borishi kerak: asosiy baza, har bir mintaqadagi chekka
+kesh, va Anvarni allaqachon ko‘rgan har bir mijozning mahalliy xotirasi.
+
+```
+1. API: UPDATE users SET name = ..., version = version + 1 WHERE id = U1
+2. API: e'lon -> "user_changed" {id: U1, version: 48}
+         mavzu: ws:<ish_maydoni>   (faqat shu ish maydoniga)
+3. Chekka keshlar: U1 ni o'chiradi (keyingi so'rovda qayta yuklanadi)
+4. Gateway'lar: shu ish maydonidagi ulangan mijozlarga yuboradi
+5. Mijoz: mahalliy U1.version < 48 bo'lsa -> yangilaydi yoki o'chiradi
+```
+
+Nega versiya kerak, shunchaki “yangilandi” signali emas? Chunki xabarlar
+tartibsiz kelishi mumkin. Agar Anvar ismini ikki marta tez o‘zgartirsa,
+va ikkinchi signal birinchisidan oldin yetib kelsa, versiyasiz mijoz eski
+ismni “yangi” deb yozib qo‘yadi. Versiya bilan u `47 < 48` ni ko‘radi va
+kechikkan signalni tashlab yuboradi.
+
+Bu naqsh yana bir marta takrorlanadi: **monoton son tartibsiz dunyoda
+tartibni tiklaydi.** Xabar uchun bu `ts` edi (5-qadam), metama’lumot
+uchun — `version`, o‘qilmaganlar uchun — `channel_seq` (9-qadam).
+
+Signal yo‘qolsa-chi? Mijoz o‘sha paytda oflayn bo‘lsa, u signalni hech
+qachon olmaydi. Shuning uchun ikkinchi himoya chizig‘i — **muddat**:
+mahalliy kesh yozuvi 24 soatdan keyin eskirgan hisoblanadi va keyingi
+ko‘rinishda qayta so‘raladi. Signal tezlik beradi, muddat esa kafolat.
+</Deep>
 
 <Step n={5} title="Ts'ni kanal egasi tayinlaydi" gain="Tartib barqaror, identifikator noyob" cost="Yozish yo'lida qo'shimcha sakrash">
 4.3-dagi soat muammosi. Yechim — vaqt belgisini gateway emas, **kanalga
@@ -775,6 +906,20 @@ narsani o‘tkazib yubordingiz” degan belgi — mijoz shunda tarixni odatdagi
 sahifalash bilan yuklaydi.
 </Step>
 
+<Callout type="ogoh" title="Kursorni qachon siljitish kerak">
+Quvib yetish mexanizmidagi eng nozik xato mijoz tomonda: `last_seen`
+kursori **xabar qabul qilinganda** siljitiladi, lekin xabar hali saqlanmagan
+yoki ko‘rsatilmagan bo‘ladi. Agar shu orada ilova yopilsa yoki xato bo‘lsa,
+kursor oldinga ketgan, xabar esa yo‘q — va keyingi quvib yetish uni
+o‘tkazib yuboradi.
+
+Qoida: **kursor faqat xabar mahalliy saqlangandan keyin siljiydi.** Bu
+ma’lumotlar bazalaridagi “avval yozish, keyin tasdiqlash” (write-ahead)
+tamoyilining mijoz tomondagi ko‘rinishi. Amaliyotdagi `client.py`
+skeletida aynan shu tartib talab qilinadi va `bench.py` buni `lost > 0`
+bilan ushlaydi.
+</Callout>
+
 <Step n={9} title="O'qilmaganlar hisobini O(1) qilish" gain="Har kanal uchun hisob darhol" cost="Ikkita hisoblagich va ularni sinxron ushlash">
 Har bir kanal uchun “necha o‘qilmagan” sonini ko‘rsatish kerak. Sodda
 yechim — `COUNT(*) WHERE ts > last_read`. Bu faol kanalda qimmat, va
@@ -789,7 +934,7 @@ Foydalanuvchida:      read_seq[U1][C123] = 48 195  (o'qiganda yangilanadi)
 O'qilmagan = 48 210 - 48 195 = 15        <- ayirish, O(1)
 ```
 
-<Calc title="Barcha o'qilmaganlar qancha joy egallaydi" result="240 MB — butun platforma uchun, Redis'da arzimas">{`10 000 000 foydalanuvchi x o'rtacha 100 ta kanal
+<Calc title="Barcha o'qilmaganlar qancha joy egallaydi" result="440 MB — butun platforma uchun, Redis'da arzimas">{`10 000 000 foydalanuvchi x o'rtacha 100 ta kanal
   = 1 000 000 000 (foydalanuvchi, kanal) juftligi
 
 Hmm, bu ko'p. Lekin aslida:
@@ -1028,6 +1173,30 @@ qo‘shimcha 60 MB xotira sarflandi. **Trafikni xotiraga almashtirish** — bu
 darsdagi eng foydali almashtirish, va u bir necha joyda takrorlanadi
 (obuna jadvali, chekka kesh, o‘qilmaganlar hisoblagichi).
 
+<Versus
+  left={{ title: "Eshittirish (hamma hammaga)", points: [
+    "Fan-out: 100 × 30 000 = 3 000 000 xabar/s",
+    "Server xotirasi: 0 (obuna jadvali yo‘q)",
+    "Mijoz kodi: hech narsa — faqat qabul qiladi",
+    "O‘sish: a’zolar soniga kvadratik",
+    "50 a’zoli jamoada: eng yaxshi yechim",
+  ] }}
+  right={{ title: "Obuna (ko‘rinadiganlarga)", points: [
+    "Fan-out: 100 × 15 = 1 500 xabar/s (cho‘qqida ~5 000)",
+    "Server xotirasi: 1.5 M obuna × 40 bayt = 60 MB",
+    "Mijoz kodi: ekrandagi odamlarni kuzatish, obunani yangilash",
+    "O‘sish: a’zolar soniga chiziqli",
+    "100 000 a’zoli jamoada: yagona ishlaydigan yechim",
+  ] }}
+/>
+
+Ikki ustunning oxirgi qatorini solishtiring — ular bir-biriga zid emas.
+Eshittirish **kichik ish maydonida to‘g‘ri** tanlov: 50 a’zo uchun obuna
+jadvali ortiqcha murakkablik. Amaliy tizimlar ikkalasini ham ishlatadi va
+chegarani ish maydoni hajmiga qarab belgilaydi — masalan, 500 a’zogacha
+eshittirish, undan yuqori obuna. Bu “bitta to‘g‘ri yechim” emas, **hajmga
+bog‘liq ikkita yechim va ular orasidagi o‘tish nuqtasi**.
+
 <Deep title="Obuna jadvali qayerda turadi">
 Obuna jadvali — `watchers[user_id] -> {connection_ids}` — qayerda saqlanadi?
 Uchta variant bor va ularning har biri boshqa narsani qurbon qiladi.
@@ -1202,6 +1371,8 @@ serverdan tasdiq kelganda almashtiradi.
 4. Mijoz: local_id bo'yicha topadi, ts bilan almashtiradi, pending'ni oladi
 ```
 
+<Flow nodes={["Enter", "Mahalliy: pending", "Server: ts", "ack + tarqatish", "Almashtirish"]} caption="Foydalanuvchi birinchi ikki qadamni ko'radi; qolgani 50-100 ms ichida, sezilmasdan" />
+
 Uchinchi qadamda nozik joy bor: mijoz **ikkita** xabar oladi, va ular istalgan
 tartibda kelishi mumkin. Agar `message` `ack` dan oldin kelsa va mijoz
 sodda yozilgan bo‘lsa, u xabarni **ikki marta** ko‘rsatadi: bittasi mahalliy
@@ -1224,6 +1395,45 @@ Qoida: **yuboruvchi ham oddiy qabul qiluvchi.** Tarqatish ro‘yxatidan uni
 chiqarib tashlamang; o‘rniga mijozga o‘z xabarini tanib olish vositasini
 bering.
 </Callout>
+
+<Deep title="Ko'p qurilma: telefon va noutbuk bir xil holatni qanday ko'radi">
+Bitta foydalanuvchi — uchta ulanish: noutbukda brauzer, ish stolida
+ilova, cho‘ntakda telefon. Tizim uchun bu uchta mustaqil mijoz, lekin
+foydalanuvchi uchun bitta “men”. Uchta narsa sinxron bo‘lishi kerak.
+
+| Holat | Qayerda saqlanadi | Qanday sinxronlanadi |
+| --- | --- | --- |
+| Xabarlar | Kanal tarixi (serverda) | Oddiy tarqatish — har bir qurilma alohida qabul qiluvchi |
+| O‘qilganlik | `read_seq` (serverda, foydalanuvchi bo‘yicha) | Bir qurilmada o‘qilsa, boshqalariga `read_marker` hodisasi |
+| Presence | Qurilmalar birlashmasi | Kamida bittasi faol bo‘lsa — `active` |
+
+Jadvalning ikkinchi qatori eng ko‘p unutiladi, va uning oqibati darhol
+sezilarli: noutbukda kanalni o‘qib bo‘lgach telefonda hali ham “12 ta
+o‘qilmagan” turadi. Foydalanuvchi buni “Slack buzilgan” deb qabul qiladi.
+
+Yechim — o‘qilganlik o‘zgarishi ham **o‘z-o‘ziga tarqatiladi**:
+
+```
+Noutbuk: mark_read(C123, seq=48210)
+Server:  read_seq[U1][C123] = max(eski, 48210)     <- max(): orqaga ketmaydi
+         -> U1 ning BARCHA ulanishlariga: {"type":"read_marker","ch":"C123","seq":48210}
+Telefon: o'qilmagan = channel_seq - 48210 = 0  -> nishon o'chadi
+```
+
+`max()` bu yerda ham muhim: telefon eski holatdan `mark_read(seq=48100)`
+yuborsa (u hali yangi xabarlarni ko‘rmagan), o‘qilganlik orqaga
+ketmasligi kerak.
+
+Uchinchi qator esa push bildirishnomalar bilan bog‘liq nozik qaror:
+**foydalanuvchi noutbukda faol bo‘lsa, telefonga push yubormang.**
+Aks holda har bir xabar ikki marta “jiringlaydi”. Buning uchun push
+xizmati presence’ni so‘raydi: agar biror qurilmada oxirgi harakat
+30 soniyadan yangi bo‘lsa — push kechiktiriladi, va agar xabar shu
+orada o‘qilsa — butunlay bekor qilinadi.
+
+Bu mantiq WhatsApp darsida (7-dars) markaziy mavzuga aylanadi: u yerda
+telefon **asosiy** qurilma, qolganlari esa unga bog‘langan.
+</Deep>
 
 <Check q="Ikki mijoz bir vaqtda yozdi. Ularning tartibini kim hal qiladi va bu 'adolatlimi'?">
 Kanal shardi hal qiladi (5-qadam): qaysi so‘rov unga birinchi yetib kelsa,
@@ -1265,7 +1475,43 @@ ekanini biladi, va freymlarni uzatadi. Boshqa hech narsa. Bu ataylab:
 gateway kamdan-kam deploy qilinadi (5.1-qadam), demak undagi kod
 qanchalik kam bo‘lsa, shuncha yaxshi.
 
+<Deep title="Ulanish qaysi gateway'ga tushadi: L4, L7 va 'yopishqoqlik'">
+10 million ulanish 70 ta gateway orasida qanday taqsimlanadi? Bu savolga
+yuk balanslagich javob beradi, va uning ikki turi tubdan boshqacha ishlaydi.
+
+**L4 (TCP darajasi)** — balanslagich faqat IP va portni ko‘radi. Ulanish
+ochilganda bitta gateway tanlanadi va TCP oqimi to‘liq o‘shanga uzatiladi.
+Juda arzon (ulanish boshiga baytlar), TLS’ni gateway o‘zi ochadi.
+
+**L7 (HTTP darajasi)** — balanslagich TLS’ni o‘zi ochadi, `Upgrade`
+so‘rovini o‘qiydi, sarlavhalarga qarab marshrut tanlaydi. Qulayroq
+(sertifikatlar bir joyda, marshrutlash qoidalari boy), lekin
+balanslagich endi **har bir ulanishning holatini ushlaydi** — ya’ni
+2.3-bo‘limdagi 16 KB TLS narxi balanslagichga ko‘chadi.
+
+| | L4 | L7 |
+| --- | --- | --- |
+| TLS qayerda ochiladi | Gateway’da | Balanslagichda |
+| Ulanish boshiga narx balanslagichda | ~200 bayt | ~20–30 KB |
+| Sarlavha bo‘yicha marshrut | Yo‘q | Bor |
+| 10 M ulanishda balanslagich | Oddiy | O‘zi alohida katta tizim |
+
+Doimiy ulanishli tizimlar ko‘pincha **L4** ni tanlaydi, aynan oxirgi qator
+sababli: L7 balanslagich 10 million TLS sessiyasini ushlab turishi kerak
+bo‘ladi, ya’ni siz gateway fletining ustiga ikkinchi, xuddi shunday
+qimmat flet qurasiz.
+
+**Yopishqoqlik (sticky)** haqida alohida: 14-bo‘limdagi to‘rtinchi
+antinaqsh — foydalanuvchini doimiy bitta gateway’ga bog‘lash. L4 bilan
+bu tabiiy ravishda bo‘lmaydi: har qayta ulanishda yangi tasodifiy
+tanlov. Va aynan shu kerak — ulanish **kimga tegishli ekani bilan**
+emas, **qaysi node bo‘sh ekani bilan** taqsimlansin. Holat esa pub/sub
+va chekka keshda — gateway’da emas.
+</Deep>
+
 ### 8.1 Xabar yetkazishning kechikish byudjeti
+
+<Flow nodes={["Anvar", "Chekka (TLS)", "Gateway A", "Xabar API", "Kanal shardi", "Pub/Sub", "Gateway B", "Bekzod"]} caption="Bitta xabarning yo'li: 8 ta nuqta, ulardan 2 tasi tarmoq chekkasi" />
 
 <Calc title="Enter bosilishidan boshqa ekranda ko'rinishgacha" result="~93 ms — byudjet 500 ms, demak 5 barobar zaxira bor">{`Anvar Toshkentda yozdi, Bekzod Samarqandda o'qiydi.
 
@@ -1398,6 +1644,28 @@ Oxirgi izohdagi g‘oya ko‘pincha e’tibordan chetda qoladi: **server o‘z
 yukini o‘zi boshqarishi kerak.** Mijoz backoff’i faqat taxmin qiladi; server
 esa hozirgi yukni biladi va mijozlarga aniq qachon qaytishni ayta oladi.
 
+Hammasini birga, vaqt bo‘yicha ko‘ramiz — 180 000 ulanishli gateway
+yiqilganidan keyingi birinchi daqiqa, to‘g‘ri sozlangan tizimda:
+
+<Timeline
+  rows={[
+    { when: "0 s", what: "Gateway 17 yiqildi (OOM)", why: "180 000 TCP ulanish uziladi. Mijozlar buni darhol bilmaydi — TCP aytmaydi (2.2)." },
+    { when: "0-1 s", what: "Ko'pchilik mijoz RST oladi", why: "Jarayon o'lganda yadro soketlarni yopadi. Mijozlar uzilishni sezadi va jitter taymerini boshlaydi." },
+    { when: "1-30 s", what: "To'liq jitter bilan qayta ulanish", why: "180 000 / 30 s = 6 000 ulanish/s, 69 node'ga = 87/s har biriga. Fon shovqini darajasi." },
+    { when: "1-30 s", what: "Har bir qayta ulangan mijoz quvib yetadi", why: "ts > last_seen so'rovi. Uzilish oynasidagi 2-3 ta xabar keladi — catchup_gap_size vaqtincha o'sadi." },
+    { when: "30-60 s", what: "Kechikkanlar va backoff'dagilar", why: "Birinchi urinishda rad etilganlar keyingi oynada. Retry-After ularni server tayyor bo'lgan paytga yo'naltiradi." },
+    { when: "60 s", what: "Qolgan 69 node har biri +2 600 ulanish", why: "180 K dan 182.6 K ga. Chegara 250 K. Zaxira 27% — ikkinchi yiqilishga ham yetadi (11-bo'lim)." },
+  ]}
+/>
+
+Timeline’dagi eng muhim raqam — uchinchi qatordagi **87 ulanish/s har bir
+node’ga**. Bu shunchalik kichikki, qolgan node’lar yiqilish bo‘lganini
+deyarli sezmaydi. Jittersiz esa xuddi shu 180 000 ulanish birinchi
+soniyada keladi: 2 600 ulanish/s har bir node’ga, har biri 3 ms CPU — ya’ni
+har bir node bitta soniyada ~8 CPU-soniyalik ish oladi: **16 yadrosining
+yarmi** faqat qayta ulanishga ketadi, xabar yetkazish esa shu vaqtda
+navbatda kutadi. Farq — bitta konfiguratsiya qatori.
+
 <Deep title="Nega qayta ulanish oddiy ulanishdan qimmat">
 Bir qarashda qayta ulanish — bu oddiy ulanish, faqat takroran. Aslida u
 uch barobar qimmatroq, va sabablarini bilish sig‘im rejalashtirish uchun
@@ -1519,6 +1787,21 @@ o‘ralgan ulanish) bitta muhim xususiyatga ega: **yangi kod yozgan
 dasturchi xavfsizlikni buzish uchun ataylab harakat qilishi kerak.**
 Unutish yetarli emas. Ko‘p foydalanuvchili tizimda bu — dizaynning eng
 muhim qismi.
+
+<Callout type="xato" title="Izolyatsiyaning eng zaif joyi — ichki vositalar">
+Mahsulot kodi odatda yaxshi himoyalangan. Buziladigan joy boshqa:
+**qo‘llab-quvvatlash va administrator panellari**. Ular ataylab ish
+maydoni chegarasidan o‘tish uchun yoziladi (“mijozning muammosini ko‘rib
+chiqish kerak”), va ko‘pincha asosiy mahsulot kodidan ancha kam
+tekshiriladi.
+
+Uchta majburiy qoida: (1) ichki vosita ham `workspace_scope` dan o‘tsin —
+faqat kontekstni qo‘lda tanlash imkoni bilan; (2) har bir kirish audit
+jurnaliga yozilsin, **kim, qachon, qaysi ish maydoniga, qanday sabab
+bilan**; (3) mijozning o‘zi o‘z ish maydoniga qilingan ichki kirishlar
+ro‘yxatini ko‘ra olsin. Uchinchisi ko‘pchilikka ortiqcha tuyuladi —
+lekin korporativ mijozlar uchun u ko‘pincha shartnoma talabi.
+</Callout>
 
 ### 10.2 Ilovalar va webhook’lar — eng katta hujum yuzasi
 
@@ -1694,6 +1977,50 @@ indeks xotirada bo‘lishi kerak, va u asl matndan 1.5–2 barobar katta.
 Shuning uchun qidiruvni ham saqlash siyosatiga bog‘lash mantiqiy —
 eski xabarlarni indeksdan chiqarib, “sekin arxiv qidiruvi” taklif qilish.
 
+<Deep title="TLS qo'l siqishi qancha turadi va nega sertifikat turi pul">
+Jadvalda TLS alohida modda sifatida yo‘q — u gateway flet narxining
+ichida yashiringan. Lekin qayta ulanish bo‘ronida u birinchi bo‘lib
+ko‘rinadigan CPU iste’molchisi, va uning narxi **sertifikat turiga**
+bog‘liq.
+
+```
+Bitta to'liq TLS 1.3 qo'l siqishi, server tomonda (bitta yadro, taxminan):
+
+  RSA-2048 imzo            ~1.0 ms CPU
+  ECDSA P-256 imzo         ~0.05-0.1 ms CPU
+  ECDHE (X25519) kalit     ~0.05 ms CPU
+
+  RSA sertifikat bilan:    ~1.05 ms
+  ECDSA sertifikat bilan:  ~0.12 ms
+  Farq: ~9 barobar
+
+Sessiyani tiklash (resumption, PSK):
+  imzo YO'Q -> ~0.05 ms, va 1 RTT o'rniga 0-RTT imkoniyati
+```
+
+Endi 4.1-bo‘limdagi bo‘ronga qo‘llaymiz: 200 000 qayta ulanish.
+
+```
+RSA:    200 000 x 1.05 ms = 210 CPU-soniya
+ECDSA:  200 000 x 0.12 ms =  24 CPU-soniya
+```
+
+Oddiy vaqtda bu farq sezilmaydi — kuniga 50 million ulanish ham 16 ta
+yadroga sig‘adi. Lekin bo‘ron paytida ular **bir necha soniyaga
+siqiladi**, va 210 CPU-soniya 70 node × 16 yadroda qariyb 0.2 soniyalik
+to‘liq band bo‘lish degani. ECDSA bilan — 0.02 soniya.
+
+Shuning uchun doimiy ulanishli tizimlarda ECDSA sertifikati deyarli
+majburiy. Bu kod o‘zgarishi emas, bitta konfiguratsiya qarori — va u
+bo‘rondagi eng qimmat CPU operatsiyasini 9 barobar arzonlashtiradi.
+Umumiy naqsh esa tanish: **oddiy yuklamada ahamiyatsiz optimallashtirish
+cho‘qqida hal qiluvchi bo‘lishi mumkin.** Sig‘imni o‘rtacha bo‘yicha
+emas, eng yomon daqiqa bo‘yicha rejalashtiring.
+
+*Raqamlar `openssl speed` natijalarining tartibi, protsessorga qarab
+2–3 barobar farq qiladi. O‘z muhitingizda o‘lchang.*
+</Deep>
+
 <Deep title="Nega 'foydalanuvchi boshiga xarajat' noto'g'ri o'lchov">
 Yuqoridagi hisobdan “foydalanuvchi oyiga 3 tiyin turadi” degan xulosa
 chiqadi. Bu raqam to‘g‘ri va foydasiz. Mana nima uchun.
@@ -1779,6 +2106,19 @@ maydonlaringiz katta bo‘lsa; 3 000 ta kichik ish maydoni bilan esa
 
 Ya’ni bu yo‘l chiziqli emas. Sizning keyingi qadamingiz umumiy
 foydalanuvchi soniga emas, **eng katta mijozingizning hajmiga** bog‘liq.
+
+<Callout type="maslahat" title="Sotuv bo'limi sizga sig'im signalini beradi">
+Ko‘p ijarachili tizimda eng erta sig‘im signali metrikalarda emas —
+**sotuv jarayonida**. “100 000 xodimli bank bilan muzokara ketyapti”
+degan xabar sizga Grafana’dan bir chorak oldin keladi.
+
+Amaliy qoida: har bir yirik shartnoma uchun muhandislik tekshiruvi
+bo‘lsin — mijoz hajmini 12-bo‘limdagi ikki o‘qli jadvalga qo‘yib, qaysi
+katakka tushishini ko‘rish. Agar u hozirgi arxitekturadan yuqori
+katakka tushsa, shartnoma imzolanishidan **oldin** ish boshlanadi.
+Imzolangandan keyin boshlasangiz, birinchi yirik mijozingiz sizning
+yuk testingizga aylanadi.
+</Callout>
 
 <Calc title="Qaysi bosqichda ekaningizni aniqlash" result="Ikki o'lchov yetarli: ulanishlar soni va eng katta ish maydoni">{`IKKI O'QLI JADVAL:
 
@@ -1913,6 +2253,19 @@ bu muammo o‘ziga xos: yangi node qo‘shsangiz, unga faqat **yangi**
 ulanishlar tushadi, eskilari esa eski node’larda qolaveradi. Node bir
 soatdan keyin ham bo‘sh bo‘lishi mumkin. Shuning uchun ba’zi tizimlar
 ataylab ulanishlarni davriy ravishda ko‘chiradi.
+
+<Callout type="maslahat" title="Ulanishga maksimal umr bering">
+Eng sodda va eng foydali qoidalardan biri: **hech bir ulanish 4 soatdan
+ortiq yashamasin.** Muddat tugaganda server mijozga (jitter bilan)
+“qayta ulan” signalini yuboradi.
+
+Bu bitta qoida uchta muammoni birdan hal qiladi: yangi node’lar tabiiy
+ravishda to‘ladi (yuk taqsimoti tekislanadi); qayta ulanish yo‘li doimo
+sinovdan o‘tib turadi (u nosozlik kunida birinchi marta ishlamaydi);
+va eski sessiyalarda to‘planib qolgan holat (xotira sizishi, eskirgan
+obunalar) muntazam tozalanadi. Narxi — kuniga har bir foydalanuvchi
+uchun 2–3 ta qo‘shimcha qayta ulanish, ya’ni deyarli hech narsa.
+</Callout>
 
 ### 13.2 Yetkazish sifati metrikalari
 
