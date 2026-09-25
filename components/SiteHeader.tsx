@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { site } from "@/lib/site";
+import { AuthorPhoto } from "@/components/AuthorPhoto";
 
 /** Bosh sahifa va kurs rejasi uchun yuqori panel: loyiha nomi va muallif. */
 export function SiteHeader() {
@@ -25,9 +26,9 @@ export function SiteHeader() {
           >
             <span
               aria-hidden
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--skin-surface-2)] font-[family-name:var(--skin-mono)] text-[11px] font-bold text-[var(--skin-accent)]"
+              className="flex overflow-hidden h-7 w-7 items-center justify-center rounded-full bg-[var(--skin-surface-2)] font-[family-name:var(--skin-mono)] text-[11px] font-bold text-[var(--skin-accent)]"
             >
-              dM
+              <AuthorPhoto className="h-full w-full" fallback="dM" />
             </span>
             <span className="text-sm font-medium">{site.author.handle}</span>
           </a>

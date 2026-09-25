@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { lessons } from "@/lib/lessons";
 import { ReadingProgress } from "@/components/lesson/Progress";
+import { AuthorPhoto } from "@/components/AuthorPhoto";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -119,21 +120,20 @@ export function WhatsAppChrome({ slug, children }: { slug: string; children: Rea
 
   return (
     <div className="relative min-h-screen">
-      {/* WhatsApp Web'ning yashil tasmasi + scroll paytida chetlardagi 20px bo'shliqni yopuvchi niqoblar */}
-      <div aria-hidden className="fixed inset-x-0 top-0 hidden h-[127px] bg-[var(--wa-band)] xl:block" />
-      <div aria-hidden className="fixed inset-x-0 top-0 z-40 hidden h-5 bg-[var(--wa-band)] xl:block" />
-      <div aria-hidden className="fixed inset-x-0 bottom-0 z-40 hidden h-5 bg-[var(--skin-bg)] xl:block" />
 
-      <div className="relative mx-auto flex max-w-[1600px] xl:px-5 xl:pt-5">
+      <div className="relative flex min-h-screen">
         {/* Chap: suhbatlar ro'yxati */}
-        <aside className="sticky top-0 hidden h-screen w-[380px] shrink-0 flex-col border-r border-[#e9edef] bg-white lg:flex xl:top-5 xl:h-[calc(100vh-40px)]">
+        <aside className="sticky top-0 hidden h-screen w-[30%] max-w-[480px] min-w-[340px] shrink-0 flex-col border-r border-[#e9edef] bg-white lg:flex">
           <div className="flex h-[59px] shrink-0 items-center gap-3 bg-[var(--skin-surface-2)] px-4">
-            <Link
-              href="/"
-              title="Bosh sahifa"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--skin-accent)] text-sm font-bold text-white"
-            >
-              SD
+            <Link href="/" title="Bosh sahifa" className="h-10 w-10 shrink-0 overflow-hidden rounded-full">
+              <AuthorPhoto
+                className="h-full w-full"
+                fallback={
+                  <span className="flex h-full w-full items-center justify-center bg-[var(--skin-accent)] text-sm font-bold text-white">
+                    SD
+                  </span>
+                }
+              />
             </Link>
             <span className="text-[15px] font-medium">Darslar</span>
             <span aria-hidden className="ml-auto flex gap-4 text-[#54656f]">
@@ -155,7 +155,7 @@ export function WhatsAppChrome({ slug, children }: { slug: string; children: Rea
 
         {/* O'ng: suhbat oynasi */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 select-none border-l border-[#e9edef] bg-[var(--skin-surface-2)] xl:top-5">
+          <header className="sticky top-0 z-30 select-none bg-[var(--skin-surface-2)]">
             <div className="flex h-[59px] items-center gap-3 px-4">
               <button
                 type="button"
@@ -167,12 +167,18 @@ export function WhatsAppChrome({ slug, children }: { slug: string; children: Rea
                   <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
-              <span
-                aria-hidden
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-                style={{ backgroundColor: current?.accent ?? "#25d366" }}
-              >
-                {pad(current?.order ?? 7)}
+              <span aria-hidden className="h-10 w-10 shrink-0 overflow-hidden rounded-full">
+                <AuthorPhoto
+                  className="h-full w-full"
+                  fallback={
+                    <span
+                      className="flex h-full w-full items-center justify-center text-sm font-bold text-white"
+                      style={{ backgroundColor: current?.accent ?? "#25d366" }}
+                    >
+                      {pad(current?.order ?? 7)}
+                    </span>
+                  }
+                />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[16px] leading-tight">{current?.title}</div>
@@ -226,7 +232,7 @@ export function WhatsAppChrome({ slug, children }: { slug: string; children: Rea
             <ReadingProgress />
           </header>
 
-          <main className="wa-wallpaper flex-1 border-l border-[#e9edef] px-3 pt-4 pb-24 sm:px-[6%] lg:px-[5%]">
+          <main className="wa-wallpaper flex-1 px-3 pt-4 pb-24 sm:px-[6%] lg:px-[5%]">
             {/* Shifrlash haqidagi tizim xabari */}
             <div className="mx-auto mb-4 max-w-[560px] rounded-lg bg-[var(--wa-notice)] px-3 py-2 text-center text-[12.5px] leading-snug text-[var(--wa-notice-text)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
               <span aria-hidden>🔒 </span>
@@ -255,7 +261,7 @@ export function WhatsAppChrome({ slug, children }: { slug: string; children: Rea
           {/* Bezak uchun yozish maydoni */}
           <div
             aria-hidden
-            className="sticky bottom-0 flex items-center gap-3 border-l border-[#e9edef] bg-[var(--skin-surface-2)] py-2.5 pr-28 pl-4 text-[#54656f] xl:bottom-5"
+            className="sticky bottom-0 flex items-center gap-3 bg-[var(--skin-surface-2)] py-2.5 pr-28 pl-4 text-[#54656f]"
           >
             <IconSmile />
             <IconPlus />

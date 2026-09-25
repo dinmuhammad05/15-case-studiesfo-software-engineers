@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { site } from "@/lib/site";
+import { AuthorPhoto } from "@/components/AuthorPhoto";
 
 /** Bosh sahifa va kurs rejasi uchun umumiy footer: muallif, havolalar, litsenziya. */
 export function SiteFooter() {
@@ -14,9 +15,9 @@ export function SiteFooter() {
           <div className="flex items-center gap-3">
             <span
               aria-hidden
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--skin-border)] bg-[var(--skin-surface)] font-[family-name:var(--skin-mono)] text-sm font-bold text-[var(--skin-accent)]"
+              className="flex overflow-hidden h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--skin-border)] bg-[var(--skin-surface)] font-[family-name:var(--skin-mono)] text-sm font-bold text-[var(--skin-accent)]"
             >
-              dM
+              <AuthorPhoto className="h-full w-full" fallback="dM" />
             </span>
             <div className="min-w-0">
               <div className="font-medium">{site.author.handle}</div>

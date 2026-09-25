@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { lessons } from "@/lib/lessons";
 import { ReadingProgress } from "@/components/lesson/Progress";
+import { AuthorPhoto } from "@/components/AuthorPhoto";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -83,11 +84,11 @@ export function YouTubeChrome({ slug, children }: { slug: string; children: Reac
           </Link>
 
           <div aria-hidden className="mx-auto hidden w-full max-w-[640px] items-center gap-3 md:flex">
-            <div className="flex h-10 min-w-0 flex-1 items-center rounded-full border border-[var(--skin-border)] bg-[#121212] pl-4">
+            <div className="flex h-10 min-w-0 flex-1 items-center rounded-full border border-[#cccccc] bg-white pl-4">
               <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--skin-muted)]">
                 Tizim dizayni darslari
               </span>
-              <span className="flex h-full w-16 items-center justify-center rounded-r-full border-l border-[var(--skin-border)] bg-[#222]">
+              <span className="flex h-full w-16 items-center justify-center rounded-r-full border-l border-[#d3d3d3] bg-[#f8f8f8]">
                 <IconSearch />
               </span>
             </div>
@@ -96,19 +97,26 @@ export function YouTubeChrome({ slug, children }: { slug: string; children: Reac
             </span>
           </div>
 
-          <span
-            aria-hidden
-            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7b1fa2] text-[13px] font-medium md:ml-0"
-          >
-            D
+          <span aria-hidden className="ml-auto h-8 w-8 shrink-0 overflow-hidden rounded-full md:ml-0">
+            <AuthorPhoto
+              className="h-full w-full"
+              fallback={
+                <span className="flex h-full w-full items-center justify-center bg-[#7b1fa2] text-[13px] font-medium text-white">
+                  D
+                </span>
+              }
+            />
           </span>
         </div>
         <ReadingProgress />
       </header>
 
-      <div className="mx-auto flex max-w-[1750px] gap-6 px-3 pt-4 pb-16 sm:px-6">
-        {/* Asosiy ustun */}
-        <div className="min-w-0 flex-1">
+      <div className="mx-auto flex max-w-[1750px] justify-center gap-6 px-3 pt-4 pb-16 sm:px-6">
+        {/* Asosiy ustun — kengligi pleyer ekranga sig'adigan qilib cheklangan */}
+        <div
+          className="min-w-0 flex-1"
+          style={{ maxWidth: "max(640px, calc((100vh - 280px) * 16 / 9))" }}
+        >
           {/* Pleyer */}
           <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black select-none">
             <div
@@ -118,7 +126,14 @@ export function YouTubeChrome({ slug, children }: { slug: string; children: Reac
                 background: `radial-gradient(ellipse at 30% 40%, ${current?.accent ?? "#ff0000"}55, transparent 60%), radial-gradient(ellipse at 80% 70%, #3ea6ff22, transparent 55%)`,
               }}
             />
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 pb-10 text-center sm:pb-0">
+            {/* Taqdimotchi — muallif portreti (fayl bo'lmasa hech narsa ko'rinmaydi) */}
+            <div
+              aria-hidden
+              className="absolute inset-y-0 right-0 w-[42%] [mask-image:linear-gradient(to_left,black_55%,transparent)]"
+            >
+              <AuthorPhoto className="h-full w-full opacity-90" position="50% 20%" alt="" fallback={null} />
+            </div>
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 pb-10 text-center sm:items-start sm:pr-[40%] sm:pb-0 sm:pl-[7%] sm:text-left">
               <span className="hidden font-[family-name:var(--skin-mono)] text-sm tracking-widest text-white/60 uppercase sm:block">
                 Dars {pad(current?.order ?? 8)} · tizim dizayni
               </span>
@@ -202,9 +217,9 @@ export function YouTubeChrome({ slug, children }: { slug: string; children: Reac
             type="button"
             aria-label="Yopish"
             onClick={() => setDrawerOpen(false)}
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0 bg-black/40"
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[260px] max-w-[85vw] flex-col bg-[#0f0f0f] shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 flex w-[260px] max-w-[85vw] flex-col bg-[var(--skin-bg)] shadow-2xl">
             <div className="flex h-14 shrink-0 items-center gap-2 px-4">
               <button
                 type="button"
@@ -257,8 +272,15 @@ export function YouTubeChannelRow() {
   const [subscribed, setSubscribed] = useState(false);
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3 select-none">
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--yt-red)] text-sm font-bold">
-        DL
+      <span className="h-10 w-10 shrink-0 overflow-hidden rounded-full">
+        <AuthorPhoto
+          className="h-full w-full"
+          fallback={
+            <span className="flex h-full w-full items-center justify-center bg-[var(--yt-red)] text-sm font-bold text-white">
+              DL
+            </span>
+          }
+        />
       </span>
       <div className="mr-2">
         <div className="text-[16px] font-medium">darslik</div>
@@ -300,7 +322,7 @@ function UpNextCard({ lesson }: { lesson: (typeof lessons)[number] }) {
     </>
   );
   return ready ? (
-    <Link href={`/darslar/${lesson.slug}/`} className="flex gap-2 rounded-lg hover:bg-[var(--skin-surface)]">
+    <Link href={`/darslar/${lesson.slug}/`} className="flex gap-2 rounded-lg hover:bg-[var(--skin-surface-2)]">
       {body}
     </Link>
   ) : (

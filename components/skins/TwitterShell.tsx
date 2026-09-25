@@ -3,6 +3,7 @@ import { LessonHeader } from "@/components/lesson/header";
 import { LessonNav, SkinDisclaimer } from "@/components/lesson/nav";
 import { Toc } from "@/components/lesson/Toc";
 import { TwitterChrome } from "./TwitterChrome";
+import { AuthorPhoto } from "@/components/AuthorPhoto";
 
 /** Twitter darsi: tasma ichidagi uzun post ko'rinishidagi sahifa. */
 export function TwitterShell({ children }: { children: ReactNode }) {
@@ -12,9 +13,9 @@ export function TwitterShell({ children }: { children: ReactNode }) {
       <div className="mb-6 flex items-center gap-3 border-b border-[var(--skin-border)] pb-5">
         <span
           aria-hidden
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--skin-surface-2)] font-[family-name:var(--skin-mono)] text-sm font-bold text-[var(--skin-accent)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--skin-surface-2)] font-[family-name:var(--skin-mono)] text-sm font-bold text-[var(--skin-accent)]"
         >
-          SD
+          <AuthorPhoto className="h-full w-full" fallback="SD" />
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">

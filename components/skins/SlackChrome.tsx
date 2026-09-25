@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { lessons } from "@/lib/lessons";
 import { ReadingProgress } from "@/components/lesson/Progress";
+import { AuthorPhoto } from "@/components/AuthorPhoto";
 
 const channelName = (order: number, slug: string) =>
   `${String(order).padStart(2, "0")}-${slug}`;
@@ -129,7 +130,7 @@ export function SlackChrome({ slug, children }: { slug: string; children: ReactN
               className="flex items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-white/10"
             >
               <span className="relative flex h-6 w-6 items-center justify-center rounded bg-white/20 text-[11px] font-bold">
-                DL
+                <AuthorPhoto className="h-full w-full rounded" fallback="DL" />
                 <span
                   aria-hidden
                   className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--slack-rail)] bg-[var(--slack-online)]"
@@ -253,7 +254,7 @@ export function SlackChrome({ slug, children }: { slug: string; children: ReactN
                 aria-hidden
                 className="relative hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--skin-accent)] text-sm font-black text-white sm:flex"
               >
-                DL
+                <AuthorPhoto className="h-full w-full rounded-lg" fallback="DL" />
                 <span className="absolute -right-1 -bottom-1 h-3 w-3 rounded-full border-2 border-white bg-[var(--slack-online)]" />
               </div>
               <div className="min-w-0 flex-1">
