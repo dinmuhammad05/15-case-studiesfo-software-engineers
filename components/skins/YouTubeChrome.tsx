@@ -129,15 +129,20 @@ export function YouTubeChrome({ slug, children }: { slug: string; children: Reac
             {/* Taqdimotchi — muallif portreti (fayl bo'lmasa hech narsa ko'rinmaydi) */}
             <div
               aria-hidden
-              className="absolute inset-y-0 right-0 w-[42%] [mask-image:linear-gradient(to_left,black_55%,transparent)]"
+              className="absolute inset-y-0 right-0 w-full sm:w-[58%] [mask-image:linear-gradient(to_left,black_70%,transparent)]"
             >
-              <AuthorPhoto className="h-full w-full opacity-90" position="50% 20%" alt="" fallback={null} />
+              <AuthorPhoto variant="portrait" className="h-full w-full" position="50% 22%" alt="" fallback={null} />
             </div>
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 pb-10 text-center sm:items-start sm:pr-[40%] sm:pb-0 sm:pl-[7%] sm:text-left">
+            {/* Matn o'qilishi uchun chapdan qorong'ilashtirish */}
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent sm:bg-gradient-to-r sm:from-black/85 sm:via-black/40"
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 pb-10 text-center sm:items-start sm:pr-[45%] sm:pb-0 sm:pl-[6%] sm:text-left">
               <span className="hidden font-[family-name:var(--skin-mono)] text-sm tracking-widest text-white/60 uppercase sm:block">
                 Dars {pad(current?.order ?? 8)} · tizim dizayni
               </span>
-              <span className="max-w-3xl text-2xl font-bold text-white sm:text-4xl lg:text-5xl">
+              <span className="hidden max-w-3xl text-2xl font-bold text-white sm:block sm:text-4xl lg:text-5xl">
                 {current?.title}
               </span>
               <button
