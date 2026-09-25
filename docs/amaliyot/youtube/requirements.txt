@@ -1,0 +1,2 @@
+# Faqat 1-daraja uchun, agar tizimda ffmpeg bo'lmasa
+imageio-ffmpeg>=0.5

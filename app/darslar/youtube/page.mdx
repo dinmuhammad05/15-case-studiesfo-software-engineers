@@ -1,0 +1,2845 @@
+## Bu darsda nima o‘rganasiz
+
+Oldingi uchta darsda — Slack, WhatsApp va qisman Reddit’da — biz kichik
+narsalarni tez yetkazish bilan shug‘ullandik: 400 baytlik xabar, 50 baytlik
+belgi, 8 baytlik ovoz. YouTube teskari dunyo: bitta ob’ekt **gigabaytlar**,
+va uni millionlab odam **bir vaqtda** ko‘radi.
+
+Bu o‘zgarish muhandislik muammolarini tubdan o‘zgartiradi. Endi savol
+“xabar qancha tez yetadi” emas, balki: **bir soatlik videoni 2G tarmoqdagi
+telefonga va 4K televizorga qanday qilib bir xil faylni yubormasdan
+ko‘rsatasiz? Kuniga 1 eksabaytdan ortiq trafikni kim to‘laydi? Va nega
+yuklangan videolarning ko‘pchiligini qimmat usulda siqish — pulni
+yoqish?**
+
+Yo‘l shunday: avval videoning o‘zini noldan tushunamiz — kadr, piksel,
+siqilmagan bitreyt, va kodek uni qanday qilib 150 barobar kichraytiradi.
+Keyin adaptiv bitreyt oqimi (ABR): video nega bo‘laklarga bo‘linadi va
+pleyer har 4 soniyada qanday qaror qabul qiladi. So‘ng transkodlash
+quvuri, CDN va internet provayderlar ichidagi keshlar, va darsning eng
+qiziq qismi — **uzun dum iqtisodi**: nega eng yaxshi kodek faqat
+videolarning 1–2% i uchun o‘zini oqlaydi.
+
+Dars oldingi darslardan mustaqil o‘qiladi. Ba’zi joylarda Reddit
+(Zipf taqsimoti) va WhatsApp (media siqish, Little qonuni) darslariga
+havolalar bor, lekin ular shart emas.
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+| Talab | Tafsilot |
+| --- | --- |
+| Yuklash | Telefon yoki kompyuterdan, 256 GB gacha, uzilsa davom ettirish bilan |
+| Qayta ishlash | Har bir videoni barcha qurilmalar uchun formatlarga aylantirish |
+| Tomosha | Istalgan qurilmada, istalgan tarmoqda, darhol boshlanishi |
+| Qidirish va sakrash | Videoning istalgan nuqtasiga tez o‘tish |
+| Jonli efir | Kameradan tomoshabingacha soniyalar ichida |
+| Tavsiyalar | Milliardlab videodan har bir foydalanuvchiga mos o‘nlab |
+| Hisoblagichlar | Ko‘rishlar, layklar — soxta ko‘rishlarsiz |
+| Mualliflik huquqi | Yuklangan videoni himoyalangan kontent bilan solishtirish |
+
+Bu jadvalning birinchi uchta qatori bitta quvurni tashkil qiladi
+(yuklash → qayta ishlash → tomosha) va darsning 80% i shu haqida. Qolgan
+beshtasi — yirik mustaqil tizimlar, har biri alohida darsga arziydi. Biz
+ularni faqat quvurga ta’sir qiladigan darajada ko‘ramiz: tavsiyalar —
+qaysi videolar issiq bo‘lishini, hisoblagichlar — Reddit’dagi ovoz
+muammosining takrorini, mualliflik huquqi — yuklash quvuriga qo‘shilgan
+qo‘shimcha bosqichni.
+
+### 1.2 Nofunksional talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Boshlanish vaqti | Bosishdan birinchi kadrgacha p90 < 1 s |
+| Buferlash | Tomosha vaqtining 0.5% idan kam qismi to‘xtab turishda |
+| Sifat | Tarmoq imkon bergan eng yuqori sifat, tez-tez almashmasdan |
+| Nashr tezligi | Yuklangach birinchi sifat ~daqiqalarda, HD keyinroq |
+| Mavjudlik | Tomosha 99.99%, yuklash 99.9% |
+| Narx | Bir soat tomoshaning yetkazish narxi — sentning kichik ulushlari |
+
+Ikkinchi qator eng qat’iy va eng qiziq: **buferlash tomosha vaqtining
+0.5% idan kam**. Bu raqam tasodifiy emas. Video tomosha qilish sifati
+bo‘yicha tadqiqotlar (masalan, 2011-yilgi SIGCOMM maqolasi — Dobrian
+va hammualliflar) buferlash ulushi oshishi bilan tomosha vaqti sezilarli
+kamayishini ko‘rsatgan. Ya’ni bu yerda texnik metrika to‘g‘ridan-to‘g‘ri
+biznes metrikasi: buferlash — yo‘qotilgan tomosha, yo‘qotilgan tomosha —
+yo‘qotilgan reklama.
+
+Oxirgi qator esa Slack yoki WhatsApp’da umuman bo‘lmagan tur: **narx —
+nofunksional talab**. 12-bo‘limda ko‘ramizki, YouTube’ning arxitekturasi
+ko‘p jihatdan shu bitta qatordan kelib chiqadi.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="500 soat" label="Har daqiqada yuklanadi" hint="YouTube e'lon qilgan raqam (2019)" />
+  <Stat value="1 mlrd soat" label="Kuniga tomosha" hint="YouTube e'lon qilgan raqam (2017)" />
+  <Stat value="~104 Tbit/s" label="O'rtacha chiqish" hint="Taxminiy, pastdagi hisob" />
+  <Stat value="~430×" label="O'qish / yozish" hint="Baytlar bo'yicha" />
+</StatGrid>
+
+<Calc title="Yuklash va tomosha — baytlarda" result="Kuniga ~1.1 EB chiqadi, ~2.6 PB kiradi. O'qish yozishdan ~430 barobar ko'p">{`YUKLASH:
+  500 soat/daqiqa x 60 x 24 = 720 000 soat video/kun
+  Yuklangan fayl o'rtacha bitreyti ~8 Mbit/s (telefon 1080p, kompyuter, eski video aralash)
+  1 soat = 8e6 x 3 600 / 8 = 3.6 GB
+  720 000 x 3.6 GB = 2 592 000 GB = ~2.6 PB/kun
+
+TOMOSHA:
+  1 000 000 000 soat/kun
+  O'rtacha bir vaqtdagi oqimlar: 1e9 / 24 = 41 700 000
+  O'rtacha yetkazilgan bitreyt ~2.5 Mbit/s (mobil past sifat + TV yuqori sifat aralash)
+  41.7e6 x 2.5 Mbit/s = 104 000 000 Mbit/s = ~104 Tbit/s (o'rtacha)
+
+  Kunlik bayt: 104e12 / 8 x 86 400 = ~1.1 x 10^18 bayt = ~1.1 EB/kun
+
+NISBAT: 1.1 EB / 2.6 PB = ~430`}</Calc>
+
+Uchta xulosa, va ular darsning qolgan qismini belgilaydi.
+
+**Birinchi — bu o‘qish tizimi.** Har bir yuklangan bayt o‘rtacha 430 marta
+o‘qiladi. Demak yozish yo‘lida (transkodlash, saqlash) qilingan har qanday
+ish, agar u o‘qish yo‘lini arzonlashtirsa, o‘zini ko‘p barobar oqlaydi.
+Butun “bir marta siq, ko‘p marta yubor” strategiyasi shu nisbatdan
+chiqadi.
+
+**Ikkinchi — chiqish trafigi astronomik.** 104 Tbit/s o‘rtacha, cho‘qqida
+ikki-uch barobar ko‘p. Hech bir bitta ma’lumot markazi buni chiqara
+olmaydi, va hech bir kompaniya buni oddiy tranzit narxida to‘lay olmaydi.
+8-bo‘lim shu muammoga bag‘ishlangan.
+
+**Uchinchi — “o‘rtacha” aldamchi.** 430 barobar — bu o‘rtacha. Aslida
+ba’zi videolar milliard marta ko‘riladi, ko‘pchiligi esa deyarli hech
+qachon. 7-bo‘limda bu taqsimot eng qimmat qarorlarni qanday belgilashini
+ko‘ramiz.
+
+<Check q="Nega 'har daqiqada 500 soat yuklanadi' degan raqam tizim uchun 'kuniga 1 milliard soat tomosha'dan kamroq muhim ko'rinadi, lekin aslida ham muhim?">
+Baytlarda yuklash chiqishdan 430 barobar kichik, shuning uchun tarmoq va
+yetkazish nuqtai nazaridan u deyarli ahamiyatsiz.
+
+Lekin **hisoblash** nuqtai nazaridan hammasi teskari. Tomosha — bu faqat
+tayyor baytlarni yuborish, deyarli CPU talab qilmaydi. Yuklash esa har bir
+soniya videoni o‘nlab formatlarga qayta siqishni talab qiladi, va
+video siqish — hisoblash jihatidan eng qimmat operatsiyalardan biri.
+5-bo‘limda (4-qadam) hisoblaymiz: faqat yuklash oqimini barcha
+kodeklarda siqish **o‘n millionlab** protsessor yadrosini talab qilardi.
+
+Umumiy dars: **bitta tizimda turli resurslar turli oqimlar bilan
+belgilanadi.** Tarmoqni tomosha belgilaydi, hisoblashni yuklash, xotirani
+esa ikkalasining ko‘paytmasi (qancha saqlash va qancha tez-tez o‘qish).
+</Check>
+
+## 2. Nol nuqta: video aslida nima
+
+Servis, CDN va kodeklar haqida gapirishdan oldin bitta savolga aniq
+javob kerak: **bir soniya video nechta bayt?** Bu savolga javob butun
+tizimning o‘lchamini belgilaydi.
+
+### 2.1 Siqilmagan video: kadr, piksel, rang
+
+Video — bu tez almashadigan rasmlar (kadrlar) ketma-ketligi. Har bir kadr
+— piksellar to‘ri. Har bir piksel — rang.
+
+<Calc title="Bir soniya siqilmagan 1080p video" result="93 MB/s = 746 Mbit/s. Bir soatlik film — 336 GB">{`O'lcham:   1920 x 1080 = 2 073 600 piksel
+Rang:      YUV 4:2:0, 8 bit — piksel boshiga o'rtacha 1.5 bayt
+           (yorqinlik har pikselda, rang esa 2x2 guruh uchun bitta —
+            ko'z yorqinlikka rangdan sezgirroq)
+
+Bitta kadr: 2 073 600 x 1.5 = 3 110 400 bayt = ~3.1 MB
+Soniyada 30 kadr: 3.1 MB x 30 = ~93 MB/s = ~746 Mbit/s
+
+Bir soat:  93 MB x 3 600 = ~336 GB
+
+4K 60 kadr: 3840 x 2160 x 1.5 x 60 = ~746 MB/s = ~6 Gbit/s`}</Calc>
+
+746 Mbit/s — bu yaxshi uy internetidan 10–20 barobar ko‘p, mobil
+internetdan esa 100 barobardan ortiq. Siqilmagan video internet orqali
+**umuman** yuborib bo‘lmaydi. YouTube’dagi 1080p video esa odatda
+~3–8 Mbit/s atrofida. Demak kodek videoni **100–250 barobar** siqadi.
+Qanday qilib?
+
+### 2.2 Kodek: nima takrorlanishini topish
+
+Siqishning butun siri bitta kuzatishda: **ketma-ket kadrlar deyarli bir xil**.
+Odam gapirayotgan videoda fon qimirlamaydi, faqat og‘iz va qo‘llar
+harakatlanadi. Har bir kadrni to‘liq saqlash o‘rniga kodek faqat
+**farqni** saqlaydi.
+
+| Kadr turi | Nima saqlanadi | Nisbiy hajm |
+| --- | --- | --- |
+| I (intra) | To‘liq rasm — faqat o‘z ichida siqilgan (JPEG kabi) | 1.0 |
+| P (predicted) | Oldingi kadrga nisbatan: “bu blok 3 piksel chapga surildi” + qoldiq farq | ~0.1–0.3 |
+| B (bidirectional) | Oldingi VA keyingi kadrga nisbatan | ~0.05–0.15 |
+
+Bu jadvaldagi raqamlar taxminiy va kontentga juda bog‘liq, lekin
+xulosa aniq: **I-kadr qimmat, qolganlari arzon**. Oddiy videoda har
+2–5 soniyada bitta I-kadr bo‘ladi, orasidagi 60–150 kadr esa P va B.
+
+I-kadrlar orasidagi guruhga **GOP** (Group of Pictures) deyiladi. Va
+GOP butun tizim uchun muhim, chunki **videoni faqat I-kadrdan boshlab
+ochish mumkin**: P-kadr “oldingi kadrga nisbatan” saqlangan, va agar
+oldingi kadr yo‘q bo‘lsa, uni tiklab bo‘lmaydi.
+
+```
+Vaqt  ->
+I  B  B  P  B  B  P  B  B  P ... I  B  B  P ...
+|<--------- GOP (masalan, 2 s) ------->|<--- keyingi GOP
+
+Sakrash (seek) faqat I dan boshlanadi.
+Bo'laklarga bo'lish (2.4) faqat I da mumkin.
+Parallel siqish (5-bo'lim) faqat I chegarasida mumkin.
+```
+
+Bu uchta oqibatning har biri keyingi bo‘limlarda arxitektura qaroriga
+aylanadi. Hozircha eslab qoling: **I-kadr — video olamidagi “tranzaksiya
+chegarasi”**. U yerdan boshlash, kesish va bo‘lish mumkin; o‘rtasidan esa
+yo‘q.
+
+<Deep title="Harakat kompensatsiyasi: kodek aslida nima qiladi">
+P-kadrni qanday “farq” sifatida saqlash mumkin? Kodek kadrni kichik
+bloklarga bo‘ladi (masalan, 16×16 piksel) va har bir blok uchun oldingi
+kadrdan **eng o‘xshash** blokni qidiradi.
+
+```
+Joriy kadrdagi blok (x=320, y=200)
+  -> oldingi kadrda qidiruv oynasi (masalan, ±64 piksel)
+  -> eng o'xshash blok (x=317, y=201) da topildi
+  -> saqlanadi:
+       harakat vektori: (-3, +1)            ~ 2-4 bayt
+       qoldiq: joriy blok - topilgan blok   ~ ko'pincha deyarli nol,
+                                              kuchli siqiladi
+  Butun blokni saqlash o'rniga (16x16x1.5 = 384 bayt) — o'nlab bayt.
+```
+
+Siqishning **narxi** aynan shu qidiruvda. ±64 piksel oynada har bir
+blok uchun minglab variantni solishtirish kerak. Kodek qancha yaxshi
+qidirsa (kattaroq oyna, kichikroq bloklar, ko‘proq mos yozuvlar kadri,
+yaxshiroq qoldiq kodlash), shuncha yaxshi siqadi — va shuncha sekin ishlaydi.
+
+Zamonaviy kodeklar shu g‘oyani chuqurlashtiradi:
+
+| Kodek | Yil | Bir xil sifatda bitreyt (nisbiy, taxminan) | Kodlash murakkabligi (nisbiy) |
+| --- | --- | --- | --- |
+| H.264 / AVC | 2003 | 1.0 | 1× |
+| VP9 | 2013 | ~0.6–0.7 | ~5–10× |
+| AV1 | 2018 | ~0.4–0.5 | ~20–100× (dasturiy, sozlamaga bog‘liq) |
+
+Jadvalning ikki ustuni bir-biriga teskari: **har bir avlod bitreytni
+~30–40% kamaytiradi va kodlashni bir necha barobar qimmatlashtiradi.**
+Bu — darsning markaziy savdosi. Bayt tejash hisoblash evaziga keladi,
+va qachon bu savdo foydali ekanini faqat videoning **necha marta
+ko‘rilishi** hal qiladi (7-bo‘lim).
+
+*Jadvaldagi nisbatlar keng tarqalgan taqqoslashlar tartibida, lekin
+sozlamalar, kontent va kodlovchi versiyasiga qarab ancha farq qiladi.*
+</Deep>
+
+### 2.3 Bitreyt zinapoyasi: bitta video — o‘nta fayl
+
+Telefon 2G’da 300 kbit/s oladi, televizor optik tolada 100 Mbit/s.
+Bitta faylni ikkalasiga ham yuborib bo‘lmaydi: biriga juda katta,
+ikkinchisiga juda xira. Yechim — bitta videoning **bir nechta nusxasi**,
+har biri boshqa o‘lcham va bitreytda. Bu to‘plam **bitreyt zinapoyasi**
+(bitrate ladder) deb ataladi.
+
+| Sifat | O‘lcham | Bitreyt (H.264, taxminan) | Kim uchun |
+| --- | --- | --- | --- |
+| 144p | 256×144 | 0.1 Mbit/s | Juda sekin mobil |
+| 240p | 426×240 | 0.3 Mbit/s | 2G / sekin 3G |
+| 360p | 640×360 | 0.7 Mbit/s | 3G, kichik ekran |
+| 480p | 854×480 | 1.2 Mbit/s | Planshet, o‘rtacha tarmoq |
+| 720p | 1280×720 | 2.5 Mbit/s | Noutbuk, yaxshi mobil |
+| 1080p | 1920×1080 | 5 Mbit/s | Katta ekran |
+| 1440p | 2560×1440 | 10 Mbit/s | Katta monitor |
+| 2160p (4K) | 3840×2160 | 20 Mbit/s | 4K televizor |
+
+Jadvaldagi eng muhim ustun — oxirgisi: **har bir pog‘ona muayyan
+qurilma va tarmoq uchun**. Zinapoyani loyihalash — bu “qanday
+tomoshabinlarimiz bor” degan savolga javob. Masalan, auditoriyaning
+katta qismi arzon telefonda va sekin tarmoqda bo‘lsa, pastki pog‘onalar
+zichroq bo‘lishi kerak (240p va 360p orasiga yana biri); agar
+tomoshabinlar asosan televizorda bo‘lsa — yuqori pog‘onalar.
+
+Ikkinchi xulosa — saqlash: bitta videoning barcha pog‘onalari birgalikda
+taxminan 40 Mbit/s (jadval yig‘indisi), ya’ni eng yuqori sifatning
+~2 barobari. Ya’ni **zinapoya saqlashni taxminan ikki barobar oshiradi**,
+va har bir qo‘shimcha kodek (VP9, AV1) yana shuncha qo‘shadi.
+
+<Callout type="maslahat" title="Zinapoya manba o'lchamidan yuqoriga chiqmasin">
+Telefonda 720p da yozilgan videoni 1080p va 4K ga “kattalashtirish” hech
+qanday yangi tafsilot qo‘shmaydi — piksellar shunchaki cho‘ziladi. Lekin
+saqlash va trafik 4K narxida bo‘ladi.
+
+Qoida: **zinapoya manbaning o‘lchamida kesiladi.** 720p manba uchun
+zinapoya 144p–720p, 4K manba uchun — to‘liq. Yuklangan videolarning
+katta qismi 1080p va undan past, shuning uchun bu oddiy qoida 2.3-jadvaldagi
+eng qimmat ikki pog‘onani (1440p va 4K — zinapoya hajmining ~75% i)
+ko‘pchilik videolar uchun butunlay olib tashlaydi.
+</Callout>
+
+### 2.4 Bo‘laklar va manifest: pleyer har 4 soniyada qaror qiladi
+
+Endi asosiy mexanizm. Bir nechta nusxa bor, lekin tarmoq tomosha
+**davomida** o‘zgaradi: metroga tushdingiz, Wi-Fi’dan mobilga o‘tdingiz.
+Pleyer sifatni **video o‘rtasida** almashtira olishi kerak.
+
+Yechim — har bir nusxani **qisqa bo‘laklarga** (segmentlarga) bo‘lish,
+masalan, har biri 4 soniya. Muhim shart: barcha nusxalarda bo‘lak
+chegaralari **bir xil vaqtda** va har bir bo‘lak **I-kadrdan** boshlanadi
+(2.2). Shunda pleyer 17-bo‘lakni 720p’da, 18-sini 360p’da, 19-sini
+yana 720p’da olishi mumkin — va video uzilmasdan davom etadi.
+
+Pleyer qaysi bo‘laklar borligini **manifest** fayldan biladi:
+
+```
+# HLS manifest (soddalashtirilgan) — master.m3u8
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=700000,RESOLUTION=640x360
+360p/playlist.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720
+720p/playlist.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+1080p/playlist.m3u8
+
+# 720p/playlist.m3u8
+#EXTM3U
+#EXT-X-TARGETDURATION:4
+#EXTINF:4.0,
+seg_00000.m4s
+#EXTINF:4.0,
+seg_00001.m4s
+...
+```
+
+Ikki standart format bor: Apple’ning **HLS** (2009) va MPEG’ning **DASH**
+(2012). Ular sintaksisda farq qiladi, g‘oyada esa bir xil: manifest
+nusxalarni sanaydi, har bir nusxa bo‘laklar ro‘yxati, har bir bo‘lak —
+oddiy HTTP orqali olinadigan fayl.
+
+Oxirgi so‘zlar — **“oddiy HTTP fayl”** — butun arxitekturaning eng
+muhim qarori. Video uchun maxsus server, maxsus protokol, doimiy ulanish
+kerak emas. Har bir bo‘lak — statik fayl, uni har qanday HTTP kesh,
+har qanday CDN, har qanday proksi saqlay oladi. Slack darsida biz
+doimiy ulanishning narxini (35 KB xotira, qayta ulanish bo‘ronlari)
+hisobladik; video oqimi bu narxni butunlay chetlab o‘tadi.
+
+<Flow nodes={["Pleyer", "Manifest (.m3u8)", "Tarmoqni o'lchash", "Sifat tanlash", "Bo'lak N (4 s)", "Buferga qo'shish", "Keyingi bo'lak"]} caption="ABR halqasi: har bir bo'lakdan keyin pleyer qayta qaror qiladi" />
+
+<Calc title="Bo'lak uzunligini tanlash" result="4 s — murosaning markazi: 2 s da so'rovlar 2 barobar, 10 s da moslashish sekin">{`1080p, 5 Mbit/s, turli bo'lak uzunliklari:
+
+             bo'lak hajmi   so'rov/soat   sifat almashish imkoni   siqish
+  2 s        1.25 MB        1 800         har 2 s                  yomonroq
+  4 s        2.5 MB           900         har 4 s                  yaxshi
+  6 s        3.75 MB          600         har 6 s                  yaxshi
+  10 s       6.25 MB          360         har 10 s                 eng yaxshi
+
+"Siqish" ustuni: har bo'lak I-kadrdan boshlanadi, I-kadr esa qimmat
+(2.2). 2 soniyalik bo'lakda I-kadrlar 5 barobar ko'p (10 s ga nisbatan)
+-> bir xil sifat uchun bitreyt ~5-10% ko'proq.
+
+Butun platforma uchun so'rovlar (41.7 M bir vaqtdagi oqim):
+  2 s:  41.7e6 / 2 = ~21 M so'rov/s
+  4 s:  ~10 M so'rov/s
+  10 s: ~4 M so'rov/s`}</Calc>
+
+Bu hisob klassik uch tomonlama savdoni ko‘rsatadi: **qisqa bo‘lak —
+tez moslashish va tez boshlanish, lekin ko‘p so‘rov va yomonroq siqish;
+uzun bo‘lak — aksincha.** HLS dastlab 10 soniyani tavsiya qilgan, keyinchalik
+6 soniyaga tushirilgan; ko‘p xizmatlar 2–6 soniya oralig‘ida ishlaydi.
+Jonli efirda esa (5-bo‘lim, 14-qadam) kechikish talabi bo‘lakni yanada
+qisqartirishga majbur qiladi.
+
+<Check q="Nega bo'lak chegaralari barcha sifat nusxalarida bir xil vaqtda bo'lishi shart?">
+Chunki pleyer sifatni **bo‘lak chegarasida** almashtiradi. Agar 720p’ning
+17-bo‘lagi 68.0 soniyada tugasa, 360p’ning 18-bo‘lagi esa 67.5 soniyada
+boshlansa, almashishda yarim soniya takrorlanadi yoki yo‘qoladi — tasvir
+sakraydi.
+
+Bundan tashqari, har bir bo‘lak **I-kadrdan** boshlanishi kerak (2.2):
+aks holda boshqa sifatdan kelgan bo‘lakning P-kadrlari “oldingi kadr” sifatida
+**boshqa nusxaning** kadriga tayanardi — va tasvir buzilardi.
+
+Amaliy natija: transkodlashda barcha nusxalar uchun I-kadr joylari
+**majburiy va bir xil** belgilanadi (masalan, “har 4 soniyada I-kadr”).
+Bu kodekning o‘zi tanlaydigan optimal I-kadr joylaridan voz kechish
+degani — ya’ni siqish biroz yomonlashadi. ABR imkoniyati uchun to‘lanadigan
+kichik, lekin haqiqiy narx.
+</Check>
+
+## 3. v0: eng sodda ishlaydigan yechim
+
+Yuklangan faylni saqlash va uni qanday bo‘lsa, shunday qaytarish. YouTube’ning
+ilk kunlaridagi (2005) video saytlar aynan shunday ishlagan va bu haqiqatan
+ishlaydi.
+
+```python
+@app.post("/upload")
+def upload(file):
+    vid = new_id()
+    storage.put(f"videos/{vid}.mp4", file.read())       # bitta so'rovda butun fayl
+    db.insert("videos", id=vid, owner=user.id, views=0)
+    return {"id": vid}
+
+@app.get("/watch/{vid}")
+def watch(vid, request):
+    db.execute("UPDATE videos SET views = views + 1 WHERE id = %s", vid)
+    # HTTP Range: brauzer "baytlar 5 000 000 dan boshlab" so'rashi mumkin
+    return storage.stream(f"videos/{vid}.mp4", range=request.headers.get("Range"))
+```
+
+Bu kodda yashiringan ikkita to‘g‘ri qaror bor, va ular keyin ham qoladi.
+
+Birinchi — **HTTP Range so‘rovlari**. Brauzer butun faylni kutmaydi:
+u boshidan yuklay boshlaydi va o‘ynay boshlaydi (“progressiv yuklash”),
+foydalanuvchi o‘rtaga sakrasa esa `Range: bytes=...` bilan kerakli joydan
+so‘raydi. Bu 2.4-dagi bo‘laklar g‘oyasining ibtidoiy shakli: video
+allaqachon “oddiy HTTP fayl”.
+
+Ikkinchi — **ob’ekt ombori**. Video ma’lumotlar bazasiga emas, alohida
+fayl omboriga yoziladi; bazada faqat metama’lumot. Bu ajratish oxirigacha
+saqlanadi.
+
+Nima yetishmaydi — hamma narsa. Keyingi bo‘lim.
+
+## 4. Nima sindi
+
+### 4.1 Bitta fayl — hammaga noto‘g‘ri
+
+Foydalanuvchi telefonida 1080p yozdi (~16 Mbit/s). Endi uni kim ko‘radi?
+
+<Calc title="Bitta 16 Mbit/s faylni turli tomoshabinlar ko'rsa" result="Tomoshabinlarning katta qismi uchun video umuman o'ynamaydi">{`Fayl: 1080p, 16 Mbit/s (telefon kamerasining odatiy bitreyti)
+
+Tomoshabin tarmog'i        o'tkazuvchanlik    natija
+  4G, yaxshi signal         ~20 Mbit/s        o'ynaydi, lekin trafik isrof
+  4G, o'rtacha              ~8 Mbit/s         har soniyada ~1 s kutadi
+  3G                        ~2 Mbit/s         8 s yuklab, 1 s ko'radi
+  2G / EDGE                 ~0.2 Mbit/s       80 s yuklab, 1 s ko'radi
+
+Buferlash ulushi (3G):
+  har 1 s video uchun 8 s yuklash -> vaqtning 87.5% i kutish
+
+Trafik isrofi (4G, 6 dyuymli ekran):
+  720p yetarli (2.5 Mbit/s), yuborildi 16 Mbit/s -> 6.4 barobar ortiq`}</Calc>
+
+Jadval ikki tomonlama muvaffaqiyatsizlikni ko‘rsatadi: **sekin tarmoqda
+video o‘ynamaydi, tez tarmoqda esa trafik isrof bo‘ladi**. Birinchisi
+foydalanuvchini yo‘qotadi, ikkinchisi — pulni (sizniki va foydalanuvchining
+mobil paketi). Ikkalasining ham yechimi bitta: bitreyt zinapoyasi (2.3) va
+ABR (2.4).
+
+<Versus
+  left={{ title: "v0: bitta fayl, progressiv yuklash", points: [
+    "Bitta nusxa — yuklangan bitreytda",
+    "Tarmoq sekin bo‘lsa — to‘xtab-to‘xtab o‘ynaydi",
+    "Tarmoq tez bo‘lsa — kichik ekranga ortiqcha baytlar",
+    "Serverda hech qanday qayta ishlash yo‘q",
+    "Saqlash: 1× (faqat original)",
+  ] }}
+  right={{ title: "Zinapoya + ABR", points: [
+    "8 ta pog‘ona, 4 soniyalik bo‘laklar",
+    "Tarmoq sekin bo‘lsa — past pog‘ona, lekin uzluksiz",
+    "Ekran va tarmoqqa mos pog‘ona",
+    "Har yuklamaga transkodlash — eng qimmat hisoblash",
+    "Saqlash: ~3× (original + zinapoya)",
+  ] }}
+/>
+
+Oxirgi ikki qator — ABR ning narxi, va u **yozish yo‘lida** to‘lanadi:
+transkodlash va qo‘shimcha saqlash. Birinchi uchta qator esa uning foydasi,
+va u **o‘qish yo‘lida** olinadi — har bir tomoshada. 430:1 nisbat (1.3)
+bu savdoni aniq hal qiladi.
+
+### 4.2 Har bir qurilma boshqa format istaydi
+
+Telefon kamerasi HEVC (H.265) da yozadi, eski brauzer faqat H.264 ni
+o‘ynaydi, televizor ilovasi 60 kadrni istaydi, planshet — vertikal
+video. Yuklangan fayl o‘z holida ko‘pchilik qurilmada **umuman ochilmaydi**
+yoki noto‘g‘ri ochiladi.
+
+Demak serverda **transkodlash** — har bir yuklangan videoni standart
+formatlarga qayta siqish — majburiy. Va 1.3-dagi Check’da aytganimizdek,
+bu tizimning eng qimmat hisoblash operatsiyasi.
+
+### 4.3 Chiqish trafigi
+
+<Calc title="v0 ning chiqish trafigini oddiy bulut narxida to'lasak" result="Kuniga ~11 million dollar — yiliga ~4 milliard">{`1.3-bo'limdan: ~1.1 EB/kun chiqish
+
+Oddiy bulut provayderining chiqish narxi (katta hajmda, taxminan):
+  ~0.01 $/GB  (ro'yxat narxi bundan 5-9 barobar qimmat)
+
+1.1 EB = 1 100 000 000 GB
+  1.1e9 x 0.01 $ = 11 000 000 $/kun
+  x 365 = ~4 000 000 000 $/yil
+
+Taqqoslash: bu raqam ko'plab yirik kompaniyalarning butun yillik
+daromadidan katta. Faqat baytlarni yuborish uchun.`}</Calc>
+
+Bu hisobning xulosasi keskin: **YouTube miqyosidagi video platformani
+“bulutdan chiqish trafigi” modelida qurib bo‘lmaydi.** Trafik narxini
+tubdan boshqa modelga o‘tkazish kerak — va bu 8-bo‘limning mavzusi
+(internet provayderlar ichidagi keshlar).
+
+### 4.4 Katta fayl bitta so‘rovda yuklanmaydi
+
+<Calc title="2 GB videoni mobil tarmoqda bitta so'rovda yuklash" result="42% urinish muvaffaqiyatsiz — va har biri boshidan boshlanadi">{`Fayl: 2 GB (10 daqiqalik 4K telefon videosi)
+Yuklash tezligi (mobil uplink): ~10 Mbit/s
+  2 GB x 8 / 10 Mbit/s = 1 600 s = ~27 daqiqa
+
+Faraz: har daqiqada tarmoq uzilishi ehtimoli 2%
+(signal almashishi, lift, Wi-Fi <-> mobil o'tishi)
+
+27 daqiqa uzilishsiz o'tishi ehtimoli:
+  0.98^27 = 0.58  -> 58% muvaffaqiyat, 42% muvaffaqiyatsiz
+
+Muvaffaqiyatsiz urinish o'rtacha ~13 daqiqada uziladi
+va BOSHIDAN boshlanadi. Kutilgan umumiy vaqt:
+  1 / 0.58 = ~1.7 urinish -> ~40+ daqiqa va 3+ GB trafik`}</Calc>
+
+Bu yerda kvadratik emas, lekin **eksponensial** tuzoq bor: muvaffaqiyat
+ehtimoli fayl hajmi bilan eksponensial kamayadi (`0.98^daqiqalar`). 4 GB
+fayl uchun bu 0.98^54 = 34%, ya’ni ko‘pchilik urinish muvaffaqiyatsiz.
+Yechim — yuklashni **qayta tiklanadigan** qilish: fayl bo‘laklarda
+yuboriladi, uzilishdan keyin oxirgi tasdiqlangan bo‘lakdan davom etadi
+(5-bo‘lim, 1-qadam).
+
+### 4.5 Ko‘rishlar hisoblagichi — Reddit muammosi qaytdi
+
+`UPDATE videos SET views = views + 1` — bu Reddit darsidagi ovoz
+hisoblagichining aynan takrori (Reddit, 5.2).
+
+<Calc title="Ko'rishlar yozuvi" result="Sekundiga ~93 000 yozuv, mashhur videoda bitta qatorga minglab">{`1 mlrd soat/kun, o'rtacha ko'rish ~7.5 daqiqa:
+  1e9 x 60 / 7.5 = 8 000 000 000 ko'rish/kun
+  8e9 / 86 400 = ~92 600 ko'rish/s (o'rtacha)
+
+Mashhur klip premyerasi: birinchi soatda 20 000 000 ko'rish
+  20e6 / 3 600 = ~5 560 yozuv/s BITTA qatorga
+
+Bitta qatorga sekundiga minglab UPDATE — qulf navbati, replikatsiya
+kechikishi. Reddit darsidagi "hot key" aynan shu.`}</Calc>
+
+Yechim ham Reddit’dagiga o‘xshash (guruhlash, shardlangan hisoblagichlar),
+lekin bitta yangi murakkablik bilan: **ko‘rish — pul**. Mualliflar
+ko‘rishlar soniga qarab daromad oladi, reklama beruvchilar esa ko‘rishlar
+uchun to‘laydi. Demak soxta ko‘rish — firibgarlik, va hisoblagich faqat
+tez emas, **tekshirilgan** bo‘lishi kerak. 5-bo‘limning 12-qadamida buni
+ko‘ramiz.
+
+<Check q="v0 dagi beshta muammodan qaysi biri platformani iqtisodiy jihatdan imkonsiz qiladi?">
+**Chiqish trafigi (4.3).** Qolgan to‘rttasi — muhandislik muammolari,
+ularning har biri pul va vaqt bilan hal bo‘ladi: transkodlash uchun
+serverlar, qayta tiklanadigan yuklash protokoli, shardlangan hisoblagich.
+
+Chiqish trafigi esa **hal qilinmaydi, faqat boshqa modelga o‘tkaziladi**.
+Yiliga 4 milliard dollar — bu optimallashtirish bilan 20% kamaytiriladigan
+xarajat emas; bu biznes modelini imkonsiz qiladigan xarajat. Uni faqat
+arxitektura darajasidagi qaror — trafikni foydalanuvchiga eng yaqin
+joyda, uning provayderining o‘z tarmog‘ida berish — o‘zgartiradi.
+
+Umumiy dars: **v0 muammolarini ro‘yxatlaganda, ularni “muhandislik” va
+“iqtisodiy imkonsizlik” ga ajrating.** Birinchisini keyinroq hal qilish
+mumkin; ikkinchisi esa arxitekturani boshidan belgilaydi.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+<Step n={1} title="Qayta tiklanadigan yuklash" gain="Katta fayl mobil tarmoqda ham yuklanadi" cost="Serverda yuklash sessiyasi holati">
+Yuklash uch bosqichga bo‘linadi:
+
+```
+1. POST /upload/sessions  {hajm: 2 GB, tur: video/mp4}
+   <- {upload_url: ".../sessions/abc123"}         (sessiya 7 kun yashaydi)
+
+2. PUT .../sessions/abc123
+   Content-Range: bytes 0-8388607/2147483648      (8 MB bo'lak)
+   <- 308 Resume Incomplete, Range: bytes=0-8388607
+
+   ... uzilish ...
+
+3. PUT .../sessions/abc123   (bo'sh so'rov, "qayerdamiz?")
+   Content-Range: bytes */2147483648
+   <- 308, Range: bytes=0-754974719              (720 MB saqlangan)
+   -> mijoz 754974720 dan davom etadi
+```
+
+4.4-dagi hisob endi butunlay boshqacha: uzilish faqat **joriy 8 MB
+bo‘lakni** yo‘qotadi, butun faylni emas. 2 GB fayl uchun kutilgan
+qo‘shimcha trafik ~1% ga tushadi.
+
+Bo‘lak hajmini tanlash yana savdo: kichik bo‘lak (1 MB) — uzilishda kam
+yo‘qotish, lekin ko‘p so‘rov; katta (64 MB) — kam so‘rov, lekin sekin
+tarmoqda bitta bo‘lak daqiqalab ketadi va uzilish ehtimoli yana oshadi.
+8–16 MB mobil uchun odatiy murosa.
+</Step>
+
+<Deep title="Bir xil faylni ikki marta transkodlamaslik">
+Ko‘p videolar **aynan bir xil fayl** sifatida qayta yuklanadi: bitta
+klipni o‘nlab kanal qayta joylaydi, muallif yuklashni qayta boshlaydi,
+mobil ilova ikki marta yuboradi. Har birini alohida transkodlash —
+5-qadamdagi eng qimmat operatsiyani takrorlash.
+
+Yechim — **mazmun xeshi**:
+
+```
+Yuklash tugagach:
+  h = SHA-256(fayl)                           # 1 GB uchun ~2-3 s CPU
+  agar h allaqachon "transkodlangan" to'plamda bo'lsa:
+      yangi video yozuvi -> mavjud nusxalarga ishora qiladi
+      transkodlash YO'Q, saqlash YO'Q (faqat metama'lumot)
+  aks holda:
+      odatdagi quvur
+```
+
+Faqat **bayt-bayt bir xil** fayllar mos keladi: bitta kadrni kesgan yoki
+qayta siqilgan nusxa boshqa xeshga ega. Ularni topish — 11.1-bo‘limdagi
+barmoq izi tizimining ishi, va u boshqa maqsadga (mualliflik huquqi)
+xizmat qiladi.
+
+Nozik joy: ikki turli video bitta fizik nusxaga ishora qilsa, **o‘chirish**
+murakkablashadi. Bir muallif videosini o‘chirsa, nusxalar ikkinchisi
+uchun qolishi kerak — ya’ni havolalar hisoblagichi (reference counting)
+kerak. Bu WhatsApp darsidagi “yo‘naltirilgan media URL’ni qayta ishlatish”
+bilan bir xil g‘oya (WhatsApp, 5-bo‘lim, 8-qadam), va bir xil narx bilan.
+</Deep>
+
+<Step n={2} title="Transkodlash quvuri — navbat orqali" gain="Yuklash tez tugaydi, qayta ishlash fonda" cost="Video darhol mavjud emas">
+Yuklash tugashi bilan fayl ombordagi “xom” papkaga tushadi va navbatga
+vazifa qo‘yiladi. Foydalanuvchi “Yuklandi, qayta ishlanmoqda” xabarini
+ko‘radi. Transkodlash ishchilari navbatdan oladi.
+
+Bu — Twitter darsidagi fan-out ishchilari va Reddit’dagi ovoz navbati
+bilan bir xil naqsh: **og‘ir ishni so‘rov yo‘lidan olib, navbatga qo‘yish**.
+Farq faqat miqyosda: bitta vazifa bu yerda soniyalar emas, soatlar.
+</Step>
+
+<Step n={3} title="Videoni bo'laklab parallel siqish" gain="2 soatlik 4K video soatlar emas, daqiqalarda" cost="Bo'lak chegaralarida sifat va birlashtirish mantiqi">
+Bitta ishchi 2 soatlik 4K videoni ketma-ket siqsa, bu o‘nlab soat
+ketadi. Lekin video **I-kadr chegaralarida** mustaqil bo‘laklarga
+bo‘linadi (2.2) — demak ularni parallel siqish mumkin.
+
+<Calc title="Ketma-ket va parallel transkodlash" result="~20 soat -> ~2 daqiqa: 600 barobar tezroq, bir xil jami CPU bilan">{`Video: 2 soat, 4K, to'liq H.264 zinapoyasi
+Faraz: bitta ishchi (8 yadro) bu zinapoyani 0.1x real vaqtda siqadi
+  (1 soniya video = 10 soniya ish)
+
+KETMA-KET:
+  7 200 s video x 10 = 72 000 s = 20 soat
+
+PARALLEL (10 soniyalik bo'laklar):
+  7 200 / 10 = 720 bo'lak, 720 ishchiga
+  Har bir bo'lak: 10 s x 10 = 100 s
+  + bo'lish (~10 s) + birlashtirish va manifest (~10 s)
+  = ~2 daqiqa
+
+Jami CPU vaqti bir xil (72 000 ishchi-soniya).
+O'zgargan narsa — NASHR VAQTI.`}</Calc>
+
+Oxirgi ikki qator muhim: parallellash **arzonlashtirmaydi**, faqat
+**tezlashtiradi**. Jami ish o‘zgarmaydi (hatto biroz oshadi — bo‘lish va
+birlashtirish qo‘shimchasi). Lekin muallif uchun videoning 20 soat emas,
+2 daqiqada tayyor bo‘lishi — mahsulot sifati.
+
+Narxi: bo‘lak chegarasida kodek “oldinga qaray” olmaydi, shuning uchun
+chegara yaqinida siqish biroz yomonroq. Va ikki bosqichli kodlash
+(birinchi o‘tishda butun videoni tahlil qilish) murakkablashadi.
+</Step>
+
+<Step n={4} title="Avval past sifat, keyin yuqori" gain="Video bir necha daqiqada ko'rinadi" cost="Dastlabki tomoshabinlar past sifatni ko'radi">
+Barcha pog‘onalarni birdan kutish shart emas. 360p birinchi bo‘lib
+siqiladi (u eng arzon — 1080p’dan ~10 barobar kam piksel) va video
+darhol nashr qilinadi. 720p, 1080p, 4K keyin tayyor bo‘lgan sari
+manifestga qo‘shiladi.
+
+Ko‘pchilik YouTube foydalanuvchilari buni ko‘rgan: yangi yuklangan
+videoda dastlab faqat past sifat bor, HD esa keyinroq paydo bo‘ladi.
+Bu xato emas — bu **tayyor bo‘lgan narsani darhol berish** qarori.
+
+Bu qadamni hisoblash bilan birga ko‘rish kerak. Barcha yuklanadigan
+videolarni barcha kodeklarda siqish qancha hisoblash talab qiladi?
+
+<Calc title="Butun yuklash oqimini transkodlash" result="Faqat H.264 — ~750 000 yadro; hammasi AV1 da — ~60 000 000 yadro">{`Yuklash: 720 000 soat/kun = 8.33 soat video har soniyada
+         = 30 000 soniya video har bir real soniyada
+
+Bitta video-soniyani to'liq zinapoyaga siqish narxi (taxminan, dasturiy):
+  H.264:  ~25 yadro-soniya
+  VP9:    ~125 yadro-soniya   (~5x H.264)
+  AV1:    ~2 000 yadro-soniya (~80x H.264, sekin sozlamalarda)
+
+Doimiy band yadrolar:
+  H.264:  30 000 x 25     =    750 000 yadro
+  VP9:    30 000 x 125    =  3 750 000 yadro
+  AV1:    30 000 x 2 000  = 60 000 000 yadro
+
+60 million yadro — bu dunyodagi eng yirik bulut provayderlarining
+jami hisoblash quvvati tartibida. Faqat bitta vazifa uchun.`}</Calc>
+
+Bu raqamlar illyustratsiya (ular kodlovchi sozlamalariga juda bog‘liq),
+lekin tartib ishonchli va xulosa aniq: **hamma videoni eng yaxshi kodekda
+siqish jismonan imkonsiz.** 7-bo‘limda bu muammoni iqtisodiy nuqtai
+nazardan hal qilamiz, 11-qadamda esa apparat nuqtai nazaridan.
+</Step>
+
+<Step n={5} title="Bo'laklar va manifest (HLS / DASH)" gain="Sifatni tomosha o'rtasida almashtirish mumkin" cost="Millionlab kichik fayl, bo'lak chegaralarida siqish biroz yomonroq">
+2.4-bo‘limdagi hamma narsa shu yerda joriy qilinadi: har bir nusxa 4
+soniyalik bo‘laklarga bo‘linadi, I-kadrlar barcha nusxalarda bir xil
+joyda, manifest esa ularni sanaydi.
+
+Saqlash tomonida yangi muammo paydo bo‘ladi: 1 soatlik video × 8 pog‘ona ×
+900 bo‘lak = 7 200 fayl. Butun katalog bo‘yicha bu **trillionlab** kichik
+fayl. Ob’ekt omborlari kichik fayllar bilan yomon ishlaydi (har bir
+ob’ekt uchun metama’lumot qo‘shimchasi). Amaliy yechim: bitta nusxani
+bitta katta fayl sifatida saqlash va bo‘laklarni **bayt diapazonlari**
+sifatida berish — manifest “1080p.mp4, baytlar 5 000 000–7 500 000” deydi.
+Bu v0 dagi HTTP Range g‘oyasining qaytishi.
+</Step>
+
+<Callout type="ogoh" title="Bo'lakni hech qachon joyida almashtirmang">
+Video qayta transkodlandi (masalan, 10-bo‘limdagi buzilgan nusxa
+tuzatildi). Yangi bo‘laklarni **eski URL’larga** yozish vasvasasi kuchli —
+manifest o‘zgarmaydi, hamma narsa sodda.
+
+Natija: 10 000 provayder keshining ba’zilarida eski (buzilgan) bo‘lak,
+ba’zilarida yangisi. Pleyer bitta videoda ikkalasini aralashtiradi, va
+bo‘laklar bir-biriga mos kelmaydi. Keshlarni tozalash esa minglab
+joyda — soatlab.
+
+Qoida: **bo‘lak o‘zgarmas; o‘zgarish — yangi URL**. Nusxa versiyasi
+URL ichida (`.../v2/1080p/...`), yangi manifest yangi versiyaga ishora
+qiladi, eski bo‘laklar esa keshlardan o‘z-o‘zidan chiqib ketadi. 5-qadam,
+7-bosqichdagi “kesh invalidatsiyasi yo‘q” degan afzallik faqat shu qoida
+bajarilsagina haqiqiy.
+</Callout>
+
+<Step n={6} title="Adaptiv pleyer (ABR)" gain="Buferlash keskin kamayadi" cost="Pleyer mantig'i murakkab, noto'g'ri sozlansa sifat 'tebranadi'">
+Pleyer har bir bo‘lakdan keyin qaror qiladi: keyingi bo‘lakni qaysi
+sifatda olish kerak. Bu qaror butun tomosha tajribasini belgilaydi
+va u serverda emas, **mijozda** qabul qilinadi.
+
+Qaror algoritmlarining ikki oilasi bor — o‘tkazuvchanlikka asoslangan va
+buferga asoslangan — va 6-bo‘lim ularga bag‘ishlangan.
+</Step>
+
+<Step n={7} title="CDN" gain="Trafik foydalanuvchiga yaqin joydan beriladi" cost="Kesh izchilligi, qayta yuklash (origin) yuki">
+Mashhur videolarning bo‘laklari dunyodagi yuzlab chekka serverlarda
+keshlanadi. Birinchi so‘rov asosiy omborga boradi, keyingilari keshdan.
+
+Video uchun CDN oddiy veb-sahifalardan osonroq: **bo‘lak hech qachon
+o‘zgarmaydi**. Yuklangan video 1080p’ning 17-bo‘lagi abadiy bir xil.
+Demak kesh invalidatsiyasi umuman yo‘q — Reddit va Slack darslaridagi
+eng og‘riqli muammo bu yerda mavjud emas. Qiyinchilik boshqa joyda:
+**qaysi videolarni** keshlash (7-bo‘lim).
+</Step>
+
+<Step n={8} title="Keshni provayder ichiga olib kirish" gain="Chiqish trafigi narxi deyarli nolga tushadi" cost="Minglab mustaqil joyda apparat, provayderlar bilan kelishuvlar">
+4.3-dagi 4 milliard dollarlik muammoning javobi. Google kesh serverlarini
+**internet provayderlarning o‘z tarmog‘i ichiga** joylashtiradi (Google
+Global Cache). Foydalanuvchi video so‘raganda, u o‘z provayderi ichidagi
+serverdan oladi — trafik internetga umuman chiqmaydi.
+
+Bu nega provayder uchun ham foydali — 8-bo‘limda raqam bilan ko‘ramiz.
+</Step>
+
+<Step n={9} title="Har bir video uchun alohida zinapoya" gain="Oddiy kontent uchun 20-50% trafik tejaladi" cost="Har video uchun tahlil — qo'shimcha hisoblash">
+2.3-dagi zinapoya — bitta, hamma videolar uchun. Lekin multfilm (tekis
+ranglar, kam harakat) va sport (tez harakat, mayda tafsilotlar) bir xil
+sifat uchun juda turli bitreyt talab qiladi.
+
+<Calc title="Bir xil 1080p, turli kontent" result="Multfilm uchun 5 Mbit/s — 2.5 barobar isrof">{`Maqsad: ko'rinadigan sifat bir xil (masalan, VMAF ~93)
+
+Kontent                   kerakli bitreyt (taxminan, H.264 1080p)
+  Slayd-taqdimot / ekran    ~1.0 Mbit/s
+  Multfilm                  ~2.0 Mbit/s
+  Gaplashayotgan odam       ~3.0 Mbit/s
+  Sport / o'yin             ~7.0 Mbit/s
+
+Umumiy zinapoya 1080p uchun 5 Mbit/s ishlatsa:
+  multfilm: 5 / 2 = 2.5 barobar ortiq trafik
+  sport:    5 / 7 -> sifat yetarli emas`}</Calc>
+
+Yechim — **kontentga mos zinapoya** (Netflix bu yondashuvni 2015-yilda
+“per-title encoding” nomi bilan ommalashtirgan): har bir video uchun
+sinov siqishlari o‘tkaziladi va sifat/bitreyt egri chizig‘idan optimal
+nuqtalar tanlanadi. Qo‘shimcha hisoblash bir marta to‘lanadi, tejash esa
+har bir ko‘rishda — 1.3-dagi 430:1 nisbat yana ishlaydi.
+</Step>
+
+<Step n={10} title="Kodekni mashhurlikka qarab tanlash" gain="Eng qimmat kodek faqat o'zini oqlaydigan joyda" cost="Mashhurlikni bashorat qilish, qayta transkodlash">
+4-qadamdagi hisob: hammasini AV1 da siqish imkonsiz. Yechim —
+**hamma videoni arzon kodekda, mashhurlarini qimmat kodekda**:
+
+```
+Yuklanganda:        H.264 zinapoyasi (hamma uchun, darhol)
++ bir necha soatda: VP9 (ko'rishlar soni chegaradan oshsa)
++ mashhur bo'lsa:   AV1 (o'zini oqlaydigan chegaradan oshsa)
+```
+
+Bu qarorning iqtisodi — darsning eng muhim hisobi, va u 7-bo‘limda
+batafsil. Bu yerda faqat mexanizm: kodek tanlash **ko‘rishlar sonini
+kuzatuvchi fon jarayoni**, yuklash paytidagi qaror emas. Video mashhur
+bo‘lgan sari u yangi kodeklarda qayta siqiladi — va buning uchun
+**original fayl saqlanib qolishi kerak** (13-qadam).
+</Step>
+
+<Step n={11} title="Maxsus apparat: video kodlash chiplari" gain="Transkodlash hisoblash samaradorligi 20-33 barobar" cost="O'z chipini loyihalash — yillar va katta sarmoya">
+4-qadamdagi millionlab yadroning yana bir javobi: umumiy protsessor
+o‘rniga **videoni kodlash uchun maxsus chip**. Google 2021-yilda o‘zining
+Video Coding Unit (VCU, “Argos”) haqida e’lon qilgan va optimallashtirilgan
+dasturiy kodlashga nisbatan **20–33 barobar** hisoblash samaradorligini
+qayd etgan.
+
+Bu raqam 4-qadamdagi VP9 hisobini (~3.75 M yadro) taxminan
+~110 000–190 000 yadro ekvivalentiga tushiradi. Ya’ni “jismonan
+imkonsiz” — “katta, lekin mumkin” ga aylanadi.
+
+Bu qadam faqat eng yirik kompaniyalar uchun mavjud. Lekin mantiqi
+umumiy: **agar bitta ish yuki sizning hisoblash byudjetingizning katta
+qismini egallasa, u uchun ixtisoslashgan apparat o‘zini oqlashi mumkin.**
+</Step>
+
+<Step n={12} title="Ko'rishlarni tekshirib hisoblash" gain="Soxta ko'rishlar pulga aylanmaydi" cost="Ko'rsatilgan son kechikadi, foydalanuvchilar tushunmaydi">
+4.5-dagi hisoblagich endi ikki qatlamli:
+
+```
+1. TEZ (taxminiy): har bir ko'rish hodisasi navbatga
+   -> guruhlab shardlangan hisoblagichga (Reddit darsidagi kabi)
+   -> "taxminan 1.2 M ko'rish" — interfeysda
+
+2. SEKIN (tekshirilgan): fon jarayoni hodisalarni tahlil qiladi:
+   - bitta IP / qurilmadan g'ayritabiiy ko'p ko'rish
+   - avtomatik trafik belgilari
+   - "ko'rish" uchun yetarli vaqt tomosha qilinganmi
+   -> tekshirilgan son — daromad va reklama hisobi uchun
+```
+
+Tarixiy qiziq fakt: YouTube’da uzoq vaqt davomida yangi mashhur videolarning
+hisoblagichi taxminan **301** da “qotib qolardi” — tizim shu nuqtadan
+keyin ko‘rishlarni tekshirish uchun to‘xtatib turardi. Bu keng tarqalgan
+hikoya aynan shu ikki qatlamli dizaynning foydalanuvchiga ko‘rinib qolgan
+qirrasi edi. Keyinchalik tekshirish uzluksiz va ko‘rinmas qilindi.
+</Step>
+
+<Step n={13} title="Saqlash qatlamlari" gain="Saqlash xarajati bir necha barobar kamayadi" cost="Kam ko'riladigan video sekinroq boshlanishi mumkin">
+Har bir video uchun saqlanadi: original (kelajakdagi kodeklar uchun) va
+barcha pog‘onalar barcha kodeklarda.
+
+<Calc title="Yillik saqlash o'sishi" result="~2.8 EB/yil xom hajm; ortiqchalik bilan ~4 EB">{`Kuniga 720 000 soat yuklanadi. Bir soat uchun:
+  original                          ~3.6 GB  (8 Mbit/s)
+  H.264 zinapoyasi (144p-1080p)     ~4.4 GB  (~9.8 Mbit/s yig'indi)
+  VP9 zinapoyasi (~60% H.264)       ~2.6 GB
+  jami                             ~10.6 GB
+
+  720 000 x 10.6 GB = ~7.6 PB/kun
+  x 365 = ~2.8 EB/yil
+
+Ortiqchalik (erasure coding, ~1.5x): ~4.2 EB/yil
+Va bu HAR YILI qo'shiladi — kamaymaydi.`}</Calc>
+
+Yechim — **qatlamlash**: issiq videolar tez (qimmat) omborda, sovuqlari
+sekin (arzon) omborda. Keskinroq variant: kam ko‘riladigan videoning
+**ba’zi pog‘onalarini o‘chirish** va kerak bo‘lganda originaldan qayta
+yaratish. Bu 10-qadamning teskarisi: mashhurlik kamaysa, videodan
+“qimmat” nusxalar olib tashlanadi. Bu narsalarni saqlash va qayta
+hisoblash orasidagi savdo — va u faqat original saqlangan bo‘lsagina
+mumkin.
+</Step>
+
+<Step n={14} title="Jonli efir" gain="Kameradan tomoshabinga soniyalar ichida" cost="Bufer kichik — buferlash xavfi katta; oldindan siqib bo'lmaydi">
+Jonli efir yuqoridagi hamma narsani teskari qiladi: video **hali mavjud
+emas**, shuning uchun uni oldindan zinapoyaga siqib, CDN’ga tarqatib
+bo‘lmaydi. Hammasi real vaqtda bajariladi.
+
+<Calc title="Jonli efir kechikishi qayerdan keladi" result="Oddiy HLS: ~20-30 s. Past kechikishli rejim: ~2-5 s">{`ODDIY HLS (6 s bo'laklar):
+  kamerada kodlash va yuborish       ~1 s
+  serverda qabul va transkodlash     ~2 s
+  bo'lak to'lishini kutish           6 s  (bo'lak tugaguncha e'lon qilinmaydi)
+  CDN'ga tarqalish                   ~1 s
+  pleyer buferi: 3 bo'lak            18 s (spetsifikatsiya jonli oxirdan
+                                            kamida 3 bo'lak orqada turishni
+                                            tavsiya qiladi)
+  ------------------------------------------
+  jami                               ~28 s
+
+PAST KECHIKISHLI (qisman bo'laklar, ~0.5-1 s):
+  bo'lak kutish: ~1 s, bufer: ~2-3 s
+  jami                               ~3-5 s`}</Calc>
+
+Kechikish va buferlash xavfi bu yerda to‘g‘ridan-to‘g‘ri almashtiriladi:
+18 soniyalik bufer tarmoqdagi 18 soniyalik uzilishga chidaydi, 3
+soniyalik bufer esa — 3 soniyaga. Shuning uchun jonli efirda ikki rejim
+bor: odatiy (barqaror, kechikkan) va past kechikishli (tez, mo‘rtroq) —
+va muallif tanlaydi: chat bilan jonli muloqot uchun ikkinchisi, konsert
+uchun birinchisi.
+</Step>
+
+<Deep title="Qisman bo'laklar: 6 soniyani kutmasdan qanday yuborish">
+Oddiy jonli efirda eng katta kechikish — **bo‘lak to‘lishini kutish**:
+6 soniyalik bo‘lak 6 soniya o‘tmaguncha e’lon qilinmaydi, keyin pleyer
+yana 3 ta bo‘lakni buferlaydi. Qanday qilib bo‘lakni tugamasdan yuborish
+mumkin?
+
+Past kechikishli HLS (LL-HLS) va shunga o‘xshash yondashuvlar bo‘lakni
+**qismlarga** bo‘ladi:
+
+```
+Oddiy:    [======== bo'lak 6 s ========] -> e'lon -> yuklash
+LL-HLS:   [q1][q2][q3][q4][q5][q6]          har qism ~1 s, e'lon darhol
+           ^ yaratilishi bilan pleyer oladi
+
+Qo'shimcha: pleyer KEYINGI qismni oldindan so'raydi ("preload hint"),
+server javobni qism tayyor bo'lguncha ushlab turadi (uzun so'rov!)
+```
+
+Oxirgi qator — Slack darsidagi “uzun so‘rov” (long polling) ning aynan
+qaytishi (Slack, 2.1). Jonli videoda kechikishni kamaytirish uchun HTTP
+yana “server javobni ushlab turadi” rejimiga qaytadi — lekin bu safar
+har bir so‘rov ma’lumotning o‘zini olib keladi, bo‘sh “yangilik yo‘q”
+javoblarini emas.
+
+Narxi: so‘rovlar soni 6 barobar (har qism alohida), CDN esa “hali mavjud
+bo‘lmagan” ob’ektga so‘rovlarni to‘g‘ri ushlab turishi kerak — 13.1-dagi
+so‘rovlarni birlashtirish bu yerda majburiy: 10 000 tomoshabin bir vaqtda
+hali yaratilmagan qismni so‘raydi.
+
+*Aniq qism uzunliklari va mexanizmlar protokol versiyasiga va xizmatga
+bog‘liq; bu yerda g‘oyaning tuzilmasi ko‘rsatilgan.*
+</Deep>
+
+<Check q="14 qadamdan qaysilari 'bir marta to'lanadi, har ko'rishda foyda beradi' naqshiga kiradi?">
+Uchtasi: **9-qadam** (kontentga mos zinapoya), **10-qadam** (mashhur
+videolar uchun yaxshiroq kodek) va qisman **4-qadam** (zinapoyaning
+o‘zi).
+
+Uchalasi ham yozish yo‘lida (transkodlash) qo‘shimcha hisoblash sarflaydi
+va o‘qish yo‘lida (har bir ko‘rish) baytlarni tejaydi. 1.3-bo‘limdagi
+430:1 nisbat aynan shu turdagi qarorlarni foydali qiladi.
+
+Lekin ular **video bo‘yicha o‘rtacha** 430:1 nisbatga emas, **har bir
+videoning o‘z** nisbatiga bog‘liq. Hech kim ko‘rmagan videoda qo‘shimcha
+hisoblash — sof yo‘qotish. Shuning uchun 10-qadam mashhurlikka qarab
+qaror qiladi, va 9-qadam ham amalda ko‘pincha faqat yetarlicha ko‘riladigan
+videolar uchun qo‘llanadi.
+
+Umumiy qoida: **“bir marta to‘lab, ko‘p marta tejash” qarori faqat
+“ko‘p marta” haqiqatan bo‘lsa foydali.** Uni o‘rtacha bo‘yicha emas,
+har bir ob’ekt bo‘yicha hisoblang.
+</Check>
+
+## 6. ABR: pleyer har 4 soniyada qanday qaror qiladi
+
+5-bo‘limning 6-qadamida biz “pleyer sifatni tanlaydi” dedik. Bu bo‘lim —
+o‘sha tanlovning ichki mexanizmi. U butun tizimda **foydalanuvchi tajribasini
+eng ko‘p belgilaydigan** kod, va u butunlay mijozda ishlaydi.
+
+### 6.1 Bufer — yagona haqiqiy holat
+
+Pleyerning butun holati bitta sonda: **buferda necha soniya video bor**.
+Bu son ikki jarayon o‘rtasidagi poyga natijasi:
+
+```
+Bufer o'sadi:     bo'lak yuklab bo'lingach  +4 s  (bo'lak uzunligi)
+Bufer kamayadi:   har real soniyada         -1 s  (video o'ynayapti)
+
+Bo'lakni yuklash vaqti = bo'lak_hajmi / o'tkazuvchanlik
+                       = (4 s x bitreyt R) / o'tkazuvchanlik C
+                       = 4 x R / C  soniya
+
+Bir bo'lak davomida bufer o'zgarishi:
+  +4 - 4 x R / C  =  4 x (1 - R/C)
+
+  R < C  -> bufer O'SADI
+  R = C  -> bufer o'zgarmaydi
+  R > C  -> bufer KAMAYADI -> nolga yetsa BUFERLASH
+```
+
+<Calc title="Bitreyt tarmoqdan yuqori bo'lsa, bufer qancha chidaydi" result="10 s bufer, 5 Mbit/s bitreyt, 3 Mbit/s tarmoq: ~25 soniyadan keyin buferlash — agar pleyer sifatni pasaytirmasa">{`Buferda: 10 s
+Tanlangan sifat: 1080p, R = 5 Mbit/s
+Tarmoq (metroga tushdi): C = 3 Mbit/s
+
+Bir bo'lakni yuklash: 4 x 5 / 3 = 6.67 s
+Bir bo'lak davomida bufer: +4 - 6.67 = -2.67 s
+
+10 s / 2.67 s = 3.75 bo'lak -> ~25 soniyadan keyin bufer bo'sh
+Agar pleyer shu vaqt ichida sifatni pasaytirmasa — BUFERLASH.
+
+720p ga o'tsa (R = 2.5):
+  4 x 2.5 / 3 = 3.33 s -> bufer har bo'lakda +0.67 s O'SADI.`}</Calc>
+
+Hisobdagi birliklarga diqqat qiling: “10 / 2.67 = 3.75” — bu soniyalar
+emas, **bo‘laklar**, va har bir bo‘lak 6.67 soniya yuklanadi, ya’ni
+~25 soniya. Bo‘laklar va soniyalarni aralashtirish ABR kodidagi eng
+keng tarqalgan xatolardan biri: pleyer “buferda 3 bo‘lak bor” ni
+“3 soniya bor” deb o‘qisa, qarorni juda erta yoki juda kech qabul qiladi.
+
+Asosiy xulosa formulada: **bufer faqat `R/C` nisbatiga bog‘liq**.
+Pleyerning butun vazifasi — `C` ni to‘g‘ri baholash va `R` ni undan
+past tutish. Muammo shundaki, `C` ni aniq bilib bo‘lmaydi — u faqat
+o‘tmishda o‘lchangan.
+
+### 6.2 O‘tkazuvchanlikka asoslangan tanlov
+
+Eng tabiiy yondashuv: oxirgi bir necha bo‘lakning yuklanish tezligini
+o‘lchash, kelajakni shu bo‘yicha taxmin qilish va xavfsizlik koeffitsienti
+bilan tanlash.
+
+```python
+def choose_by_throughput(history_mbps, ladder_mbps, safety=0.8):
+    # oxirgi 5 ta o'lchovning GARMONIK o'rtachasi
+    recent = history_mbps[-5:]
+    estimate = len(recent) / sum(1 / x for x in recent)
+    budget = estimate * safety
+    candidates = [r for r in ladder_mbps if r <= budget]
+    return max(candidates) if candidates else min(ladder_mbps)
+```
+
+<Deep title="Nega garmonik o'rtacha, arifmetik emas">
+Oxirgi uchta bo‘lak 10, 10 va 1 Mbit/s tezlikda yuklandi. Tarmoq
+qanchalik tez?
+
+```
+Arifmetik o'rtacha: (10 + 10 + 1) / 3        = 7.0 Mbit/s
+Garmonik o'rtacha:  3 / (1/10 + 1/10 + 1/1)  = 2.5 Mbit/s
+```
+
+Qaysi biri to‘g‘ri? Savolni boshqacha qo‘yamiz: uchta **bir xil hajmdagi**
+bo‘lakni (masalan, 2.5 MB = 20 Mbit) yuklash **jami qancha vaqt** oldi?
+
+```
+20/10 + 20/10 + 20/1 = 2 + 2 + 20 = 24 s
+Jami 60 Mbit / 24 s = 2.5 Mbit/s   <- garmonik o'rtacha
+```
+
+Ya’ni bir xil hajmdagi ishlar uchun **o‘rtacha tezlik — garmonik
+o‘rtacha**. Arifmetik o‘rtacha sekin o‘lchovni “kechirib yuboradi”,
+holbuki aynan sekin bo‘lak eng ko‘p vaqtni oldi va buferni yedi.
+
+Ikkinchi, amaliy sabab: garmonik o‘rtacha **pessimistik** — u kichik
+qiymatlar tomonidan boshqariladi. ABR uchun bu to‘g‘ri yo‘nalishdagi xato:
+sifatni biroz past baholash (bir oz xiraroq video) buferlashdan ancha
+arzon. Assimetrik narxli xatolarda estimator ham ataylab assimetrik
+bo‘lishi kerak.
+</Deep>
+
+O‘tkazuvchanlikka asoslangan tanlovning asosiy muammosi — **o‘lchov
+shovqini**. Mobil tarmoqda tezlik soniyalar ichida 10 barobar o‘zgarishi
+mumkin, va bitta bo‘lak davomidagi o‘lchov keyingisini yomon bashorat
+qiladi. Natija — **tebranish**: sifat 1080p → 480p → 1080p → 360p
+almashadi, va foydalanuvchi har almashishda tasvir “sakrashini” ko‘radi.
+
+### 6.3 Buferga asoslangan tanlov
+
+Muqobil g‘oya (Netflix tadqiqotchilari 2014-yilgi SIGCOMM maqolasida
+batafsil tahlil qilgan): tarmoqni umuman bashorat qilmaslik. Buning
+o‘rniga **bufer holatining o‘ziga** qarab tanlash.
+
+```
+bufer (soniya)     tanlanadigan sifat
+  0  - 5           eng past (xavf zonasi — tezroq to'ldirish kerak)
+  5  - 25          chiziqli: bufer oshgan sari yuqoriroq
+  25+              eng yuqori (zaxira yetarli — tavakkal qilish mumkin)
+                   (maksimal bufer 30 s — undan keyin pleyer kutadi)
+```
+
+G‘oyaning mantig‘i: agar bufer o‘sayotgan bo‘lsa, demak `R < C` —
+tarmoq tanlangan sifatdan tezroq, va sifatni oshirish mumkin. Agar
+kamayayotgan bo‘lsa — aksincha. Bufer **tarmoqni o‘zi o‘lchaydi**, va
+eng muhimi — u **amortizator** vazifasini bajaradi: 20 soniyalik bufer
+10 soniyalik tezlik tushishini buferlashsiz “yutib yuboradi”, shuning
+uchun pleyer har bir tushishda sifatni pasaytirishga shoshilmaydi.
+
+<Versus
+  left={{ title: "O'tkazuvchanlikka asoslangan", points: [
+    "Tarmoq tezligini bashorat qiladi",
+    "Boshlanishda yaxshi: bufer hali yo‘q, lekin o‘lchov bor",
+    "Ehtiyotkor: har tushishda sifatni pasaytiradi — past bitreyt",
+    "Shovqinli baho — sifat tez-tez almashadi",
+    "Oddiy tushuntirish: 'tarmoq 5 Mbit/s, demak 720p'",
+  ] }}
+  right={{ title: "Buferga asoslangan", points: [
+    "Faqat bufer holatiga qaraydi",
+    "Boshlanishda ko‘r: bufer bo‘sh — faqat eng past sifat",
+    "Buferni amortizator qiladi — tushishlarni 'yutadi', bitreyt yuqoriroq",
+    "Oddiy chiziqli variant YANADA ko‘p almashadi (quyida)",
+    "Silliqlash va gisterezissiz ishlatib bo‘lmaydi",
+  ] }}
+/>
+
+To‘rtinchi qatorlar kutilmagan va buni **o‘lchov** ko‘rsatdi. Amaliyotning
+2-darajasidagi simulyatorda (18-bo‘lim) tebranuvchi 3G izida:
+
+| Algoritm | O‘rtacha bitreyt | Buferlash | Sifat almashishi |
+| --- | --- | --- | --- |
+| O‘tkazuvchanlikka asoslangan | 1.19 Mbit/s | 0% | 23 |
+| Buferga asoslangan (oddiy chiziqli) | 2.19 Mbit/s | 0% | 63 |
+| Gibrid + gisterezis | 2.00 Mbit/s | 0% | 31 |
+
+Birinchi ikki qator bufer g‘oyasining **kuchini** ko‘rsatadi: buferlashsiz
+deyarli **ikki barobar** yuqori bitreyt — chunki pleyer har tushishda
+qo‘rqib sifatni tushirmaydi. Lekin almashishlar soni ham deyarli uch
+barobar. Sabab mexanikada: har bir bo‘lak buferni birdaniga **4 soniyaga**
+oshiradi, va chiziqli xaritada 4 soniya — deyarli bitta pog‘ona. Bufer
+har bo‘lakda chegara atrofida yuqoriga-pastga sakraydi, sifat ham u bilan
+birga.
+
+Uchinchi qator yechimni ko‘rsatadi: **gisterezis** (6.4 Callout) —
+yuqoriga ko‘tarilish uchun bufer chegaradan qo‘shimcha zaxira bilan oshishi
+kerak, pastga esa darhol tushiladi. Bitreytning deyarli hammasi saqlanadi,
+almashishlar ikki barobar kamayadi.
+
+Bu jadval darsning muhim metodologik saboqlaridan biri: **g‘oyaning
+to‘g‘riligi va uning oddiy amalga oshirilishining to‘g‘riligi — turli
+narsalar.** “Bufer shovqinni silliqlaydi” — rost; “oddiy chiziqli bufer
+xaritasi barqaror” — yolg‘on. Buni faqat simulyatsiya yoki o‘lchov ko‘rsatadi,
+mulohaza emas.
+
+Shuning uchun amaliy pleyerlar **gibrid**: boshlanishda o‘tkazuvchanlik,
+bufer to‘lgach bufer mantiqi, ustidan esa silliqlash va gisterezis (BOLA
+kabi algoritmlar bu tanlovni matematik optimallashtirish sifatida
+rasmiylashtiradi).
+
+### 6.4 Boshlanish vaqti: nega birinchi bo‘lak past sifatda
+
+1.2-bo‘limdagi talab: birinchi kadrgacha p90 < 1 s.
+
+<Calc title="Birinchi bo'lak sifati va boshlanish vaqti" result="1080p bilan boshlasa 2.3 s, 360p bilan 0.6 s — birinchi bo'lak doim past">{`Tarmoq: 10 Mbit/s, RTT 50 ms
+Kerakli qadamlar:
+  DNS + TCP + TLS (3 RTT)                  0.15 s
+  manifest so'rovi (1 RTT + kichik fayl)   0.07 s
+  birinchi bo'lak so'rovi (1 RTT)          0.05 s
+  birinchi bo'lakni yuklash:
+    1080p: 4 s x 5 Mbit/s = 20 Mbit / 10 = 2.0 s
+    360p:  4 s x 0.7 Mbit/s = 2.8 Mbit / 10 = 0.28 s
+  dekoderni ishga tushirish                ~0.05 s
+
+  1080p bilan: 0.15 + 0.07 + 0.05 + 2.0 + 0.05 = ~2.3 s
+  360p bilan:  0.15 + 0.07 + 0.05 + 0.28 + 0.05 = ~0.6 s
+
+Qo'shimcha: TCP "sekin start" birinchi bo'lakni yanada sekinlashtiradi —
+yangi ulanish to'liq tezlikka bir necha RTT da chiqadi.`}</Calc>
+
+Shuning uchun deyarli barcha pleyerlar **past sifatda boshlaydi** va bir
+necha bo‘lakdan keyin ko‘taradi. Foydalanuvchi birinchi 2–4 soniya xira
+tasvirni ko‘radi — lekin darhol ko‘radi. Tadqiqotlar izchil ravishda
+ko‘rsatadiki, boshlanish kechikishi tomoshani tashlab ketishga kuchli ta’sir
+qiladi, dastlabki xiralik esa deyarli ta’sir qilmaydi.
+
+Yana bir hiyla — **birinchi bo‘lakni qisqaroq** qilish yoki manifestni
+sahifaning o‘zi bilan birga yuborish (bitta RTT tejash). Har bir 50 ms
+bu yerda muhim.
+
+<Callout type="ogoh" title="Tebranish buferlashdan kam zarar, lekin zarar">
+Sifat almashishi o‘z-o‘zidan yomon: har almashishda tasvir birdan
+xiralashadi yoki tiniqlashadi, va ko‘z buni sezadi. Tez-tez almashadigan
+pleyer, hatto o‘rtacha sifati yuqori bo‘lsa ham, **barqaror past sifatdan
+yomonroq** qabul qilinishi mumkin.
+
+Amaliy himoya — **gisterezis**: sifatni oshirish uchun kuchli signal kerak
+(masalan, bufer 3 bo‘lak ketma-ket o‘sdi), pasaytirish uchun esa zaif
+(bitta yomon o‘lchov yetarli). Ya’ni tezda pastga, sekin tepaga. Bu
+6.2-dagi garmonik o‘rtachaning pessimizmi bilan bir xil g‘oya:
+**xatolar narxi assimetrik bo‘lsa, qaror ham assimetrik bo‘lsin.**
+</Callout>
+
+<Check q="Nega ABR mantig'i serverda emas, pleyerda?">
+Chunki kerakli ma’lumot faqat pleyerda bor: **bufer holati** (necha
+soniya video o‘ynashga tayyor), **haqiqiy yuklash tezligi** (bayt
+qabul qilingan vaqt, server emas, mijoz tomonidan o‘lchangan), ekran
+o‘lchami, qurilmaning dekodlash imkoniyati, batareya holati.
+
+Server faqat “bo‘lak yuborildi” ni biladi. U bo‘lak qachon yetib
+borganini, qancha bufer qolganini, foydalanuvchi to‘liq ekranda
+ekanini bilmaydi.
+
+Ikkinchi sabab — miqyos: 41.7 million bir vaqtdagi oqim uchun har
+4 soniyada qaror — sekundiga ~10 million qaror. Mijozlarda bu tekin,
+serverda esa alohida katta tizim.
+
+Bu WhatsApp darsidagi xulosaning boshqa ko‘rinishi: **qaror uchun
+kerakli ma’lumot qayerda bo‘lsa, qaror ham o‘sha yerda qabul qilinsin.**
+Server faqat tanlov menyusini (manifest) beradi.
+</Check>
+
+## 7. Uzun dum iqtisodi
+
+Bu bo‘lim darsning yuragi. 5-bo‘limda ikki marta “hamma videoni bir xil
+qilib bo‘lmaydi” dedik (4- va 10-qadam). Endi nima uchun va qayerda
+chegara qo‘yish kerakligini raqam bilan ko‘ramiz.
+
+### 7.1 Ko‘rishlar qanday taqsimlangan
+
+Video ko‘rishlari **juda notekis**: ozgina video tomosha vaqtining katta
+qismini oladi, katta ko‘pchilik esa deyarli hech qachon ko‘rilmaydi.
+Quyidagi jadval illyustratsiya — aniq raqamlar e’lon qilinmagan, lekin
+taqsimot shakli video platformalar bo‘yicha tadqiqotlarda izchil
+takrorlanadi.
+
+| Video guruhi (bir yil ichidagi ko‘rishlar) | Videolar ulushi | Tomosha vaqti ulushi |
+| --- | --- | --- |
+| 100 dan kam | ~50% | ~0.5% |
+| 100 – 10 000 | ~40% | ~7% |
+| 10 000 – 100 000 | ~8% | ~13% |
+| 100 000 dan ko‘p | ~2% | ~80% |
+
+Jadvalning ikki ustuni deyarli teskari. Videolarning yarmi tomoshaning
+yarim foizini oladi; videolarning 2% i — tomoshaning 80% ini. Bu Reddit
+darsidagi Zipf taqsimotining video versiyasi (Reddit, 12-bo‘lim), va
+u YouTube’dagi deyarli har bir qimmat qarorni belgilaydi.
+
+Qaror shunday shakllanadi: **har bir video uchun sarflangan pul uning
+ko‘rilishiga proporsional bo‘lishi kerak.** Oxirgi qatordagi 2% uchun
+eng yaxshi kodek, eng ko‘p kesh nusxalari, eng tez ombor. Birinchi
+qatordagi 50% uchun — eng arzon hamma narsa.
+
+### 7.2 Qachon AV1 o‘zini oqlaydi
+
+<Calc title="AV1 ning 'zararsizlik nuqtasi'" result="Videoning har bir daqiqasi ~30 000 marta ko'rilsagina AV1 o'zini oqlaydi">{`XARAJAT (bir marta, yuklashda):
+  AV1 to'liq zinapoya: ~2 000 yadro-soniya har video-soniyaga (5-bo'lim, 4-qadam)
+  1 daqiqa video: 60 x 2 000 = 120 000 yadro-soniya = 33.3 yadro-soat
+  Yadro-soat narxi (yirik ichki infratuzilma, taxminan): ~0.01 $
+  -> ~0.33 $ har bir video daqiqasi uchun
+
+TEJASH (har ko'rishda):
+  VP9 1080p ~2.5 Mbit/s, AV1 ~30% kam
+  1 ko'rilgan daqiqa: 2.5e6 x 60 / 8 = 18.75 MB (VP9)
+  Tejash: 18.75 x 0.30 = 5.6 MB
+  Yetkazish narxi (provayder keshlari bilan, taxminan): ~0.002 $/GB
+  -> 5.6 MB x 0.002 $/GB = ~0.0000112 $ har ko'rilgan daqiqaga
+
+ZARARSIZLIK NUQTASI:
+  0.33 / 0.0000112 = ~29 500 ko'rilgan daqiqa har bir video daqiqasiga
+
+  10 daqiqalik video, tomoshabinlar o'rtacha 50% ko'radi:
+  kerakli ko'rishlar: 29 500 / 0.5 = ~59 000`}</Calc>
+
+Bu hisobdagi har bir kirish — kodlash narxi, yadro narxi, trafik narxi,
+tejash foizi — taxminiy va ikki-uch barobar xato bo‘lishi mumkin.
+Lekin xulosa hayratlanarli darajada chidamli: kirishlardan ikkitasini
+bir yo‘nalishda ikki barobar o‘zgartirsangiz, zararsizlik nuqtasi
+~7 500 dan ~120 000 gacha siljiydi —
+va u baribir **7.1-jadvalning faqat oxirgi ikki qatorida** qoladi.
+Ya’ni AV1 videolarning **~2–10%** i uchun foydali, qolganlari uchun esa
+pul yoqish.
+
+Bu hisobning eng qimmatli tomoni — u qarorni **video bo‘yicha**
+qiladi. “AV1 30% yaxshi, demak hammaga AV1” degan umumiy xulosa noto‘g‘ri:
+AV1 faqat **ko‘rishlar soni × tejash > kodlash narxi** bo‘lgan joyda
+yaxshi.
+
+<Callout type="maslahat" title="Qarorni yuklashda emas, mashhurlik ma'lum bo'lganda qiling">
+Video yuklangan paytda uning mashhur bo‘lishini bilmaysiz. Shuning uchun
+qimmat qarorlar (AV1, qo‘shimcha kesh nusxalari) **kechiktiriladi**:
+avval arzon H.264, keyin birinchi soatlardagi ko‘rishlar tezligiga
+qarab qaror.
+
+Birinchi soatlar yaxshi bashoratchi: viral video odatda birinchi kunida
+tez o‘sadi. Xato qilish narxi ham assimetrik: mashhur videoni kechroq
+AV1 ga o‘tkazish — bir necha kunlik qo‘shimcha trafik; mashhur
+bo‘lmaydigan videoni AV1 da siqish — butunlay behuda hisoblash.
+Shuning uchun kutish arzonroq.
+</Callout>
+
+<Deep title="Birinchi soatlardan mashhurlikni qanday bashorat qilish">
+7.2-dagi qaror “bu video 59 000 ko‘rishdan oshadimi?” degan savolga
+tayanadi. Buni yuklangan paytda bilmaysiz, lekin birinchi soatlardan
+ancha yaxshi taxmin qilish mumkin.
+
+```
+Signal                                  Nima aytadi
+  birinchi 1-6 soatdagi ko'rishlar      eng kuchli signal: tezlik
+  ko'rishlar tezlanishi (2-soat / 1-soat) o'syaptimi yoki so'nyaptimi
+  muallifning oldingi videolari medianasi   "bu kanal odatda qancha"
+  tomosha davomiyligi (necha % ko'riladi) sifat signali
+  tavsiyalarga tushganmi                tarqalish mexanizmi ishga tushdimi
+```
+
+Oddiy qoida ham ancha yaxshi ishlaydi: **birinchi 6 soatdagi ko‘rishlar ×
+muallif koeffitsienti**. Mashhur kanal videosi odatda birinchi kunda
+umumiy ko‘rishlarining katta qismini oladi, shuning uchun erta tezlik
+yaxshi bashoratchi.
+
+Qaror chegarasini qayerga qo‘yish? Xatolar narxini solishtiring:
+
+```
+Yolg'on pozitiv (AV1 da siqildi, lekin mashhur bo'lmadi):
+  yo'qotish = kodlash narxi = ~0.33 $ har video daqiqasiga
+
+Yolg'on negativ (siqilmadi, lekin mashhur bo'ldi) — 1 kun kechikish:
+  yo'qotish = 1 kunlik tejalmagan trafik
+  mashhur video kuniga 100 000 ko'rilgan daqiqa (har video daqiqasi uchun)
+  x 0.0000112 $ = ~1.1 $ har video daqiqasiga
+```
+
+Yolg‘on negativ bu misolda **~3 barobar qimmatroq** — demak chegara
+biroz pastroq (ko‘proq videoni siqish tomonga) surilishi kerak. Bu
+WhatsApp darsidagi spam aniqlashdan farqli: u yerda yolg‘on pozitiv
+(halol foydalanuvchini bloklash) qimmatroq edi va chegara ehtiyotkor edi.
+**Chegara har doim xatolar narxlari nisbatidan kelib chiqadi**, bashoratchi
+aniqligidan emas.
+</Deep>
+
+### 7.3 Kesh: har o‘n barobar qo‘shimcha joy — bir necha foiz
+
+Uzun dum keshga ham xuddi shunday ta’sir qiladi. Chekka serverda
+qancha videoni saqlash kerak?
+
+<Calc title="Kesh hajmi va urish darajasi (Zipf)" result="Top 1 M video — 67% so'rov; top 10 M — 78%. Keyingi 10x joy atigi +11 punkt">{`Faraz: N = 1 000 000 000 video, mashhurlik Zipf taqsimotida (alfa = 1).
+Eng mashhur K videoni keshlasak, urish darajasi taxminan:
+  H(K) / H(N) = ln(K) / ln(N)     (H — garmonik son, 7.3 Deep bloki)
+
+  ln(1e9) = 20.7
+
+  K = 100 000     ln = 11.5  -> 56%
+  K = 1 000 000   ln = 13.8  -> 67%
+  K = 10 000 000  ln = 16.1  -> 78%
+  K = 100 000 000 ln = 18.4  -> 89%
+
+Har 10 barobar ko'proq kesh — atigi +11 foiz punkt.`}</Calc>
+
+Bu logarifmik qonun kesh loyihasining asosiy haqiqatini ko‘rsatadi:
+**kesh sig‘imi bilan urish darajasi deyarli chiziqli emas, logarifmik
+o‘sadi.** Birinchi terabaytlar juda foydali, keyingilari — tobora kam.
+Shuning uchun keshlash qatlamlarga bo‘linadi (8-bo‘lim): kichik, juda
+yaqin kesh — faqat eng issiq videolar uchun; kattaroq, uzoqroq kesh —
+iliq videolar uchun; qolgani — asosiy omborga.
+
+<Deep title="Nega Zipf'da urish darajasi logarifmik">
+Zipf taqsimotida `i`-chi eng mashhur ob’ektning ulushi `1/i` ga
+proporsional (alfa = 1 holatida). Barcha so‘rovlar yig‘indisi:
+
+```
+jami  = 1/1 + 1/2 + 1/3 + ... + 1/N = H(N)   (N-chi garmonik son)
+top K = 1/1 + 1/2 + ... + 1/K       = H(K)
+
+urish darajasi = H(K) / H(N)
+```
+
+Garmonik sonlar logarifmga juda yaqin: `H(n) ≈ ln(n) + 0.577`. Katta
+sonlar uchun konstanta ahamiyatsiz, shuning uchun:
+
+```
+urish darajasi ≈ ln(K) / ln(N)
+```
+
+Bundan uchta qiziq oqibat chiqadi:
+
+1. **Urish darajasi K va N ning nisbatiga emas, logarifmlariga bog‘liq.**
+   Katalog 10 barobar o‘ssa (N x 10), bir xil urish darajasi uchun kesh
+   ham 10 barobar emas, kamroq o‘sishi kerak.
+
+2. **Har o‘n barobar = ln(10) / ln(N) punkt.** N = 1 mlrd uchun bu
+   2.3 / 20.7 = 11 punkt. Katalog kattalashgan sari har o‘n barobarning
+   foydasi kamayadi.
+
+3. **Alfa muhim.** Haqiqiy video taqsimotlari ko‘pincha alfa > 1 (bosh
+   qismi yanada og‘ir) — unda kichik kesh yanada samarali. Alfa < 1
+   bo‘lsa (dum og‘ir) — kesh kamroq samarali. Shuning uchun haqiqiy tizimda
+   bu formula faqat boshlang‘ich taxmin; aniq qiymat so‘rovlar jurnalida
+   simulyatsiya bilan olinadi (amaliyotning 3-darajasi).
+</Deep>
+
+### 7.4 Vaqt ham taqsimotning bir qismi
+
+Mashhurlik vaqt bo‘yicha o‘zgaradi: yangi klip birinchi haftada millionlab
+ko‘riladi, bir yildan keyin esa kuniga bir necha marta. Demak “issiq” va
+“sovuq” — videoning xossasi emas, **videoning hozirgi holati**.
+
+| Videoning yoshi (odatiy mashhur video) | Ko‘rishlar tezligi | Qayerda saqlash mantiqiy |
+| --- | --- | --- |
+| Birinchi hafta | Cho‘qqi | Barcha chekka keshlarda, barcha kodeklar |
+| 1–6 oy | Pasaymoqda | Mintaqaviy keshlarda, AV1/VP9 saqlanadi |
+| 1 yildan keyin | Past, barqaror | Asosiy omborda, arzon qatlam |
+| Ko‘p yillardan keyin | Deyarli nol | Sovuq ombor, ba’zi nusxalar o‘chirilgan |
+
+Bu jadval 5-bo‘limning 13-qadamidagi saqlash qatlamlarining vaqt
+o‘lchovi. Xulosa: **saqlash va kesh siyosati statik emas** — har bir video
+hayoti davomida qatlamlar bo‘ylab pastga siljiydi, va ba’zan (eski video
+qayta viral bo‘lsa) yuqoriga qaytadi. Shuning uchun original fayl hech
+qachon o‘chirilmaydi: u har qanday qatlamni qayta qurish imkonini beradi.
+
+Buni bitta videoning hayoti bo‘ylab ko‘ramiz — mashhur bo‘lib ketadigan
+10 daqiqalik klipning birinchi ikki kuni:
+
+<Timeline
+  rows={[
+    { when: "0 daq", what: "Yuklash tugadi, xeshlandi", why: "Dublikat emas (5-bo'lim, 1-qadam Deep) — navbatga. Muallif 'qayta ishlanmoqda' ni ko'radi." },
+    { when: "+1 daq", what: "360p tayyor — nashr", why: "Eng arzon pog'ona birinchi (4-qadam). Barmoq izi tekshiruvi parallel o'tdi." },
+    { when: "+5 daq", what: "720p va 1080p qo'shildi", why: "Parallel bo'laklab siqish (3-qadam). Manifest yangilandi — yangi URL versiyasi bilan." },
+    { when: "+2 soat", what: "Ko'rishlar tezligi chegaradan oshdi", why: "Birinchi soatlardagi tezlik mashhurlikni bashorat qildi (7.2 Deep). VP9 navbatga." },
+    { when: "+6 soat", what: "VP9 tayyor, AV1 navbatda", why: "Trafik ~30-40% kamaydi. Bashorat 59 000 ko'rishdan oshishini ko'rsatmoqda." },
+    { when: "+24 soat", what: "AV1 tayyor", why: "Endi har ko'rilgan daqiqa yana ~30% arzon. Kodlash narxi bir necha soatda qoplanadi." },
+    { when: "+48 soat", what: "Provayder keshlarida barqaror", why: "Urish darajasi yuqori, asosiy omborga so'rovlar deyarli yo'q. Keyingi oylarda sekin so'nadi (7.4 jadvali)." },
+  ]}
+/>
+
+Timeline’ning mantig‘i: **har bir qadamda sarflangan pul o‘sha paytdagi
+dalilga proporsional**. Birinchi daqiqada hech narsa ma’lum emas — eng
+arzon nusxa. 2 soatdan keyin mashhurlik belgilari bor — o‘rtacha narxli
+kodek. Bir kundan keyin mashhurlik tasdiqlangan — eng qimmat kodek.
+Bu — noaniqlik ostida qaror qabul qilishning umumiy naqshi: **qaytarib
+bo‘lmaydigan xarajatni dalil to‘plangunicha kechiktiring.**
+
+<Check q="Nega AV1 ning zararsizlik nuqtasi kirish qiymatlaridagi katta xatolarga chidamli?">
+Chunki ko‘rishlar taqsimoti juda keskin. 7.1-jadvalda videolar ko‘rishlar
+bo‘yicha **tartib bo‘yicha** (100, 10 000, 100 000) farq qiladi. Zararsizlik
+nuqtasi 15 000 bo‘ladimi yoki 120 000 — bu faqat bitta tartib ichidagi
+siljish, va u baribir videolarning kichik ulushini ajratadi.
+
+Agar ko‘rishlar tekis taqsimlangan bo‘lsa (hamma video ~1 000 marta),
+zararsizlik nuqtasini aniq bilish hal qiluvchi bo‘lardi: 800 yoki 1 200
+— hamma yoki hech kim. Uzun dumli taqsimotda esa qaror **nuqtaga
+sezgir emas**, chunki videolar nuqta atrofida siyrak.
+
+Umumiy dars: **taqsimot qanchalik keskin bo‘lsa, iqtisodiy qarorlar
+shunchalik ishonchli** — taxminiy kirishlar bilan ham. Bu uzun dumli
+tizimlarning kam tan olinadigan afzalligi.
+</Check>
+
+## 8. CDN va provayder ichidagi keshlar
+
+4.3-bo‘limdagi hisob: oddiy bulut trafigi narxida kuniga ~11 million
+dollar. Bu bo‘lim — o‘sha raqamni deyarli nolga tushiradigan arxitektura.
+
+### 8.1 Kesh ierarxiyasi
+
+<Flow nodes={["Pleyer", "Provayder ichidagi kesh", "Mintaqaviy kesh", "Ma'lumot markazi", "Asosiy ombor (original + nusxalar)"]} caption="Har bir qatlam o'zidan keyingisi uchun kesh; so'rov topilguncha yuqoriga ko'tariladi" />
+
+| Qatlam | Qayerda | Nima saqlaydi | Urish darajasi (taxminan) |
+| --- | --- | --- | --- |
+| Provayder ichidagi kesh | Internet provayderning o‘z tarmog‘ida | Shu hududdagi eng issiq videolar | ~70–90% |
+| Mintaqaviy kesh | Yirik almashinuv nuqtalarida | Iliq videolar, kattaroq katalog | Qolganning ~50–70% i |
+| Ma’lumot markazi | Google’ning o‘z tarmog‘i | Hamma narsa | 100% |
+
+Jadvaldagi urish darajalari taxminiy va 7.3-dagi logarifmik qonunga
+mos keladi: birinchi qatlam kichik, lekin so‘rovlarning katta qismini
+yopadi. Muhim xulosa — ular **ko‘paytiriladi**: agar birinchi qatlam
+85% ni, ikkinchisi qolganning 60% ini yopsa, ma’lumot markaziga faqat
+0.15 × 0.4 = **6%** so‘rov yetib boradi. Chiqish trafigining 94% i
+Google tarmog‘idan tashqarida — provayderning o‘z ichida — beriladi.
+
+### 8.2 Nega provayder buni o‘z tarmog‘iga qo‘yadi
+
+Savol tabiiy: nega internet provayder o‘z ma’lumot markazida Google’ning
+serverlarini joylashtiradi, elektr va joy beradi?
+
+<Calc title="1 million abonentli provayder uchun hisob" result="Kesh provayderga oyiga ~120 000 $ tranzit tejaydi">{`Provayder: 1 000 000 abonent
+Har biri kuniga ~1 soat video, o'rtacha 2.5 Mbit/s
+
+O'rtacha bir vaqtdagi oqimlar: 1e6 x 1 / 24 = 41 667
+O'rtacha trafik: 41 667 x 2.5 Mbit/s = ~104 Gbit/s
+Kechki cho'qqi (~2.5x o'rtacha): ~260 Gbit/s
+
+Keshsiz: 260 Gbit/s tashqi internetdan (tranzit) keladi.
+Kesh bilan (85% urish): 260 x 0.15 = ~39 Gbit/s tranzit
+
+Tejaldi: ~221 Gbit/s cho'qqi tranzit
+Tranzit narxi (katta hajmda, cho'qqi bo'yicha, taxminan): ~0.5 $/Mbit/s/oy
+  221 000 Mbit/s x 0.5 $ = ~110 000 - 120 000 $/oy
+
+Plus: abonentlar uchun kechikish kamayadi, video tezroq boshlanadi.`}</Calc>
+
+Bu hisob uch tomonlama g‘alabani ko‘rsatadi: **provayder** tranzit
+xarajatini tejaydi, **Google** chiqish trafigini deyarli tekin beradi,
+**foydalanuvchi** tezroq video oladi. Shuning uchun bu model keng
+tarqalgan — va Netflix (Open Connect) kabi boshqa yirik video xizmatlar
+ham xuddi shunday tizimlar qurgan.
+
+Diqqat qiling: bu arxitektura yechimi emas, **biznes yechimi**. Texnik
+jihatdan bu oddiy kesh; yangilik — uni **boshqa kompaniyaning tarmog‘iga**
+qo‘yish va bundan ikkala tomon ham foyda ko‘rishi. Katta tizimlarda eng
+katta tejashlar ko‘pincha shunday: kodda emas, kelishuvda.
+
+<Callout type="ogoh" title="Minglab serverni begona binolarda boshqarish">
+Provayder ichidagi kesh — sizning serveringiz, lekin **boshqa kompaniyaning
+binosida**. Unga jismonan yetib bo‘lmaydi, disk almashtirish uchun
+provayder xodimini chaqirish kerak, tarmoq sozlamalari provayder qo‘lida.
+
+Bu operatsion modelni butunlay o‘zgartiradi: har bir kesh **o‘zini o‘zi
+boshqarishi** kerak (avtomatik yangilanish, disk yiqilsa o‘zini kichikroq
+sig‘imga moslash, sog‘lig‘ini markazga xabar qilish), va har bir kesh
+**ishonchsiz** deb faraz qilinadi — shuning uchun unda maxfiy kalitlar
+saqlanmaydi, imzo tekshiruvi (11.2) faqat ochiq tekshirish kalitlari bilan.
+
+Eng muhimi: kesh yiqilsa, **hech narsa buzilmasligi** kerak. Manifest
+generatori (9-bo‘lim) uni bir necha soniyada chetlab o‘tadi, va
+foydalanuvchi faqat biroz sekinroq boshlanishni sezadi. Ya’ni butun
+dizayn “har qanday kesh istalgan paytda yo‘qolishi mumkin” degan
+farazga qurilgan.
+</Callout>
+
+### 8.3 Keshni to‘ldirish: kechasi, oldindan
+
+Provayder keshi o‘zi ham trafik iste’mol qiladi — bo‘sh keshni to‘ldirish
+uchun. Agar u faqat so‘rov kelganda to‘ldirilsa, yangi mashhur video
+chiqqan paytda **hamma keshlar bir vaqtda** asosiy omborga murojaat
+qiladi.
+
+<Calc title="Viral video chiqqanda keshlarni to'ldirish" result="Oldindan to'ldirmasa — 50 TB bir vaqtda; kechasi to'ldirsa — tekis fon trafik">{`Mashhur muallifning yangi klipi: 10 daqiqa, 4K gacha, uch kodek
+  H.264 (~40 Mbit/s yig'indi) + VP9 (~24) + AV1 (~18) = ~82 Mbit/s
+  82e6 x 600 s / 8 = ~6 GB; keshga odatda 4K AV1/VP9 va o'rta
+  pog'onalar tushadi -> ~5 GB
+
+Provayder ichidagi keshlar soni (taxminan, dunyo bo'yicha): ~10 000
+
+Talab bo'yicha to'ldirish (premyera paytida):
+  10 000 x 5 GB = 50 TB — bir necha daqiqa ichida
+  Bu yerda "sovuq kesh bo'roni" — Slack darsidagi qayta ulanish bo'roni
+  bilan bir xil naqsh: sinxron hodisa hamma keshni bir vaqtda uradi.
+
+Oldindan to'ldirish (premyera oldidan, tungi soatlarda):
+  50 TB 6 soatga tarqatilsa: 50e12 x 8 / 21 600 s = ~18.5 Gbit/s
+  -> global miqyosda arzimas fon trafik`}</Calc>
+
+Umumiy dars: **bashorat qilinadigan talabni oldindan joylashtiring.**
+Premyera vaqti ma’lum, muallifning auditoriyasi ma’lum — demak klip
+keshlarga premyeradan oldin, tarmoq bo‘sh paytda yuboriladi. Bu WhatsApp
+darsidagi “yangi yil kechasini kalendarga yozing” maslahatining CDN
+versiyasi.
+
+<Deep title="Pleyer qaysi keshga borishini kim hal qiladi">
+Pleyer bo‘lakni so‘rashi kerak — lekin qaysi serverdan? Uchta keng
+tarqalgan usul bor.
+
+| Usul | Qanday ishlaydi | Kuchli tomoni | Zaif tomoni |
+| --- | --- | --- | --- |
+| DNS | Domen nomi foydalanuvchi joylashuviga qarab turli IP beradi | Oddiy, har qanday mijoz bilan ishlaydi | DNS so‘rovchi — foydalanuvchi emas, uning DNS serveri; kesh vaqti uzoq |
+| Anycast | Bir xil IP dunyoning ko‘p joyida e’lon qilinadi, marshrutlash eng yaqiniga olib boradi | Juda tez, avtomatik | Uzoq TCP ulanishlari marshrut o‘zgarsa uziladi |
+| Manifestdagi URL | Server manifestni yaratayotganda aniq kesh serverining manzilini yozadi | Eng aniq nazorat: yuklama, kesh tarkibi, abonent provayderi | Manifest shaxsiylashtiriladi — umumiy keshlab bo‘lmaydi |
+
+YouTube uchinchi usulga yaqin ishlaydi: video bo‘laklarining URL’lari
+foydalanuvchiga mos keladigan aniq kesh serverining nomini o‘z ichiga
+oladi. Bu **eng aniq** usul, chunki manifestni yaratayotgan server
+hamma narsani biladi: foydalanuvchining provayderi, qaysi keshda bu
+video bor, qaysi kesh hozir band.
+
+Narxi — jadvaldagi oxirgi katak: manifest **har bir foydalanuvchi uchun
+alohida** bo‘lib qoladi va uni CDN’da keshlab bo‘lmaydi. Lekin manifest
+kichik (kilobaytlar), bo‘laklar esa megabaytlar — shaxsiylashtirishning
+narxi kichik, foydasi (har bir megabaytning to‘g‘ri joydan kelishi) katta.
+
+Bu qaror yana bir umumiy naqshni takrorlaydi: **boshqaruv tekisligi
+(manifest) aqlli va shaxsiy, ma’lumot tekisligi (bo‘laklar) soqov va
+umumiy.** Slack’dagi gateway va API ajratilishi, WhatsApp’dagi soqov
+server va aqlli mijoz — hammasi shu tamoyilning turli shakllari.
+</Deep>
+
+<Check q="Provayder ichidagi kesh 85% so'rovni yopsa, nega Google baribir o'z ma'lumot markazlarida katta chiqish sig'imiga muhtoj?">
+Uch sabab.
+
+**Birinchi — qolgan 15% ham ulkan.** 104 Tbit/s ning 15% i ~15 Tbit/s,
+va bu faqat o‘rtacha. Mintaqaviy keshlar uning bir qismini yopadi, lekin
+qolgani baribir ma’lumot markazidan chiqadi.
+
+**Ikkinchi — keshni to‘ldirish.** Har bir yangi mashhur video barcha
+keshlarga tarqatilishi kerak (8.3). Bu oqim so‘rovlar bilan emas, keshlar
+soni va yangi kontent hajmi bilan belgilanadi.
+
+**Uchinchi — nosozliklar.** Provayder keshi yiqilsa yoki texnik xizmatda
+bo‘lsa, uning barcha trafigi darhol yuqori qatlamga o‘tadi. Ma’lumot
+markazi bir nechta keshning bir vaqtda yiqilishiga chidashi kerak —
+bu Slack darsidagi “node yiqilganda qayta taqsimlanish” muammosining
+CDN versiyasi.
+
+Umumiy dars: **kesh o‘rtacha yukni kamaytiradi, lekin eng yomon holatdagi
+yukni emas.** Sig‘im har doim kesh ishlamay qolgan stsenariy uchun
+hisoblanadi.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Pleyer", boxes: ["ABR mantig'i", "Bufer", "Dekoder (apparat)", "QoE telemetriya"], note: "Har 4 soniyada qaror — butunlay mijozda." },
+    { name: "Chekka", boxes: ["Provayder ichidagi keshlar", "Mintaqaviy keshlar"], note: "Trafikning ~94% i shu yerdan (8.1)." },
+    { name: "Boshqaruv tekisligi", boxes: ["Tomosha sahifasi API", "Manifest generatori", "Kesh tanlash", "Imzolangan URL'lar"], note: "Kichik va aqlli: kilobaytlar, lekin har bir megabayt qayerdan kelishini hal qiladi." },
+    { name: "Yuklash yo'li", boxes: ["Qayta tiklanadigan yuklash", "Xom ombor", "Vazifa navbati"] },
+    { name: "Qayta ishlash", boxes: ["Bo'laklash", "Transkodlash (VCU)", "Sifat tekshiruvi", "Content ID", "Muqova rasmlari"] },
+    { name: "Saqlash", boxes: ["Originallar", "Nusxalar (kodek x pog'ona)", "Issiq / iliq / sovuq qatlamlar"] },
+    { name: "Yon tizimlar", boxes: ["Tavsiyalar", "Ko'rish hisoblagichlari", "Reklama", "Qidiruv", "Moderatsiya"] },
+  ]}
+/>
+
+Diagrammadagi eng muhim ajratish — **uchinchi qatlam**: boshqaruv
+tekisligi va ma’lumot tekisligi. Tomosha sahifasi, manifest va URL’lar —
+kichik, shaxsiy, aqlli; ular Google ma’lumot markazlarida ishlaydi va
+har bir foydalanuvchi uchun alohida hisoblanadi. Video bo‘laklari esa —
+katta, umumiy, soqov; ular provayder keshlarida yotadi va hech qachon
+o‘zgarmaydi. Bu ajratish tufayli 104 Tbit/s trafik Google’ning o‘z
+serverlari orqali deyarli o‘tmaydi, lekin **qaysi bayt qayerdan
+kelishini** baribir Google hal qiladi.
+
+<Flow nodes={["Telefon", "Qayta tiklanadigan yuklash", "Xom ombor", "Navbat", "Bo'laklash", "Parallel transkodlash", "Tekshiruv", "Manifest + nashr"]} caption="Yuklash yo'li: 360p bir necha daqiqada, HD va yangi kodeklar keyinroq" />
+
+### 9.1 Bosishdan birinchi kadrgacha
+
+<Calc title="Tomosha boshlanishining kechikish byudjeti" result="~650 ms — ulardan yarmi bitta bo'lakni yuklash">{`Foydalanuvchi tavsiyadagi videoni bosdi. Telefon, 4G (~10 Mbit/s, RTT ~50 ms).
+
+   -> 120 ms  Tomosha sahifasi API: metama'lumot + manifest (bitta so'rovda)
+              (manifest alohida so'ralmaydi — 1 RTT tejaldi, 6.4)
+   ->  50 ms  Provayder keshiga yangi TLS ulanish (sessiya qayta tiklandi)
+   ->  50 ms  Birinchi bo'lak so'rovi (1 RTT)
+   -> 300 ms  Birinchi bo'lakni yuklash: 360p, 4 s -> 2.8 Mbit / ~9 Mbit/s
+              (TCP sekin start bilan)
+   ->  50 ms  Init segment va dekoderni ishga tushirish
+   ->  80 ms  Birinchi kadrni chizish
+   ==============================================
+      ~650 ms
+
+Oldindan yuklash (prefetch) bilan: tavsiya ko'rsatilganda birinchi
+bo'lak allaqachon yuklangan bo'lsa -> ~200 ms.`}</Calc>
+
+Byudjetdagi eng katta modda — **bitta bo‘lakni yuklash**, va uni kamaytirishning
+ikki yo‘li bor: birinchi bo‘lakni kichikroq qilish (past sifat yoki qisqaroq
+bo‘lak — 6.4) va uni **oldindan** yuklash. Ikkinchisi ayniqsa kuchli:
+tavsiyalar ro‘yxati ko‘rsatilganda eng ehtimolli 1–2 videoning birinchi
+bo‘lagi fonda yuklanadi. Agar foydalanuvchi bosmasa — bir necha yuz
+kilobayt isrof. Agar bossa — video deyarli bir zumda boshlanadi.
+
+Bu savda — isrof qilingan baytlar evaziga kechikish — faqat bashorat
+yaxshi bo‘lganda foydali. Ya’ni **tavsiya tizimining aniqligi to‘g‘ridan-to‘g‘ri
+boshlanish vaqtiga** ta’sir qiladi — ikki mustaqil ko‘ringan tizim bir-biriga
+bog‘langan.
+
+<Deep title="Tavsiyalar: milliard videodan o'nlab tanlash">
+Tomosha vaqtining katta qismi tavsiyalardan keladi, shuning uchun ular
+qaysi videolar “issiq” bo‘lishini — va demak, keshlar, kodeklar va
+saqlash qatlamlarini — bilvosita boshqaradi. Mexanizmning asosiy
+arxitektura g‘oyasi — **ikki bosqich** (YouTube muhandislarining 2016-yilgi
+RecSys maqolasida tasvirlangan).
+
+<Calc title="Nega bir bosqichda imkonsiz" result="Har bir so'rovda milliard videoni baholash — 1 000 soniya">{`Katalog: ~1 000 000 000 video
+Chuqur modelda bitta videoni baholash: ~1 mikrosoniya (juda optimistik)
+  1e9 x 1e-6 s = 1 000 s = ~17 daqiqa BITTA bosh sahifa uchun
+
+IKKI BOSQICH:
+  1) Nomzodlarni tanlash: foydalanuvchi va videolar vektor fazosida,
+     taxminiy eng yaqin qo'shnilar qidiruvi -> ~bir necha yuz nomzod
+     narxi: millisekundlar (indeks bo'yicha qidiruv, hammani baholamasdan)
+  2) Saralash: boy xususiyatlarga ega og'ir model
+     ~500 nomzod x ~0.1 ms = 50 ms
+  Jami: ~50-100 ms`}</Calc>
+
+Bu naqsh — **arzon filtr, keyin qimmat saralash** — qidiruvda, reklamada,
+spam aniqlashda takrorlanadi. Birinchi bosqich yaxshi nomzodlarni
+o‘tkazib yubormaslik uchun (to‘liqlik), ikkinchisi ularni to‘g‘ri tartiblash
+uchun (aniqlik) optimallashtiriladi.
+
+Video tizimi uchun muhim oqibat: tavsiya tizimi **ko‘rishlar taqsimotini
+shakllantiradi**. U kichik to‘plam videolarni ko‘p odamga ko‘rsatsa,
+7.1-dagi dum yanada keskinlashadi — va keshlar samaraliroq ishlaydi.
+Ya’ni tavsiyalar mahsulot tizimi bo‘lishi bilan birga, bilvosita
+infratuzilma xarajatlarini ham boshqaradi.
+</Deep>
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Foydalanuvchi nimani ko‘radi | Javob |
+| --- | --- | --- |
+| Provayder keshi yiqildi | Bir necha soniya sekinroq boshlanish | Manifest boshqa keshni ko‘rsatadi; trafik mintaqaviy qatlamga |
+| Transkodlash navbati to‘lib ketdi | Yangi videolar “qayta ishlanmoqda” uzoqroq | Avval 360p, HD va yangi kodeklar kechiktiriladi |
+| Buzilgan nusxa (kodlash xatosi) | Tasvir yashil kvadratlar, ovoz yo‘q | Nashrdan oldin tekshiruv; originaldan qayta transkodlash |
+| Mintaqada tarmoq tiqilishi | Buferlash ko‘payadi | Manifestda maksimal sifatni cheklash |
+| Asosiy ombor mintaqasi yiqildi | Kam ko‘riladigan videolar ochilmaydi | Boshqa mintaqadagi nusxa (ortiqcha kodlash) |
+| Ko‘rish hisoblagichi kechikdi | Son eskirgan | Hech narsa — tez qatlam taxminiy, tekshirilgani keyin |
+
+Jadvaldagi naqsh: **deyarli har qatorda javob “sifatni kamaytirish”,
+“xizmatni to‘xtatish” emas**. Video platformasining ajoyib xususiyati —
+tanazzul silliq: 1080p o‘rniga 480p ko‘rsatish ham xizmat. Slack’da
+xabar yetib bormasa, u yetib bormaydi; bu yerda esa har doim “bir oz
+yomonroq” variant bor. Bitreyt zinapoyasi — nafaqat turli qurilmalar
+uchun, balki **turli nosozlik darajalari uchun** ham zinapoya.
+
+<Callout type="maslahat" title="Haqiqiy misol: butun dunyo uchun standart sifatni pasaytirish">
+2020-yil martida, pandemiya boshida internet tarmoqlari keskin yuklanganda,
+YouTube avval Yevropada, keyin butun dunyoda **standart sifatni SD ga
+tushirdi** (foydalanuvchi qo‘lda yuqori sifatni tanlashi mumkin edi).
+
+Bu 10.2-dagi degradatsiya rejasining haqiqiy dunyodagi qo‘llanilishi:
+bitta konfiguratsiya o‘zgarishi — manifestdagi standart pog‘ona — global
+trafikni sezilarli kamaytirdi, va xizmat hamma uchun ishlashda davom etdi.
+Kod o‘zgarmadi, deploy bo‘lmadi. **Eng kuchli degradatsiya tutqichi
+allaqachon arxitekturada mavjud bo‘lishi kerak** — inqiroz paytida
+yozilmaydi.
+</Callout>
+
+### 10.2 Degradatsiya tartibi
+
+<Timeline
+  rows={[
+    { when: "1-bosqich", what: "Yangi AV1/VP9 kodlashni to'xtatish", why: "Qimmat hisoblash bo'shaydi. Mavjud nusxalar ishlaydi; faqat yangi videolar keyinroq samarali kodekka o'tadi." },
+    { when: "2-bosqich", what: "Yangi yuklamalar uchun faqat 360p", why: "HD kechiktiriladi. Mualliflar noroziligi bor, lekin video nashr qilinadi." },
+    { when: "3-bosqich", what: "Oldindan yuklash (prefetch) o'chiriladi", why: "Isrof baytlar yo'qoladi. Boshlanish vaqti ~200 ms dan ~650 ms ga qaytadi." },
+    { when: "4-bosqich", what: "Manifestda maksimal sifatni cheklash", why: "Tiqilgan mintaqada 1080p+ olib tashlanadi. Trafik 2-3 barobar kamayadi (2.3 jadvali)." },
+    { when: "5-bosqich", what: "Kam ko'riladigan videolar sovuq ombordan sekin", why: "Issiq qatlam faqat mashhurlar uchun. Dumdagi videolar sekinroq boshlanadi." },
+    { when: "6-bosqich", what: "Yangi yuklashlar qabul qilinadi, lekin qayta ishlanmaydi", why: "Xom fayl saqlanadi, navbat keyin bo'shatiladi. Tomosha to'liq ishlaydi." },
+  ]}
+/>
+
+Tartibning mantig‘i 1.3-bo‘limdagi nisbatdan kelib chiqadi: **tomosha
+yuklashdan muhimroq** (430:1), shuning uchun avval yozish yo‘li
+qurbon qilinadi (1, 2, 6-bosqichlar), o‘qish yo‘li esa faqat sifat
+bo‘yicha pasaytiriladi (3, 4, 5), lekin hech qachon to‘xtamaydi.
+Oxirgi bosqichda ham yuklashlar **rad etilmaydi** — xom fayl saqlanadi.
+Muallif videoni qayta yuklashga majbur bo‘lmasligi kerak, chunki 4.4-dagi
+hisob bo‘yicha bu mobil tarmoqda eng og‘riqli operatsiya.
+
+<Deep title="Buzilgan nusxa: nega nashrdan oldin tekshirish shart">
+Transkodlash — murakkab dastur, va u kamdan-kam, lekin muqarrar ravishda
+xato qiladi: kodlovchi versiyasidagi xato, noodatiy kirish fayli, apparat
+nosozligi. Natija — tasvirda yashil bloklar, ovoz va tasvirning mos
+kelmasligi, yoki umuman ochilmaydigan fayl.
+
+Muammo shundaki, buzilgan nusxa **ko‘rinmaydi** — fayl mavjud, hajmi
+normal, manifest to‘g‘ri. U faqat foydalanuvchi uni o‘ynaganda aniqlanadi.
+Va agar u 4K pog‘ona bo‘lsa, faqat 4K televizor egalari ko‘radi —
+ya’ni shikoyatlar kam va kech keladi.
+
+Himoya — nashrdan oldin **avtomatik tekshiruv**:
+
+```
+Har bir yangi nusxa uchun:
+  1. To'liq dekodlash — xatosiz o'qiladimi?
+  2. Davomiylik — originaldan ±0.1 s farqdami?
+  3. Ovoz-tasvir sinxronligi — bir nechta nuqtada solishtirish
+  4. Sifat metrikasi (masalan, VMAF) — kutilgan oraliqdami?
+     (juda past -> kodlash xatosi; juda yuqori -> noto'g'ri pog'ona)
+  5. I-kadrlar kutilgan joylardami? (bo'laklash uchun, 2.4)
+
+O'tmasa: nusxa nashr qilinmaydi, originaldan qayta transkodlash.
+```
+
+Narxi — har bir nusxani yana bir marta to‘liq dekodlash (kodlashdan
+ancha arzon, lekin nol emas). Foydasi — buzilgan nusxa hech qachon
+foydalanuvchiga yetmaydi.
+
+Bu tekshiruv 5-bo‘lim, 13-qadamdagi qarorni yana bir marta oqlaydi:
+**original saqlangani uchun** har qanday buzilgan nusxa qayta yaratiladi.
+Agar faqat nusxalar saqlanganida, bitta kodlash xatosi videoni abadiy
+buzardi.
+</Deep>
+
+## 11. Xavfsizlik va huquq
+
+YouTube’ning xavfsizlik muammolari Slack yoki WhatsApp’nikidan farq qiladi.
+Bu yerda asosiy tahdid — ma’lumot o‘g‘irlash emas, balki **tizimdan
+suiiste’mol qilib foyda olish**: boshqalarning kontentini o‘ziniki qilib
+yuklash, soxta ko‘rishlar bilan pul ishlash, videolarni o‘g‘irlab boshqa
+saytda tarqatish.
+
+### 11.1 Mualliflik huquqi: har bir yuklamani tekshirish
+
+Har bir yuklangan video mualliflar himoyalagan kontent bazasi bilan
+solishtiriladi (YouTube’da bu tizim Content ID deb ataladi). Mexanizm —
+**barmoq izi**: videodan va ovozdan qisqa, siqilgan “imzolar” olinadi va
+indeksda qidiriladi.
+
+<Calc title="Barmoq izi qidiruvi yuki" result="Sekundiga ~30 000 qidiruv — bu barmoq izi indeksi uchun mumkin">{`Yuklash: 30 000 video-soniya har real soniyada (5-bo'lim, 4-qadam)
+Har video-soniyadan bitta barmoq izi (ovoz + tasvir, bir necha o'n bayt)
+  -> ~30 000 barmoq izi/s yangi
+
+Har biri indeksda qidiriladi (taxminiy eng yaqin moslik).
+Indeks: yuz millionlab soat himoyalangan kontent x har soniyaga bitta iz
+  = ~10^11-10^12 barmoq izi, har biri ~32-64 bayt -> o'nlab terabayt
+
+Indeks mashinalar bo'ylab shardlanadi; har qidiruv — bir necha
+millisekund. 30 000 qidiruv/s yuzlab mashinada — boshqariladigan yuk.
+
+Taqqoslash: 4-qadamdagi transkodlash yuzminglab yadro edi.
+Barmoq izi — transkodlash yonida arzon qo'shimcha.`}</Calc>
+
+Muhim nozik joy — **mos kelish natijasi har doim ikkilik emas**. Qisqa
+parcha (sharh uchun iqtibos), fonda eshitilgan musiqa, qayta yozilgan
+qo‘shiq — bularning hammasi turli siyosatlarni talab qiladi, va ular
+texnik emas, huquqiy va mahsulot qarorlari. Tizimning texnik qismi faqat
+**qayerda, qancha va qanchalik ishonch bilan** mos kelganini aytadi;
+nima qilish (bloklash, daromadni muallifga berish, faqat kuzatish) —
+himoyalangan kontent egasining sozlamasi.
+
+### 11.2 Imzolangan URL’lar: bo‘laklarni o‘g‘irlashga qarshi
+
+Bo‘laklar oddiy HTTP fayllar (2.4) — demak har kim ularni to‘g‘ridan-to‘g‘ri
+yuklab olib, o‘z saytida ko‘rsatishi mumkin, trafikni esa YouTube to‘laydi.
+Himoya — **imzolangan va muddatli URL**:
+
+```
+https://kesh-42.provayder.example/videoplayback
+    ?id=abc123&itag=137          (qaysi video, qaysi pog'ona)
+    &expire=1700003600           (1 soatdan keyin yaroqsiz)
+    &ip=203.0.113.7              (faqat shu IP uchun)
+    &sig=Hmac(maxfiy_kalit, id|itag|expire|ip)
+
+Kesh serveri har so'rovda imzoni tekshiradi:
+  muddati o'tgan / boshqa IP / imzo noto'g'ri -> 403
+```
+
+Imzoni tekshirish arzon (bitta HMAC) va uni **kesh serverining o‘zi**
+bajaradi — markaziy xizmatga murojaat kerak emas. Bu WhatsApp darsidagi
+“imzolangan qurilma ro‘yxati” va Slack darsidagi “mahalliy token
+tekshiruvi” bilan bir xil tamoyil: **ishonchni oldindan hisoblangan imzo
+bilan chekkaga olib chiqish**.
+
+Chegara: bu **himoya emas, qiyinlashtirish**. Brauzerda o‘ynaydigan video
+brauzerga yetib keladi va uni yozib olish mumkin. Pullik kontent uchun
+qo‘shimcha qatlam — DRM (shifrlangan bo‘laklar, kalit maxsus modulda) —
+lekin u ham faqat nusxalashni qimmatlashtiradi, imkonsiz qilmaydi.
+
+<Callout type="ogoh" title="Shaxsiy va ro'yxatsiz videolar">
+“Ro‘yxatsiz” (unlisted) video — havolani bilganlar ko‘radi, qidiruvda
+chiqmaydi. Uning xavfsizligi **faqat identifikatorning taxmin qilib
+bo‘lmasligiga** tayanadi.
+
+Bu URL qisqartiruvchi darsidagi kalit maydoni muammosining aynan takrori:
+agar identifikator ketma-ket yoki qisqa bo‘lsa, uni sanab chiqish mumkin.
+YouTube identifikatori 11 belgili base64 satr, u taxminan 64 bitni
+kodlaydi — ya’ni ~2⁶⁴ ≈ 1.8×10¹⁹ variant;
+hujumchi sekundiga million so‘rov yuborsa ham, mavjud milliardlab videodan
+birini tasodifan topish uchun juda uzoq vaqt kerak.
+
+Muhimi: **bo‘laklar ham** himoyalangan bo‘lishi kerak. Agar manifest
+ruxsat tekshirsa-yu, bo‘lak URL’lari doimiy va imzosiz bo‘lsa, bitta
+sizib chiqqan bo‘lak havolasi butun videoni ochadi. Imzolangan URL
+(11.2) shu yerda ham ishlaydi.
+</Callout>
+
+<Check q="Nega ko'rishlar firibgarligi mualliflik huquqidan ham qiyinroq muammo?">
+Mualliflik huquqi buzilishida **ob’ektiv dalil** bor: yuklangan video
+himoyalangan kontentga mos keladi yoki kelmaydi. Barmoq izi buni
+aniqlaydi.
+
+Soxta ko‘rishda esa har bir alohida ko‘rish **haqiqiyga o‘xshaydi**:
+brauzer videoni ochdi, bo‘laklar yuklandi, vaqt o‘tdi. Farq faqat
+**naqshda**: bitta qurilmalar guruhidan g‘ayritabiiy ko‘p ko‘rish,
+odam xatti-harakatiga xos bo‘lmagan vaqt taqsimoti, bir xil tarmoqdan
+kelayotgan minglab “turli” foydalanuvchilar.
+
+Bu Reddit darsidagi ovoz manipulyatsiyasi muammosining aynan takrori
+(Reddit, 10-bo‘lim), va yechim ham o‘xshash: har bir ko‘rishga og‘irlik
+berish, naqshni grafik sifatida tahlil qilish, va tekshirilgan sonni
+kechiktirish. Farq — bu yerda **pul** to‘g‘ridan-to‘g‘ri bog‘langan
+(reklama va mualliflar daromadi), shuning uchun hujumchilar ko‘proq
+resurs sarflaydi.
+</Check>
+
+## 12. Iqtisod: bir soat tomosha qancha turadi
+
+Oldingi darslarda xarajatning asosiy moddasi aniq edi: Reddit’da chiqish
+trafigi (91%), Slack’da gateway fleti (47%), WhatsApp’da media (80%).
+YouTube’da esa manzara boshqacha, chunki eng katta modda — trafik —
+8-bo‘limdagi provayder keshlari tufayli **tubdan arzonlashtirilgan**.
+
+<Calc title="Oylik xarajat (illyustratsiya)" result="Bir soat tomosha ~0.4 sent — va eng katta modda saqlash">{`YETKAZISH (provayder keshlari bilan samarali narx):
+  1.1 EB/kun x 30 = 33 EB/oy = 3.3e10 GB
+  x ~0.002 $/GB (samarali, keshlar va to'g'ridan-to'g'ri ulanishlar bilan)
+  = ~66 000 000 $/oy
+
+TRANSKODLASH (VCU bilan, 5-bo'lim 11-qadam):
+  H.264 + VP9 hamma uchun + AV1 mashhurlar uchun
+  ~250 000 yadro ekvivalenti x 730 soat x ~0.01 $ = ~1 800 000 $/oy
+
+SAQLASH (jami to'plangan, har yili ~4 EB qo'shiladi, 13-qadam):
+  faraz: ~20 EB jami, qatlamlar bo'yicha o'rtacha ~0.002 $/GB/oy
+  2e10 GB x 0.002 = ~40 000 000 $/oy
+
+JAMI: ~108 000 000 $/oy
+Tomosha: 1e9 soat/kun x 30 = 3e10 soat/oy
+  108e6 / 3e10 = ~0.0036 $ = ~0.36 sent har soat tomosha uchun`}</Calc>
+
+Bu raqamlar faqat **tuzilmani** ko‘rsatish uchun — haqiqiy narxlar,
+saqlash hajmi va samarali trafik narxi ma’lum emas va ancha farq qilishi
+mumkin. Lekin tuzilmadan chiqadigan xulosalar ishonchli.
+
+| Xarajat moddasi | Ulushi (taxminan) | O‘sish xarakteri |
+| --- | --- | --- |
+| Yetkazish | ~61% | Tomosha bilan chiziqli; keshlar va kodeklar bilan kamayadi |
+| Saqlash | ~37% | **Har yili o‘sadi va hech qachon kamaymaydi** |
+| Transkodlash | ~2% | Yuklash bilan chiziqli; apparat bilan keskin kamaygan |
+
+Jadvalning oxirgi ustuni — eng muhimi. Yetkazish va transkodlash
+**oqim** xarajatlari: ular joriy faollikka bog‘liq va optimallashtirish
+bilan kamayadi. Saqlash esa **zaxira** xarajati: har yili yuklangan
+video kelgusi barcha yillarda saqlanadi. 20 yildan keyin saqlash — 20 yillik
+yuklamalar yig‘indisi.
+
+Bundan uchta amaliy qaror chiqadi:
+
+**Birinchi: saqlash samaradorligi uzoq muddatda eng muhim optimallashtirish.**
+Replikatsiyadan erasure coding’ga o‘tish (quyidagi Deep), sovuq qatlam,
+kam ko‘riladigan nusxalarni o‘chirish — bularning har biri butun kelajakdagi
+xarajatni kamaytiradi.
+
+**Ikkinchi: transkodlash arzonlashgani uchun endi uni ko‘proq qilish
+mumkin.** Apparat tufayli 2% ga tushgan modda — bu yangi imkoniyat:
+ko‘proq videoni VP9/AV1 da siqish (yetkazishni kamaytiradi) yoki
+kerak bo‘lganda nusxalarni qayta yaratish (saqlashni kamaytiradi).
+Ya’ni arzonlashgan resurs qimmat resurslarni almashtirish uchun
+ishlatiladi.
+
+**Uchinchi: yetkazishni sifat standarti orqali boshqarish.** Mobil
+qurilmalarda standart sifatni bir pog‘ona pasaytirish (masalan, “trafikni
+tejash” rejimi) yetkazish xarajatini sezilarli kamaytiradi va ko‘pchilik
+foydalanuvchi farqni sezmaydi — kichik ekranda 720p va 1080p deyarli
+bir xil.
+
+<Deep title="Erasure coding: nega 3 nusxa o'rniga 1.5 barobar">
+Ma’lumotni yo‘qotmaslikning eng sodda usuli — **3 ta to‘liq nusxa** turli
+mashinalarda. Ikkita mashina yiqilsa ham, uchinchisi qoladi. Narxi — 3×
+saqlash.
+
+Erasure coding boshqacha: faylni `k` ta bo‘lakka bo‘ladi va ulardan `m`
+ta qo‘shimcha “paritet” bo‘lagi hisoblaydi. Istalgan `k` ta bo‘lak
+(jami `k+m` dan) faylni tiklash uchun yetarli.
+
+```
+Reed-Solomon (6, 3) misoli:
+  fayl -> 6 ta ma'lumot bo'lagi + 3 ta paritet bo'lagi = 9 bo'lak
+  9 ta turli mashinada
+  istalgan 6 tasi -> fayl tiklanadi
+  -> 3 ta mashina yiqilishiga chidaydi (3 nusxadan YAXSHIROQ: u 2 taga chidaydi)
+
+Saqlash: 9 / 6 = 1.5x   (3 nusxada 3x)
+
+20 EB ma'lumot uchun:
+  3 nusxa:        60 EB fizik disk
+  RS(6,3):        30 EB fizik disk
+  Tejash:         30 EB — yuqoridagi narx bilan oyiga ~60 M $
+```
+
+Nega hamma narsa erasure coding bilan saqlanmaydi? Chunki **o‘qish va
+tiklash qimmatroq**:
+
+| | 3 nusxa | RS(6,3) |
+| --- | --- | --- |
+| Oddiy o‘qish | 1 mashinadan | 6 mashinadan (yoki ma’lumot bo‘laklari joyida bo‘lsa, kamroq) |
+| Bitta disk yiqilsa, tiklash | 1 nusxani ko‘chirish | 6 bo‘lakni o‘qib, hisoblash |
+| Kechikish | Past | Yuqoriroq |
+
+Shuning uchun amaliy tizimlar **ikkalasini** ishlatadi: issiq ma’lumot
+(tez-tez o‘qiladi) — nusxalar bilan, sovuq ma’lumot (kam o‘qiladi, ko‘p
+joy egallaydi) — erasure coding bilan. Bu 7.4-dagi vaqt bo‘yicha
+qatlamlashning disk darajasidagi ko‘rinishi: video eskirgan sari u nafaqat
+arzonroq omborga, balki **arzonroq kodlash sxemasiga** ham o‘tadi.
+</Deep>
+
+<Check q="Nega saqlash xarajati 'hech qachon kamaymaydi', va buni o'zgartirish uchun nima qilish mumkin?">
+Chunki YouTube’ning mahsulot va’dasi — **yuklangan video abadiy mavjud**.
+Mualliflar o‘n yil oldin yuklagan videosi bugun ham ochilishini kutadi,
+va bu va’dani buzish ishonchni yo‘qotadi. Demak har yili qo‘shilgan
+saqlash keyingi barcha yillarga ko‘chadi.
+
+Xarajatni kamaytirish yo‘llari zaxirani emas, **bir birlik narxini**
+o‘zgartiradi:
+
+1. **Kodlash sxemasi**: 3 nusxa → erasure coding (2 barobar tejash)
+2. **Qatlam**: issiq disk → sovuq disk yoki lenta (bir necha barobar)
+3. **Nusxalar soni**: kam ko‘riladigan videoning qimmat pog‘onalarini
+   o‘chirish, faqat original va bir-ikkita pog‘onani qoldirish, qolganini
+   so‘ralganda qayta yaratish
+4. **Originalni siqish**: juda eski, hech kim ko‘rmaydigan videoning
+   originalini “deyarli yo‘qotishsiz” yuqori sifatli nusxa bilan almashtirish
+
+Uchinchi va to‘rtinchi usullar **saqlash va hisoblashni almashtiradi**:
+diskni tejash evaziga kelajakda qayta transkodlash. Bu savdo aynan
+transkodlash arzonlashgani (VCU) tufayli foydali bo‘ldi — iqtisodning
+bir qismidagi o‘zgarish boshqa qismidagi qarorlarni o‘zgartiradi.
+</Check>
+
+## 13. Sig‘im rejalashtirish
+
+| Bosqich | Miqyos | Arxitektura | Keyingi bosqichga o‘tish signali |
+| --- | --- | --- | --- |
+| A | Kuniga minglab tomosha | Bitta server, progressiv yuklash (v0) | Buferlash ulushi 2% dan oshsa |
+| B | Yuz minglab | Ob’ekt ombori, transkodlash navbati, zinapoya | Yuklashdan 360p gacha vaqt p90 > 10 daqiqa |
+| C | Millionlab | CDN, bo‘laklar va ABR | Chiqish trafigi xarajatning 50% idan oshsa |
+| D | Yuz millionlab | Provayder keshlari, kodekni mashhurlikka qarab tanlash | Transkodlash hisoblash xarajatning 20% idan oshsa |
+| E | Milliardlab | Maxsus kodlash apparati, global qatlamlangan saqlash | Saqlashning yillik o‘sishi byudjetdan tez |
+
+Jadvaldagi signallar ketma-ketligiga qarang: **har bir bosqichda
+cheklovchi resurs almashadi**. A–B da — foydalanuvchi tajribasi
+(buferlash, nashr vaqti). C da — trafik narxi. D da — hisoblash narxi.
+E da — saqlash. Bu 12-bo‘limdagi xarajat tuzilmasining vaqt bo‘yicha
+ko‘rinishi: siz bitta xarajatni hal qilganingizda, keyingisi eng kattasiga
+aylanadi.
+
+Bu naqsh deyarli barcha o‘sayotgan tizimlarda takrorlanadi va undan
+muhim amaliy xulosa chiqadi: **xarajat tuzilmasini har chorakda qayta
+hisoblang.** O‘tgan yilgi eng katta modda bugun kichik bo‘lishi mumkin
+(transkodlash apparat bilan 2% ga tushdi), va optimallashtirish kuchi
+eskirgan muammoga sarflanishi mumkin.
+
+### 13.1 Viral video: sovuq ob’ektga bir vaqtda million so‘rov
+
+<Calc title="Birinchi soatda 10 million ko'rish — va kesh bo'sh" result="So'rovlarni birlashtirmasa — asosiy omborga million so'rov; birlashtirsa — 10 000">{`Mashhur muallif yangi video chiqardi (oldindan to'ldirilmagan, 8.3 dan farqli).
+Birinchi 10 daqiqada: 1 000 000 tomoshabin, ~10 000 provayder keshi orqali.
+
+Har bir keshda birinchi so'rov — "miss" (kesh bo'sh).
+So'rovni BIRLASHTIRMASA (har miss alohida asosiy omborga):
+  bir vaqtda kelgan birinchi so'rovlar: ~100 har keshda
+  10 000 x 100 = 1 000 000 so'rov asosiy omborga, BITTA bo'lakka
+
+So'rovni BIRLASHTIRSA (bir xil ob'ekt uchun bitta so'rov yuqoriga,
+qolganlari uning javobini kutadi):
+  10 000 kesh x 1 = 10 000 so'rov
+  Mintaqaviy qatlam ham birlashtirsa (~100 mintaqa): 100 so'rov
+
+  1 000 000 -> 100 : 10 000 barobar kamaydi`}</Calc>
+
+Bu mexanizmning nomi — **so‘rovlarni birlashtirish** (request coalescing,
+ba’zan “collapsed forwarding”). U Slack darsidagi qayta ulanish bo‘roni
+va WhatsApp darsidagi yangi yil kechasi bilan bir oilada: **sinxron
+hodisa bitta resursni bir vaqtda uradi**. Farq — bu yerda yechim
+jitter emas (tomoshabinni kuttirib bo‘lmaydi), balki **ierarxik
+birlashtirish**: har bir qatlam o‘zidan yuqoriga bitta so‘rov yuboradi.
+
+<Deep title="So'rovlarni birlashtirish: 20 qatorlik kod, 10 000 barobar tejash">
+Kesh serveri ichida mexanizm juda sodda — “hozir yuklanayotganlar”
+jadvali:
+
+```python
+in_flight: dict[str, Future] = {}      # kalit -> yuklanayotgan javob
+
+async def get(key):
+    if (hit := cache.get(key)) is not None:
+        return hit                       # oddiy urish
+    if key in in_flight:
+        return await in_flight[key]      # boshqasi allaqachon yuklayapti — KUTAMIZ
+    fut = loop.create_future()
+    in_flight[key] = fut
+    try:
+        data = await upstream.fetch(key) # yuqoriga FAQAT BITTA so'rov
+        cache.put(key, data)
+        fut.set_result(data)
+        return data
+    except Exception as e:
+        fut.set_exception(e)             # kutayotganlarning hammasi xato oladi
+        raise
+    finally:
+        del in_flight[key]
+```
+
+Uchta nozik joy bor, va ular amalda muhim.
+
+**Xato tarqalishi.** Yuqoriga so‘rov muvaffaqiyatsiz bo‘lsa, kutayotgan
+hamma (yuzlab so‘rov) bir vaqtda xato oladi va bir vaqtda qayta urinadi —
+kichik bo‘ron. Yechim: xatoni ham qisqa muddat (1–2 soniya) keshlash
+(“salbiy kesh”) va qayta urinishga jitter.
+
+**Sekin yuqori qatlam.** Agar yuqoriga so‘rov 30 soniya osilib qolsa,
+barcha kutayotganlar 30 soniya kutadi. Birlashtirish kutishni ham
+birlashtiradi. Yechim: kutish vaqtiga chegara — undan keyin kutayotgan
+so‘rov alohida urinishi mumkin.
+
+**Katta ob’ekt.** Bo‘lak to‘liq yuklanishini kutish shart emas: birinchi
+baytlar kelishi bilan barcha kutayotganlarga oqim sifatida uzatish mumkin
+(jonli efirda — majburiy, 5-bo‘lim 14-qadam Deep).
+
+Umumiy g‘oya Slack darsidagi qayta ulanish bo‘ronining oynadagi aksi:
+u yerda **mijozlar** sinxron harakatini jitter bilan buzdik; bu yerda
+**serverda** sinxron so‘rovlarni bittaga birlashtiramiz. Ikkalasi ham bitta
+kasallikka — sinxron hodisaga — qarshi turli dorilar.
+</Deep>
+
+### 13.2 Yirik jonli efir: o‘rtacha kundan katta bitta hodisa
+
+<Calc title="Jahon chempionati finali jonli efirda" result="50 M tomoshabin — 150 Tbit/s, YouTube'ning butun o'rtacha trafigidan ko'p">{`Bir vaqtda tomoshabinlar: 50 000 000 (faraz, eng yirik sport hodisasi)
+O'rtacha bitreyt: ~3 Mbit/s (ko'pchilik katta ekranda, lekin mobil ham bor)
+
+  50e6 x 3 Mbit/s = 150 000 000 Mbit/s = 150 Tbit/s
+
+1.3-bo'limdagi butun platforma o'rtachasi: ~104 Tbit/s
+Ya'ni bitta hodisa butun kundalik o'rtachadan 1.5 barobar KO'P —
+va u oddiy trafik USTIGA qo'shiladi.
+
+Jonli efirda oldindan to'ldirish yo'q (8.3) — bo'lak 1 soniya oldin
+yaratilgan. Tarqatish faqat ierarxiya orqali:
+  asosiy server -> ~100 mintaqa -> ~10 000 provayder keshi -> tomoshabinlar
+  Har kesh har bo'lakni BIR MARTA oladi (13.1 birlashtirish).
+
+Asosiy serverdan chiqish: 100 mintaqa x ~15 Mbit/s (barcha pog'onalar)
+  = ~1.5 Gbit/s — arzimas. Yuk chekkada.`}</Calc>
+
+Bu hisob jonli efir uchun sig‘im rejalashtirishning asosiy qoidasini
+ko‘rsatadi: **muammo markazda emas, chekkada**. Asosiy serverdan chiqish
+~1.5 Gbit/s — bitta server uchun ham oddiy. Lekin 150 Tbit/s ni
+provayder keshlari va ularning abonentlarga tarmog‘i ko‘tarishi kerak,
+va bu ko‘pincha **provayderning** sig‘imi. Shuning uchun eng yirik
+jonli hodisalar provayderlar bilan **oldindan kelishiladi** — WhatsApp
+darsidagi “sinxron hodisalarni kalendarga yozing” maslahati bu yerda
+provayderlar kalendari bilan to‘ldiriladi.
+
+<Callout type="ogoh" title="Jonli efirda standart sifat — sig'im tutqichi">
+Yirik jonli hodisada eng samarali sig‘im tutqichi 10.2-bo‘limdagi bilan
+bir xil: **standart pog‘onani cheklash**. Agar hamma uchun standart
+1080p (5 Mbit/s) o‘rniga 720p (2.5 Mbit/s) bo‘lsa, 150 Tbit/s — 75 Tbit/s
+ga tushadi.
+
+Bu qarorni hodisa **boshlanishidan oldin** qabul qiling. Hodisa
+o‘rtasida sifatni birdan pasaytirish millionlab pleyerni bir vaqtda
+qayta moslashishga majbur qiladi — va 6-bo‘limdagi tebranish global
+miqyosda sodir bo‘ladi.
+</Callout>
+
+<Check q="Nega transkodlash navbati uchun sig'im 'o'rtacha yuklash' bo'yicha emas, 'nashr vaqti' bo'yicha rejalashtiriladi?">
+Chunki navbatning **hajmi emas, kechikishi** foydalanuvchiga ko‘rinadi.
+Muallif videoni yukladi va 360p ning qachon chiqishini kutyapti. Agar
+navbatda 2 soatlik ish to‘planib qolsa, yangi video 2 soatdan keyin
+nashr bo‘ladi — hech qanday xato yo‘q, lekin mahsulot buzilgan.
+
+Little qonuni (WhatsApp darsi) bu yerda to‘g‘ridan-to‘g‘ri ishlaydi:
+kutish vaqti = navbat hajmi / qayta ishlash tezligi. Agar yuklash tezligi
+kechqurun 3 barobar oshsa va sig‘im o‘rtacha bo‘yicha rejalashtirilgan
+bo‘lsa, navbat har kuni kechqurun o‘sadi va ertalabgacha bo‘shaydi —
+ya’ni kechqurun yuklangan videolar soatlab kechikadi.
+
+Yechim ikki qatlamli: 360p uchun **cho‘qqi** bo‘yicha sig‘im (tez
+nashr — kafolat), HD va yangi kodeklar uchun **o‘rtacha** bo‘yicha
+(ular kechikishi mumkin — 5-bo‘lim, 4-qadam). Bu bitta navbatni ikkita
+turli xizmat darajasiga bo‘lish.
+</Check>
+
+## 14. Kuzatuv: tajriba sifati (QoE)
+
+Video platformasida server metrikalari (CPU, xatolik darajasi, kechikish)
+deyarli hech narsa demaydi. Server bo‘lakni muvaffaqiyatli yubordi —
+lekin u foydalanuvchiga 8 soniyada yetdi va video 4 soniya to‘xtab turdi.
+Haqiqiy metrikalar **pleyerdan** keladi.
+
+### 14.1 Asosiy QoE metrikalari
+
+| Metrika | Nima o‘lchaydi | Nega muhim |
+| --- | --- | --- |
+| Boshlanish muvaffaqiyatsizligi (VSF) | Hech qachon boshlanmagan urinishlar ulushi | Eng yomon tajriba — video umuman yo‘q |
+| Boshlanishdan oldin chiqish (EBVS) | Kutishga chidamay chiqib ketganlar | Boshlanish vaqtining haqiqiy narxi |
+| Boshlanish vaqti (VST) | Bosishdan birinchi kadrgacha, p50 / p90 | 1.2-bo‘limdagi talab |
+| Buferlash ulushi | To‘xtab turish / jami tomosha vaqti | Tomosha vaqti bilan kuchli bog‘liq (1.2) |
+| O‘rtacha bitreyt | Ko‘rsatilgan sifat | Tarmoq va ABR samaradorligi |
+| Almashish tezligi | Daqiqasiga sifat almashishlari | Tebranish (6.4 Callout) |
+
+Jadvalning birinchi ikki qatori ko‘pincha e’tibordan chetda qoladi, chunki
+ular **muvaffaqiyatsiz** tomoshalar haqida — va muvaffaqiyatsiz tomosha
+boshqa metrikalarda umuman ko‘rinmaydi. Agar sekin tarmoqdagi
+foydalanuvchilar kutishga chidamay chiqib ketsa, ularning buferlash ulushi
+**hech qachon hisoblanmaydi** — va o‘rtacha buferlash ulushi yaxshilangandek
+ko‘rinadi. Bu — tanlov og‘ishi (survivorship bias) ning klassik ko‘rinishi,
+va uni faqat EBVS va VSF ni alohida kuzatish tuzatadi.
+
+<Deep title="Pleyer telemetriyasining o'zi — katta ma'lumot oqimi">
+QoE metrikalari pleyerdan keladi. Har bir pleyer qancha yuboradi?
+
+<Calc title="QoE telemetriyasi hajmi" result="To'liq telemetriya — sekundiga 4 million hodisa; namuna bilan — 40 000">{`Bir vaqtdagi sessiyalar: 41 700 000 (1.3)
+Pleyer har 10 soniyada holat hisobotini yuboradi (bufer, bitreyt,
+buferlash hodisalari, xatolar), har biri ~500 bayt.
+
+  41.7e6 / 10 = 4 170 000 hodisa/s
+  x 500 bayt = ~2 GB/s = ~180 TB/kun telemetriya
+
+Plus: har bir sifat almashishi, buferlash boshlanishi/tugashi —
+alohida hodisalar.`}</Calc>
+
+Bu — butun boshli ma’lumot tizimi, faqat o‘lchash uchun. Ikki yondashuv:
+
+**Namuna olish** — sessiyalarning 1% i to‘liq telemetriya yuboradi,
+qolganlari faqat yakuniy xulosa (sessiya oxirida bitta hodisa). 1% namuna
+41.7 M sessiyadan ~417 000 ta — global metrikalar uchun juda ko‘p. Lekin
+14.2-dagi bo‘lish muammosi paydo bo‘ladi: bitta keshda ~4 000 sessiya,
+1% namunada — atigi ~40. Bu kichik provayderdagi muammoni ishonchli
+aniqlash uchun kam bo‘lishi mumkin.
+
+**Yakuniy xulosa hammadan** — har sessiya oxirida bitta ixcham hodisa
+(boshlanish vaqti, jami buferlash, o‘rtacha bitreyt, kesh serveri,
+provayder). Bu 14.2-dagi barcha bo‘lishlar uchun yetarli va hajmi
+100 barobar kichik.
+
+Amaliy tizimlar ikkalasini birlashtiradi: **hamma sessiyadan xulosa**
+(bo‘lish va ogohlantirish uchun) va **kichik namunadan batafsil jurnal**
+(nima bo‘lganini chuqur tushunish uchun). Bu Reddit darsidagi
+`vote_apply_ratio` va kunlik yarashtirish juftligining QoE versiyasi:
+tez va keng — sayoz; sekin va tor — chuqur.
+</Deep>
+
+### 14.2 Bo‘lish o‘lchovlari: qayerda buzilgan?
+
+Global o‘rtacha QoE deyarli hech qachon muammoni ko‘rsatmaydi. Muammolar
+**mahalliy**: bitta provayder, bitta kesh, bitta qurilma modeli, bitta
+kodek. Shuning uchun har bir metrika kamida quyidagilar bo‘yicha bo‘linadi:
+
+```
+provayder (ASN)  x  mamlakat/shahar  x  kesh serveri  x
+qurilma turi     x  pleyer versiyasi  x  kodek        x  jonli / yozilgan
+```
+
+<Calc title="Bitta keshdagi muammo global metrikada qanchalik ko'rinadi" result="Global buferlash 0.40% dan 0.41% ga — shovqin. Keshda esa 0.4% dan 5% ga">{`Faraz: 10 000 provayder keshi, trafik teng taqsimlangan.
+Normal buferlash ulushi: 0.40% hamma joyda.
+
+Bitta keshda disk yiqildi -> u juda sekin, buferlash 5%.
+Bu kesh trafikning 1/10 000 qismi.
+
+Global o'rtacha:
+  (9 999 x 0.40% + 1 x 5%) / 10 000 = 0.4005%
+  -> farq 0.0005 punkt — hech qanday grafikda ko'rinmaydi
+
+Kesh bo'yicha bo'lingan:
+  kesh #4217: 5.0%  (12.5 barobar yomon) — darhol ko'rinadi
+
+Ta'sirlangan foydalanuvchilar: shu kesh orqali ~4 000 bir vaqtdagi oqim —
+ular uchun xizmat amalda buzilgan.`}</Calc>
+
+Xulosa: **global metrika katta nosozlikni ko‘rsatadi, mahalliy nosozlikni
+esa hech qachon.** Video platformasidagi nosozliklarning ko‘pchiligi
+mahalliy, shuning uchun ogohlantirishlar **bo‘lingan** metrikalar ustiga
+quriladi — har bir kesh, har bir provayder uchun alohida bazaviy daraja va
+undan og‘ish.
+
+<Deep title="O'rtacha bitreyt oshdi — lekin hamma uchun pasaydi">
+Bu hodisa QoE tahlilidagi eng chalkash tuzoqlardan biri va uni misol bilan
+ko‘rish kerak.
+
+```
+O'TGAN OY                         BU OY
+  Mobil: 70% tomosha, 1.5 Mbit/s    Mobil: 50% tomosha, 1.4 Mbit/s  (pasaydi)
+  TV:    30% tomosha, 8.0 Mbit/s    TV:    50% tomosha, 7.5 Mbit/s  (pasaydi)
+
+  O'rtacha: 0.7x1.5 + 0.3x8.0       O'rtacha: 0.5x1.4 + 0.5x7.5
+          = 1.05 + 2.40                     = 0.70 + 3.75
+          = 3.45 Mbit/s                     = 4.45 Mbit/s   (OSHDI!)
+```
+
+Har bir guruhda bitreyt **pasaydi** — ya’ni tajriba yomonlashdi. Lekin
+umumiy o‘rtacha **oshdi**, chunki tomoshaning katta qismi yuqori bitreytli
+guruhga (televizor) o‘tdi. Bu — **Simpson paradoksi**: guruhlar tarkibi
+o‘zgarganda o‘rtacha har bir guruhdagi tendentsiyaga teskari yo‘nalishda
+harakatlanishi mumkin.
+
+Amaliy oqibat jiddiy: agar siz ABR algoritmini o‘zgartirib, faqat umumiy
+o‘rtacha bitreytga qarasangiz, yomonlashuvni yaxshilanish deb qabul
+qilishingiz mumkin — ayniqsa o‘zgarish televizor ilovasining yangi
+versiyasi chiqqan hafta bilan bir vaqtga tushsa.
+
+Himoya: **har bir metrikani doim qurilma turi bo‘yicha bo‘lib ko‘rsating**
+va A/B testlarda nazorat va tajriba guruhlarining tarkibi bir xil ekanini
+tekshiring. Umumiy o‘rtacha — faqat bo‘lingan ko‘rsatkichlardan keyin.
+</Deep>
+
+<Check q="Nega 'bo'lak muvaffaqiyatli yuborildi' (HTTP 200) server metrikasi video tizimida yetarli emas?">
+Chunki muvaffaqiyatli javob **o‘z vaqtida yetkazish** degani emas. 200 kodi
+bo‘lak yuborildi deydi — lekin u 1 soniyada yetdimi yoki 12 soniyada,
+server bilmaydi. 4 soniyalik bo‘lak 12 soniyada yetsa, pleyer 8 soniya
+buferlashda turdi — va server jurnalida hammasi yashil.
+
+Bundan tashqari, eng yomon tajribalar serverda **umuman iz qoldirmaydi**:
+pleyer manifestni ololmadi (DNS xatosi), foydalanuvchi boshlanishni kutmay
+chiqib ketdi, dekoder qurilmada ishlamadi. Bularning hammasini faqat
+pleyer telemetriyasi ko‘radi.
+
+Bu Slack va WhatsApp darslaridagi bir xil xulosaning uchinchi takrori:
+**foydalanuvchi tajribasini faqat foydalanuvchiga eng yaqin nuqtada
+o‘lchash mumkin.** Slack’da bu `catchup_gap_size`, WhatsApp’da ✓✓
+belgilari, bu yerda — pleyerning QoE hisoboti.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Har yuklamani darhol barcha kodeklarda siqish", pro: "Har video darhol eng samarali formatda", con: "AV1 hamma uchun ~60 M yadro; yarmi hech qachon ko'rilmaydi (7.1)" },
+    { choice: "Eng yuqori sifatdan boshlash", pro: "Foydalanuvchi darhol tiniq tasvir ko'radi", con: "Boshlanish 0.6 s dan 2.3 s ga (6.4); sekin tarmoqda buferlash bilan boshlanadi" },
+    { choice: "Nusxalarda I-kadrlarni kodekka qo'yib berish", pro: "Har nusxa o'zi uchun optimal siqiladi (bir necha % tejash)", con: "Bo'lak chegaralari mos kelmaydi — ABR almashishda tasvir buziladi (2.4)" },
+    { choice: "Videoni ilova serveri orqali yuborish", pro: "Ruxsat tekshiruvi, statistika — hammasi bir joyda", con: "104 Tbit/s ilova serverlaridan o'tadi; keshlab bo'lmaydi" },
+    { choice: "Nusxalar tayyor bo'lgach originalni o'chirish", pro: "Saqlash ~35% kamayadi (13-qadam hisobi)", con: "Yangi kodek, buzilgan nusxa, yangi pog'ona — hammasi imkonsiz" },
+  ]}
+/>
+
+**Birinchi qator** jozibali, chunki u “to‘g‘ri ish qilish” ga o‘xshaydi:
+agar AV1 30% yaxshi bo‘lsa, nega har bir videoga bermaslik? Javob 7.2-bo‘limda:
+AV1 videoning har bir daqiqasi uchun ~0.33 dollar turadi va faqat o‘n
+minglab ko‘rishdan keyin o‘zini oqlaydi. Yuklanganlarning yarmi 100 martadan kam ko‘riladi.
+Bu antinaqshning chuqur sababi — **o‘rtacha bo‘yicha fikrlash**: “o‘rtacha
+video 430 marta ko‘riladi” rost, lekin o‘rtacha video mavjud emas.
+
+**Ikkinchi qator** jozibali, chunki birinchi taassurot muhim, va xira
+tasvir sifatsiz mahsulot taassurotini beradi. Lekin 6.4-dagi hisob
+ko‘rsatadiki, foydalanuvchi uchun **kutish** xiralikdan ancha qimmat:
+kutishga chidamaganlar chiqib ketadi (EBVS), xira tasvirni ko‘rganlar
+esa 4 soniyadan keyin tiniq tasvirni oladi.
+
+**Uchinchi qator** eng texnik va eng yashirin. Har bir nusxa uchun
+kodek o‘zi optimal I-kadr joylarini tanlasa, siqish bir necha foiz
+yaxshilanadi — va bu test paytida ko‘rinadigan yagona natija. ABR
+almashishidagi buzilish esa faqat **tarmoq o‘zgarganda** va faqat
+**sifat almashganda** ko‘rinadi — ya’ni laboratoriyada hech qachon.
+
+**To‘rtinchi qator** jozibali, chunki kichik miqyosda u eng oddiy
+arxitektura: bitta server hamma narsani biladi. Lekin 8-bo‘limning
+butun g‘oyasi — **baytlar hech qachon ilova serveridan o‘tmasligi** —
+shu yerda buziladi. To‘g‘ri naqsh 9-bo‘limda: ilova serveri faqat
+manifest va imzolangan URL beradi (boshqaruv tekisligi), baytlar esa
+keshdan to‘g‘ridan-to‘g‘ri (ma’lumot tekisligi).
+
+**Beshinchi qator** — eng qaytarib bo‘lmaydigan xato. Originalni o‘chirish
+bugun saqlashni tejaydi va bir necha yil hech qanday muammo tug‘dirmaydi.
+Keyin yangi kodek chiqadi (VP9 → AV1), va siz uni faqat **allaqachon
+siqilgan** nusxadan kodlay olasiz — ya’ni ikki marta siqilgan, sifati
+yomonlashgan videodan. Yoki kodlash xatosi aniqlanadi (10-bo‘lim Deep) va
+tuzatish uchun manba yo‘q.
+
+<Callout type="xato" title="Oltinchi antinaqsh: ABR'ni serverda qilish">
+“Server foydalanuvchining tarmog‘ini ko‘radi, sifatni u tanlasin” —
+mantiqiy ko‘rinadi va markazlashtirilgan nazorat beradi. Lekin server
+bufer holatini, haqiqiy qabul tezligini, ekran o‘lchamini va dekoder
+imkoniyatini bilmaydi (6-bo‘lim Check). Va sekundiga 10 million qaror
+alohida katta tizim talab qiladi.
+
+To‘g‘ri bo‘linish: server **menyuni** beradi (manifestdagi pog‘onalar,
+ularning cheklovlari, standart pog‘ona — 10.2-dagi sifat cheklovi aynan
+shu yerda), pleyer esa menyu ichidan **tanlaydi**. Server siyosatni
+boshqaradi, mijoz qarorni.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Qisqa bo'laklar (2 s)", pro: "Tez moslashish va boshlanish", con: "So'rovlar 2x, I-kadrlar ko'p — siqish ~5-10% yomon" },
+    { choice: "Zich bitreyt zinapoyasi", pro: "Har tarmoq uchun mos pog'ona, silliq almashish", con: "Saqlash va transkodlash pog'onalar soniga proporsional" },
+    { choice: "Kodekni mashhurlikka qarab tanlash", pro: "Hisoblash faqat o'zini oqlaydigan joyda", con: "Mashhur videoning birinchi soatlari samarasiz kodekda" },
+    { choice: "Provayder ichidagi keshlar", pro: "Chiqish trafigi narxi deyarli nol, kechikish past", con: "Minglab mustaqil joyda apparat va kelishuvlar" },
+    { choice: "Originalni saqlash", pro: "Har qanday nusxani qayta yaratish mumkin", con: "Saqlashning ~35% i hech qachon to'g'ridan-to'g'ri ko'rsatilmaydi" },
+    { choice: "Past sifatdan boshlash", pro: "Boshlanish ~4 barobar tez", con: "Birinchi soniyalarda xira tasvir" },
+  ]}
+/>
+
+Jadvalni juftliklar bo‘yicha o‘qing. Birinchi va oltinchi qator —
+**vaqt va sifat** savdosi: tezroq javob evaziga vaqtincha yomonroq
+natija. Ikkinchi va uchinchi — **saqlash/hisoblash va trafik** savdosi:
+yozish yo‘lida ko‘proq ish, o‘qish yo‘lida kamroq bayt. To‘rtinchi va
+beshinchi — **hozirgi va kelajakdagi** moslashuvchanlik: bugun ko‘proq
+to‘lab, ertaga ko‘proq imkoniyat saqlash.
+
+Uchala juftlikning umumiy mazmuni bitta: **video tizimi — bu yozish
+bir marta, o‘qish ming marta bo‘lgan tizim**, va deyarli har qanday
+qaror “yozishni qimmatlashtirib, o‘qishni arzonlashtirish” tomon
+og‘ishi kerak — lekin faqat haqiqatan ko‘p o‘qiladigan ob’ektlar uchun.
+
+<Callout type="ogoh" title="Qaysi metrikani optimallashtiryapsiz?">
+Video platformasida to‘rtta raqobatdosh maqsad bor:
+
+**Boshlanish tezligi** — bosishdan birinchi kadrgacha. Maksimallashtirsangiz,
+past sifatdan boshlaysiz, oldindan yuklaysiz (isrof bayt), qisqa bo‘laklar
+ishlatasiz — va **sifat va narxni** qurbon qilasiz.
+
+**Sifat** — ko‘rsatilgan bitreyt va tasvir tiniqligi. Maksimallashtirsangiz,
+yuqori pog‘onalarni tanlaysiz — va **buferlash xavfi va narxni** qurbon qilasiz.
+
+**Uzluksizlik** — buferlashsiz tomosha. Maksimallashtirsangiz, katta bufer
+va ehtiyotkor ABR — va **sifat va jonli efir kechikishini** qurbon qilasiz.
+
+**Narx** — soat boshiga yetkazish va saqlash. Maksimallashtirsangiz,
+sifatni cheklaysiz, qimmat kodeklardan qochasiz — va **sifat** qurbon bo‘ladi.
+
+Yozilgan video uchun odatiy tartib: **uzluksizlik > boshlanish tezligi >
+sifat > narx** — chunki buferlash va kutish tomoshani o‘ldiradi, xiralik
+esa deyarli yo‘q. Jonli efirda esa kechikish yangi o‘lcham sifatida
+qo‘shiladi va tartib hodisaga bog‘liq (sport — past kechikish, konsert —
+uzluksizlik). Tartibni **oldindan** belgilang: ABR algoritmining har bir
+parametri aynan shu tartibning kodga aylanishi.
+</Callout>
+
+## 17. Intervyu savollari
+
+### 17.1 Mexanizm
+
+<QA q="Siqilmagan 1080p video qancha joy egallaydi va kodek uni qanday siqadi?">
+1920×1080 = ~2.07 M piksel, YUV 4:2:0 da piksel boshiga ~1.5 bayt →
+kadr ~3.1 MB, 30 kadr/s → ~93 MB/s = ~746 Mbit/s. YouTube’dagi 1080p
+~3–8 Mbit/s, ya’ni 100–250 barobar siqilgan.
+
+Asosiy g‘oya — ketma-ket kadrlar deyarli bir xil. I-kadr to‘liq rasm
+(JPEG kabi), P va B kadrlar esa oldingi (va keyingi) kadrlarga nisbatan:
+har bir blok uchun “qayerdan surildi” (harakat vektori) va kichik
+qoldiq farq saqlanadi. Siqish narxi — o‘xshash blokni qidirish: kodek
+qancha yaxshi qidirsa, shuncha yaxshi siqadi va shuncha sekin ishlaydi.
+</QA>
+
+<QA q="GOP va I-kadr nima uchun arxitektura uchun muhim?">
+Videoni faqat I-kadrdan boshlab ochish mumkin — P-kadr oldingi kadrga
+tayanadi. Shuning uchun I-kadr — video olamidagi “tranzaksiya chegarasi”.
+
+Uchta oqibat: sakrash (seek) I-kadrga yaxlitlanadi; ABR bo‘laklari
+I-kadrdan boshlanishi va barcha nusxalarda bir xil joyda bo‘lishi kerak
+(aks holda sifat almashishda tasvir buziladi); parallel transkodlash
+videoni faqat I-kadr chegaralarida bo‘laklarga bo‘la oladi.
+
+Narxi: I-kadr P-kadrdan 3–10 barobar katta, shuning uchun I-kadrlarni
+ko‘paytirish (qisqa bo‘laklar) siqishni yomonlashtiradi.
+</QA>
+
+<QA q="Adaptiv bitreyt oqimi (HLS/DASH) qanday ishlaydi?">
+Video bir nechta sifat nusxasiga (bitreyt zinapoyasi) siqiladi, har bir
+nusxa esa 2–6 soniyalik bo‘laklarga bo‘linadi — barcha nusxalarda bir xil
+chegaralarda. Manifest (HLS’da `.m3u8`, DASH’da `.mpd`) nusxalar va
+bo‘laklarni sanaydi.
+
+Pleyer manifestni oladi va har bir bo‘lakdan keyin keyingisini qaysi
+sifatda olishni o‘zi hal qiladi — tarmoq tezligi va bufer holatiga qarab.
+Bo‘laklar oddiy HTTP fayllar, shuning uchun har qanday kesh va CDN ularni
+saqlay oladi — maxsus server yoki doimiy ulanish kerak emas.
+</QA>
+
+<QA q="Bo'lak uzunligini qanday tanlaysiz?">
+Uch tomonlama savdo. Qisqa bo‘lak (2 s): tez boshlanish, tarmoq
+o‘zgarishiga tez moslashish, jonli efirda past kechikish — lekin
+so‘rovlar ikki barobar ko‘p va har bo‘lak I-kadrdan boshlangani uchun
+siqish ~5–10% yomon. Uzun bo‘lak (10 s): aksincha.
+
+Hisob: 41.7 M bir vaqtdagi oqimda 2 s bo‘lak ~21 M so‘rov/s, 4 s — ~10 M.
+Amalda yozilgan video uchun 4–6 s, jonli efir uchun past kechikishli
+rejimda qisman bo‘laklar (0.5–1 s).
+</QA>
+
+<QA q="Pleyer bufer dinamikasini qanday tushuntirasiz?">
+Bir bo‘lak (4 s) yuklanish vaqti — `4R/C`, bu yerda R — tanlangan
+bitreyt, C — tarmoq. Shu vaqt ichida bufer `4R/C` soniya kamayadi va
+bo‘lak kelganda 4 soniya oshadi. Sof o‘zgarish: `4(1 − R/C)`.
+
+R < C bo‘lsa bufer o‘sadi, R > C bo‘lsa kamayadi va nolga yetsa
+buferlash boshlanadi. Misol: bufer 10 s, R = 5, C = 3 → har bo‘lakda
+−2.67 s, 3.75 bo‘lakdan (~25 s) keyin buferlash — agar pleyer sifatni
+pasaytirmasa. Pleyerning butun vazifasi — R ni baholangan C dan past tutish.
+</QA>
+
+<QA q="O'tkazuvchanlikka va buferga asoslangan ABR farqi nima?">
+O‘tkazuvchanlikka asoslangan: oxirgi bo‘laklar yuklanish tezligini
+o‘lchab (garmonik o‘rtacha), xavfsizlik koeffitsienti bilan sifat tanlaydi.
+Boshlanishda yaxshi, lekin mobil tarmoq shovqiniga sezgir — sifat tebranadi.
+
+Buferga asoslangan: tarmoqni bashorat qilmaydi, sifatni bufer to‘liqligiga
+qarab tanlaydi (bo‘sh — eng past, to‘la — eng yuqori). Bufer amortizator
+bo‘ladi: tushishlarni “yutadi”, shuning uchun o‘rtacha bitreyt yuqoriroq.
+Lekin boshlanishda ko‘r, va oddiy chiziqli variant ko‘p almashadi — har
+bo‘lak buferni birdaniga 4 s ga siljitadi.
+
+Amaliy pleyerlar gibrid: boshlanishda o‘tkazuvchanlik, bufer to‘lgach
+bufer mantiqi, ustidan gisterezis. Simulyatsiyada (3G izi) bu buferlashsiz
+bitreytni 1.2 dan 2.0 Mbit/s ga oshiradi va almashishlarni oddiy bufer
+variantiga nisbatan ikki barobar kamaytiradi.
+</QA>
+
+<QA q="Nega tezlik o'lchovlarining garmonik o'rtachasi olinadi?">
+Bir xil hajmdagi bo‘laklar uchun haqiqiy o‘rtacha tezlik — jami hajm /
+jami vaqt — aynan garmonik o‘rtacha. 10, 10 va 1 Mbit/s: arifmetik 7,
+garmonik 2.5 — va haqiqatan uchta bo‘lak 2.5 Mbit/s o‘rtacha tezlikda
+yuklangan, chunki sekin bo‘lak eng ko‘p vaqtni oldi.
+
+Ikkinchi sabab: garmonik o‘rtacha pessimistik — kichik qiymatlar
+boshqaradi. ABR’da xatolar narxi assimetrik: sifatni kam baholash — biroz
+xiraroq tasvir; ortiq baholash — buferlash. Shuning uchun estimator ham
+ataylab ehtiyotkor.
+</QA>
+
+<QA q="Nega tomosha past sifatda boshlanadi?">
+Boshlanish vaqtining eng katta qismi — birinchi bo‘lakni yuklash.
+10 Mbit/s tarmoqda 4 s lik 1080p bo‘lak (20 Mbit) 2 s, 360p (2.8 Mbit)
+0.28 s. Jami boshlanish ~2.3 s ga qarshi ~0.6 s.
+
+Foydalanuvchi uchun kutish xiralikdan ancha qimmat: kutishga chidamaganlar
+chiqib ketadi, xira tasvirni ko‘rganlar esa bir necha soniyadan keyin
+tiniq tasvirni oladi. Qo‘shimcha hiylalar: manifestni sahifa bilan birga
+yuborish (1 RTT tejash), birinchi bo‘lakni tavsiya ko‘rsatilganda oldindan
+yuklash.
+</QA>
+
+### 17.2 Miqyos
+
+<QA q="YouTube miqyosidagi chiqish trafigini baholang.">
+Kuniga ~1 mlrd soat tomosha → o‘rtacha 41.7 M bir vaqtdagi oqim.
+O‘rtacha ~2.5 Mbit/s → ~104 Tbit/s o‘rtacha, kuniga ~1.1 EB.
+
+Oddiy bulut narxida (~0.01 $/GB) bu kuniga ~11 M $, yiliga ~4 mlrd $ —
+biznes modelini imkonsiz qiladi. Shuning uchun trafik provayderlar
+ichidagi keshlardan beriladi: ular so‘rovlarning 70–90% ini yopadi,
+provayder esa tranzit xarajatini tejaydi — ikkala tomon ham yutadi.
+</QA>
+
+<QA q="Transkodlash quvurini qanday loyihalaysiz?">
+Yuklash tugagach fayl xom omborga tushadi, navbatga vazifa qo‘yiladi.
+Video I-kadr chegaralarida ~10 s lik bo‘laklarga bo‘linadi va parallel
+siqiladi — 2 soatlik 4K video 20 soat o‘rniga ~2 daqiqada tayyor, jami
+CPU o‘zgarmaydi.
+
+Tartib: avval 360p (eng arzon — tez nashr), keyin HD pog‘onalar, keyin
+mashhur bo‘lsa samaraliroq kodeklar. Har nusxa nashrdan oldin avtomatik
+tekshiriladi (dekodlash, davomiylik, sinxronlik, sifat metrikasi).
+Original doim saqlanadi — kelajakdagi kodeklar va buzilgan nusxalarni
+qayta yaratish uchun.
+</QA>
+
+<QA q="Hamma videoni AV1 da siqish kerakmi?">
+Yo‘q. Taxminiy hisob: butun yuklash oqimini AV1 da siqish ~60 M yadro
+talab qiladi — jismonan imkonsiz. Iqtisodiy jihatdan: AV1 bir video
+daqiqasi uchun ~0.33 $ turadi, har ko‘rilgan daqiqada ~30% trafik
+(~0.00001 $) tejaydi. Zararsizlik nuqtasi — har video daqiqasi ~30 000
+marta ko‘rilishi.
+
+Ko‘rishlar juda notekis: videolarning ~2% i tomoshaning ~80% ini oladi.
+Demak AV1 faqat shu mashhur ulush uchun — va qaror yuklashda emas,
+mashhurlik ma’lum bo‘lgach qabul qilinadi.
+</QA>
+
+<QA q="Kesh hajmini ikki barobar oshirsak, urish darajasi qancha o'sadi?">
+Zipf taqsimotida (alfa ≈ 1) urish darajasi ≈ `ln(K) / ln(N)`. N = 1 mlrd
+video uchun ln(N) ≈ 20.7. K ni ikki barobar oshirish ln(2) = 0.69
+qo‘shadi → +3.3 punkt. O‘n barobar — +11 punkt.
+
+Ya’ni kesh logarifmik foyda beradi: birinchi terabaytlar juda foydali,
+keyingilari kam. Shuning uchun keshlar qatlamlanadi: kichik va yaqin —
+eng issiq videolar uchun, katta va uzoqroq — iliqlar uchun.
+
+Muhim eslatma: bu formula boshlang‘ich taxmin. Haqiqiy alfa va vaqt
+bo‘yicha o‘zgaruvchan mashhurlik tufayli aniq qiymat so‘rovlar jurnalida
+simulyatsiya bilan olinadi.
+</QA>
+
+<QA q="Mashhur video chiqqanda asosiy omborni qanday himoya qilasiz?">
+Muammo: ~10 000 kesh bir vaqtda bo‘sh, har birida bir vaqtda yuzlab
+birinchi so‘rov. Birlashtirmasa — bitta bo‘lakka ~1 M so‘rov.
+
+Yechim ikki qatlamli. Birinchi — **so‘rovlarni birlashtirish**: har kesh
+bir xil ob’ekt uchun yuqoriga bitta so‘rov yuboradi, qolganlar javobni
+kutadi. Mintaqaviy qatlam ham shunday qilsa — 1 M → ~100.
+
+Ikkinchi — **oldindan to‘ldirish**: premyera vaqti ma’lum bo‘lsa, video
+keshlarga kechasi, tarmoq bo‘sh paytda tarqatiladi. 50 TB 6 soatga
+tarqatilsa — ~18.5 Gbit/s, global miqyosda arzimas.
+</QA>
+
+<QA q="Yirik jonli efir uchun nima o'zgaradi?">
+Oldindan siqish va oldindan to‘ldirish yo‘q — bo‘lak bir soniya oldin
+yaratilgan. Hammasi real vaqtda.
+
+Sig‘im: 50 M tomoshabin × 3 Mbit/s = 150 Tbit/s — YouTube’ning butun
+o‘rtacha trafigidan ko‘p. Lekin markazdan chiqish kichik: ierarxiya
+(asosiy server → ~100 mintaqa → ~10 000 kesh) va birlashtirish bilan
+har kesh har bo‘lakni bir marta oladi, asosiy serverdan ~1.5 Gbit/s.
+
+Yuk chekkada — provayderlarning tarmog‘ida. Shuning uchun yirik
+hodisalar provayderlar bilan oldindan kelishiladi, va standart sifat
+hodisadan oldin cheklanadi (1080p → 720p trafikni ikki barobar kamaytiradi).
+Kechikish esa bufer bilan to‘g‘ridan-to‘g‘ri almashtiriladi: oddiy HLS
+~20–30 s, past kechikishli ~3–5 s.
+</QA>
+
+<QA q="Ko'rishlar hisoblagichini qanday loyihalaysiz?">
+Sekundiga ~93 000 ko‘rish, mashhur premyerada bitta videoga ~5 500/s —
+bitta qatorga UPDATE ishlamaydi (Reddit darsidagi hot key).
+
+Ikki qatlam: tez — hodisalar navbatga, guruhlab shardlangan hisoblagichga,
+interfeysda taxminiy son; sekin — fon jarayoni ko‘rishlarni tekshiradi
+(bot trafigi, g‘ayritabiiy naqshlar, yetarli tomosha vaqti) va tekshirilgan
+sonni daromad va reklama uchun beradi.
+
+Tarixiy misol: YouTube hisoblagichi uzoq vaqt yangi videolarda ~301 da
+to‘xtab turardi — tekshirish bosqichi foydalanuvchiga ko‘rinib qolgan edi.
+</QA>
+
+<QA q="Bir xil videoni yuzlab kanal qayta yuklaydi. Resurslarni qanday tejaysiz?">
+Yuklash tugagach faylning mazmun xeshini (SHA-256) hisoblayman. Xesh
+allaqachon transkodlangan fayllar to‘plamida bo‘lsa — yangi video yozuvi
+mavjud nusxalarga ishora qiladi: transkodlash ham, qo‘shimcha saqlash ham
+yo‘q. 1 GB fayl uchun xesh ~2–3 soniya CPU — transkodlashdan minglab
+barobar arzon.
+
+Chegara: faqat bayt-bayt bir xil fayllar mos keladi. Qayta siqilgan yoki
+kesilgan nusxalarni topish — barmoq izi tizimining ishi (mualliflik
+huquqi uchun), va u boshqa maqsadga xizmat qiladi.
+
+Nozik joy — o‘chirish: bir nechta video bitta fizik nusxaga ishora qilsa,
+havolalar hisoblagichi kerak, aks holda bitta muallifning o‘chirishi
+boshqalarning videosini buzadi.
+</QA>
+
+<QA q="Yillik saqlash o'sishini baholang va uni qanday kamaytirasiz?">
+Kuniga 720 000 soat. Har soat uchun: original ~3.6 GB, H.264 zinapoyasi
+~4.4 GB, VP9 ~2.6 GB → ~10.6 GB. Kuniga ~7.6 PB, yiliga ~2.8 EB,
+ortiqchalik bilan ~4 EB.
+
+Saqlash — yagona “zaxira” xarajat: har yil qo‘shilgani keyingi yillarga
+ko‘chadi. Kamaytirish: 3 nusxadan erasure coding’ga (RS(6,3) — 1.5×,
+ikki barobar tejash, va 3 disk yiqilishiga chidaydi); sovuq qatlamlar;
+kam ko‘riladigan videolarning qimmat pog‘onalarini o‘chirib, kerak
+bo‘lganda originaldan qayta yaratish — saqlashni hisoblashga almashtirish.
+</QA>
+
+<QA q="Provayder nega o'z tarmog'iga Google keshini qo'yadi?">
+Chunki unga foydali. 1 M abonentli provayder: kechki cho‘qqida ~260 Gbit/s
+video trafik. Kesh 85% ni yopsa, tranzit 260 dan ~39 Gbit/s ga tushadi.
+~221 Gbit/s tejash — taxminan oyiga 100 000+ dollar tranzit xarajati.
+
+Uch tomonlama foyda: provayder tranzit tejaydi, Google chiqish trafigini
+deyarli tekin beradi, abonent esa tezroq video oladi. Bu texnik emas,
+biznes yechimi — kodda emas, kelishuvda.
+</QA>
+
+### 17.3 Tajriba
+
+<QA q="Bitta provayder abonentlari buferlashdan shikoyat qilyapti, global metrikalar normal. Qanday tekshirasiz?">
+Global o‘rtacha mahalliy muammoni ko‘rsatmaydi: 10 000 keshdan bittasida
+buferlash 12 barobar oshsa, global son 0.40% dan 0.4005% ga o‘zgaradi.
+
+QoE metrikalarini provayder (ASN), kesh serveri, shahar, qurilma bo‘yicha
+bo‘laman. Agar bitta kesh ajralib chiqsa — uning sog‘lig‘i (disk, tarmoq
+porti, yuklama). Agar provayderning hamma keshlari — provayder ichidagi
+tarmoq yoki keshdan abonentgacha bo‘lgan yo‘l. Agar bitta qurilma modeli —
+dekoder yoki pleyer versiyasi.
+
+Qisqa muddatli javob: manifest generatori shu provayder uchun boshqa
+keshni ko‘rsatadi yoki maksimal sifatni vaqtincha cheklaydi.
+</QA>
+
+<QA q="Yangi ABR versiyasidan keyin o'rtacha bitreyt 15% oshdi. Chiqarish kerakmi?">
+Hali yo‘q. Avval uchta narsani tekshiraman.
+
+Birinchi — **Simpson paradoksi**: o‘rtacha oshgani har guruhda oshgani
+degani emas. Tomosha tarkibi (mobil/TV) o‘zgargan bo‘lsa, har bir guruhda
+bitreyt pasaygan bo‘lsa ham o‘rtacha oshishi mumkin. Metrikalarni qurilma
+turi bo‘yicha bo‘lib ko‘raman.
+
+Ikkinchi — **narx**: bitreyt oshishi ko‘pincha buferlash oshishi hisobiga
+keladi. Buferlash ulushi, boshlanish vaqti, boshlanishdan oldin chiqish
+(EBVS) va almashish tezligini birga ko‘raman.
+
+Uchinchi — **tanlov og‘ishi**: agar yangi versiyada ko‘proq foydalanuvchi
+boshlanishdan oldin chiqib ketsa, ularning past bitreyti hisobga olinmaydi
+va o‘rtacha sun’iy oshadi.
+</QA>
+
+<QA q="Yangi yuklangan videolarda HD soatlab paydo bo'lmayapti. Nima bo'lyapti?">
+360p chiqqan, demak yuklash va birinchi transkodlash ishlayapti — muammo
+HD bosqichida.
+
+Tekshiraman: HD navbati yoshi (eng eski vazifa qancha kutyapti) va
+qayta ishlash tezligi. Little qonuni: kutish = navbat / tezlik. Agar
+navbat kechqurun o‘sib, ertalab bo‘shasa — sig‘im o‘rtacha bo‘yicha
+rejalashtirilgan va cho‘qqida yetmaydi. Agar navbat doim o‘sayotgan bo‘lsa
+— ishchilar xato bilan qayta urinyapti (buzilgan kirish fayllari, kodlovchi
+xatosi) yoki nusxalar tekshiruvdan o‘tmay qayta transkodlanyapti.
+
+Tuzatish: 360p va HD ni alohida xizmat darajalari bilan ikki navbatga
+bo‘lish (13-bo‘lim Check), xatoli vazifalarni alohida “o‘lik xatlar”
+navbatiga chiqarish.
+</QA>
+
+<QA q="Foydalanuvchilar 4K videoda yashil kvadratlarni ko'rishyapti, boshqa sifatlarda normal. Sabab?">
+Buzilgan nusxa — kodlash xatosi faqat bitta pog‘onada. U faqat 4K
+televizor egalariga ko‘rinadi, shuning uchun shikoyatlar kam va kech.
+
+Darhol: bu videoning 4K nusxasini manifestdan olib tashlash — foydalanuvchilar
+1440p ga tushadi, tomosha davom etadi. Keyin originaldan qayta transkodlash.
+
+Tizimli: nashrdan oldingi tekshiruv nega o‘tkazib yubordi? Odatda —
+tekshiruv faqat videoning bir qismini dekodlagan yoki sifat metrikasi
+chegarasi juda keng. Agar bitta kodlovchi versiyasi bilan siqilgan
+barcha videolarda shunday bo‘lsa — ularni topib, qayta transkodlash.
+Bularning hammasi faqat original saqlangani uchun mumkin.
+</QA>
+
+<QA q="Tarmoqlar tiqilib qoldi (masalan, favqulodda holatda hamma uyda). Nima qilasiz?">
+Eng kuchli tutqich allaqachon arxitekturada: **manifestdagi standart
+pog‘onani cheklash**. 1080p → 480p standart global trafikni bir necha
+barobar kamaytiradi, foydalanuvchi xohlasa qo‘lda yuqori sifatni tanlaydi.
+Kod o‘zgarmaydi, deploy yo‘q.
+
+2020-yil martida YouTube aynan shunday qilgan: avval Yevropada, keyin
+butun dunyoda standart sifatni SD ga tushirgan.
+
+Qo‘shimcha: oldindan yuklashni o‘chirish, yangi qimmat kodlashni
+to‘xtatish (hisoblash bo‘shaydi), provayderlar bilan muloqot — ularning
+tarmog‘i tiqilgan joylarni aniqlash.
+</QA>
+
+<QA q="Kimdir video bo'laklarini o'z saytida to'g'ridan-to'g'ri ko'rsatyapti. Qanday to'xtatasiz?">
+Bo‘lak URL’larini imzolangan va muddatli qilish: URL ichida video
+identifikatori, pog‘ona, muddati, mijoz IP’si va shularning HMAC imzosi.
+Kesh serveri har so‘rovda imzoni o‘zi tekshiradi — markaziy xizmatga
+murojaat yo‘q, bitta HMAC hisoblash.
+
+Muddati o‘tgan yoki boshqa IP’dan kelgan so‘rov rad etiladi. Begona sayt
+URL’ni nusxalasa, u bir soatda yaroqsiz bo‘ladi va boshqa foydalanuvchilar
+IP’sida ishlamaydi.
+
+Chegara: bu himoya emas, qiyinlashtirish. Brauzerga yetib kelgan video
+yozib olinishi mumkin. Pullik kontent uchun DRM qo‘shiladi — u ham faqat
+nusxalashni qimmatlashtiradi.
+</QA>
+
+<QA q="Nega ko'rishlar soni ba'zan kechikadi yoki keyin kamayadi?">
+Chunki ikki qatlamli hisoblagich: tez qatlam har ko‘rishni darhol taxminiy
+songa qo‘shadi, sekin qatlam esa keyinroq soxta ko‘rishlarni (botlar,
+g‘ayritabiiy naqshlar, juda qisqa tomosha) aniqlab olib tashlaydi.
+
+Foydalanuvchi uchun bu chalkash: son oshdi, keyin kamaydi. Lekin
+muqobili yomonroq: agar faqat tekshirilgan son ko‘rsatilsa, u soatlab
+yangilanmaydi; agar faqat tez son bo‘lsa — soxta ko‘rishlar mualliflarga
+va reklama beruvchilarga pul sifatida o‘tadi.
+
+Bu Reddit darsidagi ovozlarni xiralashtirish bilan qarindosh: ko‘rsatiladigan
+son va haqiqiy (hisob-kitob uchun) son — ikki xil narsa, va ularni
+ajratish kerak.
+</QA>
+
+<QA q="Kam ko'riladigan eski video ochilishi 5 soniya olyapti. Bu xatomi?">
+Ehtimol yo‘q — bu saqlash qatlamlarining ongli narxi. Kam ko‘riladigan
+video hech bir keshda yo‘q, u sovuq omborda, va ba’zi pog‘onalari
+o‘chirilgan bo‘lishi mumkin.
+
+Tekshiraman: bu kechikish qayerda — sovuq ombordan o‘qishdami (kutilgan)
+yoki pog‘onani qayta yaratishdami (kerak bo‘lsa, eng past pog‘onani
+darhol yaratib, qolganlarini keyin). Agar bunday videolar ulushi va
+kechikishi SLO ichida bo‘lsa — hammasi joyida.
+
+Umumiy tamoyil: **har bir video uchun sarflangan pul uning ko‘rilishiga
+proporsional**. Dumdagi video uchun 5 soniyalik boshlanish — to‘g‘ri
+iqtisodiy qaror, xato emas. Lekin buni SLO da ochiq belgilash kerak,
+aks holda u doim “xato” deb qayta-qayta tekshiriladi.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Birinchi va ikkinchi daraja uchun kod `docs/amaliyot/youtube/`
+da: `ladder.py` to‘liq ishlaydi, `sim.py` — tayyor ABR simulyatori,
+`abr.py` esa TODO bilan skelet.
+
+<Task title="1-daraja: zinapoya va I-kadrlar o'z ko'zingiz bilan">
+`python ladder.py` ni ishga tushiring (ffmpeg kerak; yo‘q bo‘lsa
+`pip install imageio-ffmpeg`). Skript 20 soniyalik videoni to‘rtta
+pog‘onaga siqadi, har birining haqiqiy bitreytini va I-kadr vaqtlarini
+chiqaradi, va HLS bo‘laklari bilan `out/master.m3u8` yaratadi.
+
+Keyin ikki tajriba: (a) `-force_key_frames` va `-sc_threshold 0`
+qatorlarini olib tashlab qayta ishga tushiring; (b) o‘z videongiz bilan
+ishga tushiring — gaplashayotgan odam va tez harakatli sahna.
+
+**Tekshiruv mezoni:** (1) asl holatda I-kadrlar barcha pog‘onalarda
+0, 4, 8, 12, 16 soniyada; (a) tajribada tekislik buzilgani va nega bu
+ABR uchun muammo ekanini (2.4-dagi Check) bir abzasda tushuntiring;
+(2) (b) tajribada bir xil bitreytda ikki videoning ko‘rinadigan sifatini
+solishtiring va 5-bo‘lim, 9-qadamdagi “kontentga mos zinapoya” g‘oyasini
+o‘z natijangiz bilan asoslang.
+</Task>
+
+<Task title="2-daraja: ABR algoritmi (asosiy topshiriq)">
+`abr.py` dagi uchta funksiyani yozing: `throughput_based` (garmonik
+o‘rtacha, 6.2), `buffer_based` (chiziqli bufer xaritasi, 6.3) va
+`hybrid` (o‘zingiz loyihalaysiz). `python sim.py` ularni to‘rtta tarmoq
+izida sinaydi va QoE hisoblaydi.
+
+**Tekshiruv mezoni:** `sim.py` hisobotida barcha tekshiruvlar `OK`:
+har algoritm har izda `eng_yuqori` dan kam buferlaydi va `eng_past`
+dan yuqori bitreyt beradi; tebranuvchi izlarda `hybrid` `buffer` dan
+kam almashadi; va `hybrid` QoE si kamida 3 ta izda eng yaxshi.
+Uchinchi mezonga oddiy yechimlar o‘tmaydi — sizga gisterezis kerak.
+Natija jadvalini 6.3-bo‘limdagi jadval bilan solishtiring va o‘z
+gibridingiz qaysi izda yutqazayotganini tushuntiring.
+</Task>
+
+<Task title="3-daraja: kesh simulyatori">
+Zipf taqsimotidagi (alfa = 0.8, 1.0, 1.2) N = 1 000 000 video uchun
+10 million so‘rovlik ketma-ketlik yarating. Uchta kesh siyosatini
+solishtiring: LRU, LFU va “eng mashhur K ta — statik”. Kesh hajmi
+K = 1 000 dan 100 000 gacha.
+
+Keyin vaqt o‘lchovini qo‘shing: har kuni yangi 1% video paydo bo‘lsin
+va eng mashhurlar orasiga tushsin (7.4-jadval — mashhurlik vaqt bilan
+so‘nadi).
+
+**Tekshiruv mezoni:** log-chiziqli grafik — urish darajasi va K. Statik
+siyosat uchun natija 7.3-dagi `ln(K) / ln(N)` formulasiga (alfa = 1 da)
+yaqin chiqishi kerak. Vaqt o‘lchovi qo‘shilganda statik siyosat qanchalik
+yomonlashishini va LRU/LFU ning qaysi biri moslashuvchanroq ekanini
+raqam bilan ko‘rsating.
+</Task>
+
+<Task title="4-daraja: kodek iqtisodi modeli">
+Skript yoki jadval yozing. Kirish: ko‘rishlar taqsimoti (7.1-jadval
+yoki o‘zingizniki), har kodek uchun kodlash narxi va bitreyt tejashi,
+yetkazish narxi, saqlash narxi va saqlash muddati.
+
+Chiqish: har ko‘rishlar guruhi uchun optimal kodek to‘plami (faqat
+H.264; + VP9; + AV1), va butun katalog uchun jami xarajat — “hammaga
+H.264”, “hammaga AV1” va “mashhurlikka qarab” strategiyalari bo‘yicha.
+
+**Tekshiruv mezoni:** (1) “mashhurlikka qarab” strategiyasi ikkala
+chekka strategiyadan arzonroq chiqishi; (2) sezgirlik tahlili — kodlash
+narxini va trafik narxini 0.5×–2× oralig‘ida o‘zgartirganda zararsizlik
+nuqtasi qanday siljishi. 7.4-dagi Check xulosasini — “keskin taqsimotda
+qaror kirishlarga sezgir emas” — o‘z grafigingiz bilan tasdiqlang
+yoki rad eting.
+</Task>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Kadr (frame) | Videodagi bitta rasm |
+| YUV 4:2:0 | Yorqinlik har pikselda, rang 2×2 guruhda — piksel boshiga ~1.5 bayt |
+| Kodek | Videoni siqish va ochish algoritmi (H.264, VP9, AV1) |
+| I / P / B kadr | To‘liq / oldingiga nisbatan / ikki tomonga nisbatan saqlangan kadr |
+| GOP | Ikki I-kadr orasidagi kadrlar guruhi |
+| Harakat kompensatsiyasi | Blokni oldingi kadrdan qidirib, faqat siljish va farqni saqlash |
+| Bitreyt | Sekundiga bitlar — video “og‘irligi” |
+| Bitreyt zinapoyasi | Bitta videoning turli o‘lcham va bitreytdagi nusxalari |
+| Bo‘lak (segment) | Mustaqil o‘ynaladigan 2–6 soniyalik qism |
+| Manifest | Nusxalar va bo‘laklar ro‘yxati (HLS: `.m3u8`, DASH: `.mpd`) |
+| ABR | Adaptiv bitreyt: pleyer har bo‘lakda sifatni tanlaydi |
+| Bufer | Pleyerda o‘ynashga tayyor video soniyalari |
+| Buferlash | Bufer bo‘shab, video to‘xtab qolishi |
+| Gisterezis | Yuqoriga va pastga o‘tish uchun turli chegaralar |
+| Transkodlash | Videoni bir formatdan boshqasiga qayta siqish |
+| Kontentga mos zinapoya | Har video uchun alohida tanlangan bitreytlar |
+| Provayder ichidagi kesh | Internet provayder tarmog‘ida joylashgan video kesh |
+| So‘rovlarni birlashtirish | Bir xil ob’ekt uchun ko‘p so‘rovni yuqoriga bitta qilib yuborish |
+| Erasure coding | Ma’lumotni bo‘lak + paritetga bo‘lib, kam joyda ortiqchalik |
+| QoE | Tajriba sifati: boshlanish, buferlash, bitreyt, almashishlar |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Har daqiqada yuklanadigan video | 500+ soat | YouTube rasmiy ma’lumoti (2019) |
+| Kunlik tomosha | 1 mlrd+ soat | YouTube rasmiy blogi (2017) |
+| Siqilmagan 1080p30 | ~746 Mbit/s | 1920×1080×1.5×30×8, hisoblab chiqilgan |
+| HLS | 2009-yil, Apple | Apple HLS; RFC 8216 |
+| DASH | 2012-yil | ISO/IEC 23009-1 |
+| HLS jonli pleyer buferi | ≥ 3 maqsad davomiylik | RFC 8216 |
+| VCU samaradorligi | 20–33× | Google blogi (2021); ASPLOS 2021 “Warehouse-scale video acceleration” |
+| Kontentga mos zinapoya | 2015-yil | Netflix texnik blogi, “Per-Title Encode Optimization” |
+| Buferga asoslangan ABR | 2014-yil | Huang va boshq., SIGCOMM 2014 |
+| QoE formulasi (sim.py) | λ = 1, μ = 4.3 | Yin va boshq., SIGCOMM 2015 (MPC) |
+| Buferlash va tomosha vaqti bog‘liqligi | — | Dobrian va boshq., SIGCOMM 2011 |
+| Ikki bosqichli tavsiyalar | 2016-yil | Covington va boshq., RecSys 2016 |
+| Standart sifat SD ga tushirilgan | 2020-yil mart | YouTube e’lonlari |
+| Zipf kesh urish darajasi | ≈ ln K / ln N | Garmonik sonlar, hisoblab chiqilgan |
+| ABR simulyatsiya natijalari (6.3) | 1.19 / 2.19 / 2.00 Mbit/s | `docs/amaliyot/youtube/sim.py`, referens implementatsiya |
+
+Yetkazilgan va yuklangan o‘rtacha bitreytlar, ko‘rishlar taqsimoti
+(7.1), kodlash narxlari (yadro-soniya), yadro, trafik va saqlash
+narxlari, kesh urish darajalari, provayder tranzit narxi, saqlash
+hajmi — **illyustratsiya uchun taxminiy** raqamlar. Ular tartib
+jihatidan ishonchli, lekin aniq emas; xulosalar esa (7.4-dagi Check)
+ularning ikki barobarlik xatosiga chidamli bo‘lishi uchun tanlangan.
+
+## 21. Manbalar
+
+- Apple, HTTP Live Streaming (RFC 8216)
+- ISO/IEC 23009-1, MPEG-DASH
+- Te-Yuan Huang va boshq. (2014), “A Buffer-Based Approach to Rate
+  Adaptation: Evidence from a Large Video Streaming Service”, SIGCOMM
+- Xiaoqi Yin va boshq. (2015), “A Control-Theoretic Approach for Dynamic
+  Adaptive Video Streaming over HTTP”, SIGCOMM
+- Kevin Spiteri va boshq. (2016), “BOLA: Near-Optimal Bitrate Adaptation
+  for Online Videos”
+- Florin Dobrian va boshq. (2011), “Understanding the Impact of Video
+  Quality on User Engagement”, SIGCOMM
+- Netflix texnik blogi (2015), “Per-Title Encode Optimization”
+- Parthasarathy Ranganathan va boshq. (2021), “Warehouse-Scale Video
+  Acceleration: Co-design and Deployment in the Wild”, ASPLOS
+- Paul Covington, Jay Adams, Emre Sargin (2016), “Deep Neural Networks
+  for YouTube Recommendations”, RecSys
+- Alliance for Open Media — AV1 spetsifikatsiyasi

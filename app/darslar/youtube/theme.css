@@ -1,0 +1,35 @@
+/* YouTube skini — tomosha sahifasi, qorong'i rejim (rasmiy brend materiali emas) */
+[data-skin="youtube"] {
+  --skin-bg: #0f0f0f;
+  --skin-surface: #1b1b1b;
+  --skin-surface-2: #272727;
+  --skin-border: #3a3a3a;
+  --skin-text: #f1f1f1;
+  --skin-muted: #aaaaaa;
+  --skin-accent: #ff4e45;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(255, 78, 69, 0.4);
+  --skin-radius: 12px;
+  --skin-font: "Roboto", "Arial", ui-sans-serif, system-ui, sans-serif;
+  --skin-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --yt-red: #ff0000;
+  --yt-chip: #272727;
+  --yt-chip-hover: #3f3f3f;
+}
+
+/* Sarlavhalar — video bo'limlari (chapters) belgisi kabi qizil chiziqcha bilan */
+[data-skin="youtube"] .lesson-prose h2::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 0.95em;
+  margin-right: 0.6rem;
+  vertical-align: -0.1em;
+  border-radius: 2px;
+  background: var(--yt-red);
+}
+
+body:has([data-skin="youtube"]) {
+  background: #0f0f0f;
+}

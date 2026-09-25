@@ -46,8 +46,9 @@ Hozir 4 ta dars tayyor:
 05 — Reddit qanday ishlaydi (14 000 so'z)
 06 — Slack qanday ishlaydi (19 500 so'z)
 07 — WhatsApp qanday ishlaydi (20 000 so'z)
+08 — YouTube qanday ishlaydi (19 000 so'z)
 
-Yana 10 tasi rejada: Kafka, Amazon S3, YouTube, Google Docs, Uber ETA, Spotify,
+Yana 9 tasi rejada: Kafka, Amazon S3, Google Docs, Uber ETA, Spotify, Airbnb,
 fond birjasi va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
@@ -67,8 +68,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-7 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp), 10 tasi rejada. Internetsiz ham o'qish mumkin.
+8 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp, YouTube), 9 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -249,6 +250,33 @@ bitta a'zo chiqishi nega million xabar turadi, oflayn telefon uchun
 navbat va Little qonuni, yangi yil kechasi vaqt mintaqalari bo'ylab.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/whatsapp/
+```
+
+---
+### 3.8 — YouTube
+
+```
+Bir soniya siqilmagan 1080p video — 93 megabayt.
+YouTube'dagi o'sha soniya — taxminan 600 kilobayt.
+
+150 barobar. Kodek har bir kadrni saqlamaydi — faqat oldingi kadrdan
+nima o'zgarganini: "bu blok 3 piksel chapga surildi".
+
+Lekin eng qiziq raqam boshqa: AV1 kodeki videoni yana 30% kichikroq
+qiladi, ammo siqishning o'zi shunchalik qimmatki, u faqat har bir
+daqiqasi ~30 000 marta ko'riladigan videolar uchun o'zini oqlaydi.
+Ya'ni yuklangan videolarning taxminan 2% i uchun.
+
+Qolgan 98% — arzon kodekda. Chunki ko'rishlar juda notekis: videolarning
+yarmi 100 martadan kam ko'riladi.
+
+Yangi dars — YouTube qanday ishlaydi (19 000 so'z):
+kodek va I-kadrlar, bitreyt zinapoyasi, pleyer har 4 soniyada qanday
+qaror qiladi, provayderlar ichidagi keshlar va kuniga 1 eksabayt trafik,
+uzun dum iqtisodi. Amaliyotda — o'zingizning ABR algoritmingizni
+simulyatorda sinaysiz.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/youtube/
 ```
 
 ---
