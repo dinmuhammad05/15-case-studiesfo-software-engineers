@@ -1,0 +1,31 @@
+/* Amazon S3 skini — bulut konsoli uslubi (rasmiy brend materiali emas) */
+[data-skin="amazon-s3"] {
+  --skin-bg: #f2f3f3;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f4f4f4;
+  --skin-border: #e9ebed;
+  --skin-text: #000716;
+  --skin-muted: #5f6b7a;
+  --skin-accent: #0972d3;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(9, 114, 211, 0.35);
+  --skin-radius: 12px;
+  --skin-font: "Amazon Ember", "Helvetica Neue", Roboto, Arial, ui-sans-serif, sans-serif;
+  --skin-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --s3-nav: #232f3e;
+  --s3-nav-2: #0f1b2a;
+  --s3-orange: #ff9900;
+  --s3-orange-dark: #ec7211;
+  --s3-green: #037f0c;
+  --s3-line: #d1d5db;
+  --s3-shadow: 0 1px 1px rgba(0, 28, 36, 0.3), 1px 1px 1px rgba(0, 28, 36, 0.15);
+}
+
+[data-skin="amazon-s3"] .lesson-prose h2 {
+  letter-spacing: -0.01em;
+}
+
+body:has([data-skin="amazon-s3"]) {
+  background: #f2f3f3;
+}

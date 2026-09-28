@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 12 ta dars tayyor:
+Hozir 13 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -51,8 +51,9 @@ Hozir 12 ta dars tayyor:
 10 — Google Docs qanday ishlaydi (19 000 so'z)
 11 — Airbnb qanday ishlaydi (19 500 so'z)
 12 — Uber ETA'ni qanday hisoblaydi (19 000 so'z)
+13 — Amazon S3 qanday ishlaydi (18 500 so'z)
 
-Yana 5 tasi rejada: Kafka, Amazon S3, fond birjasi va boshqalar.
+Yana 4 tasi rejada: Kafka, fond birjasi, Bluesky va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -72,7 +73,7 @@ qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
 12 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA), 5 tasi rejada. Internetsiz ham o'qish mumkin.
+Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA, Amazon S3), 4 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
@@ -391,6 +392,31 @@ https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/uber-eta/
 
 ---
 
+### 3.13 — Amazon S3
+
+```
+Oddiy server diski yiliga taxminan 1% ehtimol bilan buziladi.
+Ya'ni bitta diskdagi fayl — "99% saqlanadi". Ikkita to'qqiz.
+
+Amazon S3 esa 99.999999999% va'da qiladi. O'n bitta to'qqiz.
+10 million fayl saqlasangiz — o'rtacha 10 000 yilda bittasi yo'qoladi.
+
+Va bu va'da buziladigan disklar ustida beriladi: million diskli parkda
+har soatda bitta disk o'ladi. Qolgan to'qqizta to'qqiz qayerdan keladi?
+
+Yangi dars — Amazon S3 qanday ishlaydi (18 500 so'z):
+nega 3 nusxa emas, "erasure coding" (va maktabdagi to'g'ri chiziq bunga
+qanday aloqador), nega tiklash tezligi nusxalar sonidan muhimroq, disk
+"jim" yolg'on gapirsa nima bo'ladi, 2020-yilda S3 qanday qilib kuchli
+izchil bo'ldi, 2017-yilda bitta buyruq S3'ni 4 soatga qanday to'xtatdi.
+Amaliyotda — Reed-Solomon kodi bilan o'z ob'ekt omboringizni yozasiz:
+disklarni "o'ldirasiz", baytlarni buzasiz — ma'lumot baribir tiklanadi.
+
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/amazon-s3/
+```
+
+---
+
 ## 4. SO'ROVNOMA (poll) — engagement uchun
 
 Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
@@ -398,7 +424,7 @@ Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 **Savol:** Keyingi darsni qaysi mavzuda yozay?
 
 - Apache Kafka (commit log, partition, exactly-once)
-- Amazon S3 (erasure coding, 11 ta to'qqizlik)
+- Meta Serverless (XFaaS, sovuq start)
 - Bluesky (federatsiya, AT Protocol)
 - Fond birjasi (matching engine, mikrosekundlar)
 

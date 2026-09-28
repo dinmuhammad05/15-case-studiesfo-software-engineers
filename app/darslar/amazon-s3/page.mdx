@@ -1,0 +1,2573 @@
+## Bu darsda nima o‘rganasiz
+
+Telefoningizdagi rasm, Netflix’dagi film, bank hisobotining PDF nusxasi,
+ChatGPT’ni o‘qitish uchun yig‘ilgan matnlar — bularning katta qismi qaysidir
+**ob’ekt ombori**da (object storage) yotadi. Eng kattasi — Amazon S3. U 2006-yilda
+ishga tushgan va 2023-yil holatiga ko‘ra **280 trilliondan ortiq** ob’ektni
+saqlaydi va sekundiga o‘rtacha **100 milliondan ortiq** so‘rovga javob beradi.
+
+S3’ning mijozga bergan asosiy va’dasi bitta gap bilan aytiladi: **yozgan
+narsangiz yo‘qolmaydi**. Aniqrog‘i — “yiliga 99.999999999% saqlanish”,
+qisqacha “11 ta to‘qqiz”. Qiziq tomoni shundaki, S3 bu va’dani **buziladigan**
+qurilmalar ustida beradi: disklar har kuni ishdan chiqadi, serverlar yonadi,
+tarmoq uziladi, odamlar xato buyruq yozadi. Dars ana shu paradoks haqida:
+**ishonchsiz qismlardan qanday qilib ishonchli tizim quriladi**.
+
+Darsni to‘rtta savol boshqaradi:
+
+**1. Disk buzilsa, ma’lumot qayerdan tiklanadi?** Javob — ortiqcha nusxa.
+Lekin nechta nusxa? Uch nusxa — ishonchli, lekin uch barobar qimmat. Erasure
+coding — xuddi shunday ishonchli va ~2 barobar arzon, lekin murakkabroq.
+Bu darsning markaziy mavzusi.
+
+**2. Trillionlab ob’ektdan kerakligini qanday topamiz?** Ma’lumotning o‘zi
+bir joyda, “qaysi fayl qayerda” degan katalog — boshqa joyda. Bu katalog
+(metadata indeksi) S3’ning eng qiyin qismlaridan biri.
+
+**3. Yozdim — o‘qidim, eskisini ko‘rmaymanmi?** 14 yil davomida S3 bunga
+“har doim ham emas” deb javob bergan. 2020-yilda esa “ha, har doim” bo‘ldi.
+Nima o‘zgardi — 8-bo‘limda.
+
+**4. Xato jim bo‘lsa-chi?** Eng xavfli buzilish — ovozsiz: diskdagi bitta bit
+o‘zgarib qoladi va hech kim bilmaydi. S3 bunga qarshi har bir baytni
+tekshiradi va buzilganini o‘zi tuzatadi.
+
+Har bir yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan tushuntiriladi. Oldingi darslar (ayniqsa Google Docs
+va Airbnb) shart emas, lekin ular bilan tanish bo‘lsangiz, “haqiqat manbai”
+va “hosila ko‘rinish” g‘oyalari tanish tuyuladi.
+
+## 1. Muammo: “hech qachon yo‘qolmaydigan fayl”
+
+### 1.1 S3 nima qiladi
+
+Oddiy tilda: S3 — bu internetdagi **cheksiz katta papka**. Unga istalgan
+fayl qo‘yasiz, nom berasiz va keyin shu nom bo‘yicha qaytarib olasiz.
+Faylning ichidagi bilan S3 qiziqmaydi — u uchun hammasi baytlar.
+
+| Amal | Nima qiladi | Misol |
+| --- | --- | --- |
+| PUT | Ob’ektni yozadi (butunlay, qismlab emas) | `PUT s3://rasmlar/2025/iyun/tug-ilgan-kun.jpg` |
+| GET | Ob’ektni (yoki uning bir qismini) o‘qiydi | `GET ... Range: bytes=0-1048575` — birinchi 1 MB |
+| DELETE | Ob’ektni o‘chiradi | Versiyalash yoqilgan bo‘lsa — “o‘chirildi” belgisi |
+| LIST | Kalit prefiksi bo‘yicha ro‘yxat | `LIST prefix=2025/iyun/` — iyundagi barcha rasmlar |
+| HEAD | Faqat ma’lumot haqidagi ma’lumot (hajm, sana) | Faylni yuklamay, borligini tekshirish |
+
+Ro‘yxatda bo‘lmagan narsalar ham muhim. S3’da faylning **o‘rtasini
+o‘zgartirib** bo‘lmaydi (oddiy diskdagi kabi) — faqat butun ob’ektni
+qaytadan yozish mumkin. “Papkaga ko‘chirish” (rename) yo‘q — nusxa olib,
+eskisini o‘chirish kerak. Bu cheklovlar tasodifiy emas: ular S3’ni
+oddiy qiladi, oddiylik esa uni katta miqyosda ishonchli qiladi. 2-bo‘limda
+nima uchunligini ko‘ramiz.
+
+### 1.2 Talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Saqlanish (durability) | Yiliga 99.999999999% — ob’ekt yo‘qolmaydi |
+| Mavjudlik (availability) | Standart sinf uchun 99.99% loyihalangan — so‘rovga javob beriladi |
+| Izchillik | Yozishdan keyingi har qanday o‘qish yangi versiyani ko‘radi (2020-yildan) |
+| Hajm | Bitta ob’ekt 0 baytdan 5 TB gacha; ob’ektlar soni cheklanmagan |
+| O‘tkazuvchanlik | Bitta prefiksga sekundiga 3 500 yozish va 5 500 o‘qish; prefikslar ko‘paysa — ko‘proq |
+| Narx | Oyiga bir GB uchun sentlar; kam ishlatiladigan ma’lumot uchun — yanada arzon |
+
+Birinchi ikki qatorni adashtirish oson, lekin ular butunlay boshqa narsa.
+**Saqlanish** — “ma’lumot yo‘qolmaydimi?”. **Mavjudlik** — “hozir ololamanmi?”.
+Tizim bir soat ishlamay qolishi mumkin (mavjudlik buzildi), lekin keyin
+hamma fayl joyida bo‘ladi (saqlanish buzilmadi). Aksincha holat ancha
+yomonroq: tizim ishlaydi, lekin faylingiz yo‘q. Shuning uchun S3 ikki
+raqamni alohida va’da qiladi va ular orasidagi farq ~7 ta to‘qqiz.
+
+<Calc title="Mavjudlik va saqlanish: raqamlar tilida" result="99.99% mavjudlik — yiliga ~53 daqiqa ishlamaslik; 99.999999999% saqlanish — 10 million fayldan biri 10 000 yilda bir marta yo'qoladi">{`MAVJUDLIK 99.99%:
+  yilda 365 x 24 x 60 = 525 600 daqiqa
+  0.01% = 525 600 x 0.0001 = ~53 daqiqa "javob bermaslik" yiliga
+
+SAQLANISH 99.999999999% (11 ta to'qqiz):
+  bitta ob'ektning bir yilda yo'qolish ehtimoli: 1 - 0.99999999999 = 1e-11
+  10 000 000 (1e7) ob'ekt saqlasangiz:
+    yiliga kutilgan yo'qotish: 1e7 x 1e-11 = 1e-4 ob'ekt
+    ya'ni o'rtacha 1 / 1e-4 = 10 000 yilda bitta ob'ekt
+
+Taqqoslash: yaxshi server diski yiliga ~1% ehtimol bilan buziladi
+  -> bitta diskdagi fayl uchun "saqlanish" ~99%, ya'ni ikkita to'qqiz`}</Calc>
+
+Oxirgi qator butun darsning boshlang‘ich nuqtasi: **bitta disk ikkita
+to‘qqiz beradi, bizga o‘n bitta kerak**. Qolgan to‘qqizta to‘qqiz
+qayerdan keladi? Qisqa javob: nusxalar, tez tiklash va doimiy tekshiruvdan.
+Batafsil javob — 5 va 6-bo‘limlarda.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="280 T+" label="Ob'ektlar" hint="2023, AWS" />
+  <Stat value="100 M/s+" label="O'rtacha so'rovlar" hint="2023, AWS" />
+  <Stat value="11 ta 9" label="Yillik saqlanish" hint="Loyihaviy" />
+  <Stat value="5 TB" label="Eng katta ob'ekt" hint="S3 hujjatlari" />
+</StatGrid>
+
+<Calc title="Katta parkda disklar har kuni buziladi" result="Million diskli parkda kuniga ~30 disk ishdan chiqadi — buzilish favqulodda holat emas, oddiy ish kuni">{`Faraz: park 1 000 000 qattiq disk (S3 miqyosida - tartib jihatidan
+  real: AWS ochiq aytadiki, S3 millionlab disk ustida ishlaydi)
+Yillik buzilish ehtimoli (AFR): ~1% (ochiq statistikalarda 1-2%)
+
+Yiliga buziladigan disklar: 1 000 000 x 0.01 = 10 000
+Kuniga: 10 000 / 365 = ~27 disk
+Soatiga: ~1 disk
+
+Bitta disk: 20 TB. Kuniga yo'qotiladigan "xom" hajm:
+  27 x 20 TB = ~540 TB — har kuni qayta tiklanishi kerak`}</Calc>
+
+Bu hisob S3’ni tushunishning kaliti. Kichik tizimda disk buzilishi —
+favqulodda hodisa: kimdir qo‘ng‘iroq qiladi, diskni almashtiradi, zaxiradan
+tiklaydi. S3 miqyosida disk **soatiga bittadan** buziladi. Buni odam
+bilan hal qilib bo‘lmaydi — tiklash to‘liq avtomatik, doimiy fon jarayoni
+bo‘lishi kerak. Tizim “buzilishdan keyin tiklanadigan” emas, **doimo
+tiklanib turadigan** holatda yashaydi.
+
+<Calc title="So'rovlar va ob'ektlar: o'rtacha fayl qanchalik kichik" result="O'rtacha so'rov kichik; ob'ektlarning ko'pchiligi kichik, lekin baytlarning ko'pchiligi katta fayllarda">{`So'rovlar: ~100 M/s -> kuniga ~8.6 trillion so'rov
+Ob'ektlar: ~280 trillion
+
+Ob'ekt hajmlari taqsimoti (tipik object storage, faraz):
+  ob'ektlarning ~80% i 1 MB dan kichik (rasmlar, JSON, loglar)
+  lekin baytlarning ~80% i 100 MB dan katta ob'ektlarda (video, zaxiralar)
+
+Oqibat — ikki xil muammo:
+  kichik ob'ektlar: har biri uchun metadata yozuvi, so'rov narxi, indeks hajmi
+  katta ob'ektlar: disk va tarmoq o'tkazuvchanligi, bo'laklab yuklash`}</Calc>
+
+Ikki xil muammo ikki xil qatlamga tushadi. **Kichik ob’ektlar** — metadata
+indeksining yuki: 280 trillion yozuvni saqlash va har so‘rovda tez
+topish. **Katta ob’ektlar** — disklar va tarmoq yuki: terabaytlarni
+yozish, o‘qish va buzilganda qayta tiklash. S3 arxitekturasi aynan shu
+ikki qatlamga bo‘lingan (5-bo‘lim, 2-qadam).
+
+<Check q="Saqlanish (durability) va mavjudlik (availability) o'rtasidagi farqni misol bilan tushuntiring. Qaysi biri buzilsa yomonroq?">
+**Mavjudlik** — hozir so‘rovga javob olish imkoniyati. **Saqlanish** —
+ma’lumotning umuman mavjud bo‘lib qolishi.
+
+Misol: kutubxona yong‘in xavfsizligi tekshiruvi uchun bir kunga yopildi.
+Kitob olib bo‘lmaydi — mavjudlik buzildi. Ertasi kuni ochildi, barcha
+kitoblar joyida — saqlanish buzilmadi. Endi boshqa holat: kutubxona
+ochiq, lekin siz izlagan kitob yonib ketgan. Mavjudlik bor, saqlanish
+yo‘q.
+
+Saqlanish buzilishi yomonroq, chunki u **qaytarib bo‘lmaydi**. Mavjudlik
+buzilishi vaqtinchalik — kutish yoki qayta urinish yordam beradi. Shuning
+uchun S3 saqlanish uchun (11 ta to‘qqiz) mavjudlikdan (4 ta to‘qqiz)
+ancha qat’iy maqsad qo‘yadi, va arxitekturadagi ko‘p qarorlar “shubha
+bo‘lsa — javob berma, lekin ma’lumotni buzma” tamoyiliga asoslanadi.
+</Check>
+
+## 2. Nol nuqta: ob’ekt, kalit va disk
+
+S3’ning ichiga kirishdan oldin ikki narsani aniq tushunib olish kerak:
+**ob’ekt** nima (S3 nimani saqlaydi) va **disk** qanday buziladi (S3 nimaga
+qarshi kurashadi).
+
+### 2.1 Ob’ekt: kalit, baytlar va metadata
+
+Oddiy tilda: ob’ekt — bu **yorlig‘i bor quti**. Yorliq — kalit (nom),
+ichidagi narsa — baytlar, qutining yon tomonidagi yozuvlar — metadata.
+
+```
+Ob'ekt:
+  bucket:   rasmlar                              <- "katta papka" nomi
+  kalit:    2025/iyun/tug-ilgan-kun.jpg          <- to'liq nom (bitta satr!)
+  baytlar:  FF D8 FF E0 ... (3 412 889 bayt)     <- faylning o'zi
+  metadata: Content-Type: image/jpeg
+            ETag / nazorat summasi: "9b2cf5..."
+            yaratilgan: 2025-06-14T10:22:03Z
+            foydalanuvchi metadata: x-amz-meta-kamera=Pixel
+```
+
+Muhim kuzatuv: `2025/iyun/tug-ilgan-kun.jpg` — bu **bitta kalit**,
+papkalar daraxti emas. S3’da haqiqiy papkalar yo‘q. Konsol “2025” degan
+papkani ko‘rsatsa, bu shunchaki `/` belgisi bo‘yicha guruhlash: “`2025/`
+bilan boshlanadigan kalitlar bor”. Bu **tekis nomlar fazosi** (flat
+namespace) deyiladi.
+
+Nega bunday? Chunki haqiqiy papkalar qimmat. Oddiy fayl tizimida papkani
+qayta nomlash — bitta amal; lekin milliardlab fayl bo‘lgan papkada “ichidagi
+hamma narsa o‘zgardi” degani. Tekis kalitlarda bunday murakkab bog‘liqlik
+yo‘q: har ob’ekt mustaqil, va ularni istalgan serverga tarqatish mumkin.
+
+### 2.2 Ob’ekt o‘zgarmas
+
+S3’da ob’ektni **qisman o‘zgartirib bo‘lmaydi**. Faylning oxiriga bir qator
+qo‘shmoqchimisiz? Butun faylni qaytadan yozasiz. Bu noqulay tuyuladi, lekin
+tizim uchun katta sovg‘a:
+
+| O‘zgarmaslik nima beradi | Nega muhim |
+| --- | --- |
+| Nusxalar hech qachon “yarim yangilangan” bo‘lmaydi | Uch nusxadan biri eski, ikkitasi yangi bo‘lishi mumkin — lekin hech biri aralash emas |
+| Nazorat summasi bir marta hisoblanadi | Ob’ekt o‘zgarmasa, summa ham o‘zgarmaydi — tekshirish oddiy |
+| Kesh xavfsiz | Bir xil versiya har doim bir xil baytlar |
+| Yangi versiya — yangi yozuv | Eski versiyani saqlash (versiyalash) deyarli bepul qo‘shiladi |
+
+Bu Google Docs darsidagi “jurnal faqat qo‘shiladi” g‘oyasiga o‘xshaydi:
+**o‘zgartirish o‘rniga yangisini yozish** — taqsimlangan tizimlarda
+murakkablikni kamaytirishning eng kuchli usullaridan biri.
+
+### 2.3 Disk qanday buziladi
+
+S3’ning dushmani — disk. Uning buzilishining uch turi bor, va har biri
+boshqacha himoya talab qiladi.
+
+| Buzilish turi | Nima bo‘ladi | Qanchalik tez-tez | Qanday bilinadi |
+| --- | --- | --- | --- |
+| To‘liq buzilish | Disk ishlamay qoladi | Yiliga ~1–2% disk | Darhol: disk javob bermaydi |
+| O‘qib bo‘lmaydigan sektor | Bir bo‘lak o‘qilmaydi, qolgani ishlaydi | Har ~10¹⁴–10¹⁵ bit o‘qishda bitta | O‘qishga urinilganda xato |
+| Jim buzilish (bit rot) | Bit o‘zgaradi, disk xato bermaydi | Kam, lekin katta parkda muqarrar | Faqat nazorat summasi orqali |
+
+Uchinchi qator eng xavflisi. Disk “mana, o‘qidim” deydi, lekin qaytargan
+baytlar yozilganidan boshqacha. Sabablar turlicha: disk proshivkasidagi xato,
+xotirada bit o‘zgarishi, kabel yoki kontrollerdagi nosozlik, noto‘g‘ri joyga
+yozish. Hech qanday xato xabari yo‘q. Himoya faqat bitta: har bir ma’lumot
+bo‘lagi bilan birga uning **nazorat summasini** saqlash va har o‘qishda
+tekshirish.
+
+<Calc title="Katta diskni o'qib chiqishda xato ehtimoli" result="20 TB diskni to'liq o'qishda kamida bitta o'qilmaydigan sektorga duch kelish ehtimoli sezilarli — shuning uchun 'bitta nusxadan tiklash' xavfli">{`Disk: 20 TB = 20 x 10^12 bayt = 1.6 x 10^14 bit
+
+O'qib bo'lmaydigan xato darajasi (spetsifikatsiya bo'yicha):
+  oddiy disk: 1 xato / 10^14 bit
+  korporativ disk: 1 xato / 10^15 bit
+
+To'liq diskni bir marta o'qish:
+  oddiy: 1.6 x 10^14 / 10^14 = 1.6 kutilgan xato
+    -> kamida bitta xato ehtimoli: 1 - e^(-1.6) = ~80%
+  korporativ: 0.16 kutilgan xato -> ~15%
+
+Oqibat: disk buzildi, uning nusxasini boshqa diskdan to'liq o'qib
+  tiklamoqchimiz — va o'qish paytida ikkinchi diskda xato chiqadi.
+  Agar boshqa nusxa bo'lmasa — o'sha bo'lak yo'qoldi.`}</Calc>
+
+Bu hisob ko‘rsatadiki, ikki nusxa (asosiy + bitta zaxira) katta disklarda
+**yetarli emas**: bitta disk buzilganda, qolgan yagona nusxani o‘qish
+paytida xato chiqishi ehtimoli sezilarli. Spetsifikatsiyadagi raqamlar
+amalda ko‘pincha ancha yaxshiroq, lekin tizim eng yomon holatga
+mo‘ljallanadi. Shuning uchun katta ob’ekt omborlari kamida **uchta**
+mustaqil nusxaga yoki unga teng himoyaga (erasure coding) tayanadi.
+
+<Deep title="Nega disklar o'rtacha emas, 'vanna egri chizig'i' bo'yicha buziladi">
+Disk buzilish ehtimoli vaqt bo‘yicha tekis emas. U “vanna egri chizig‘i”
+(bathtub curve) shaklida:
+
+```
+buzilish
+ehtimoli
+   |\                                    /
+   | \                                  /
+   |  \________________________________/
+   +---------------------------------------> yosh
+   erta         foydali hayot           eskirish
+   (0-3 oy)     (1-4 yil)               (5+ yil)
+```
+
+**Erta buzilishlar** — ishlab chiqarish nuqsonlari: yangi disklarning bir
+qismi birinchi haftalarda buziladi. **Foydali hayot** — ehtimol past va
+barqaror. **Eskirish** — mexanik qismlar yeyiladi, ehtimol yana o‘sadi.
+
+Bu S3 kabi tizim uchun ikki amaliy oqibatga ega.
+
+**Yangi disklar sinovdan o‘tkaziladi.** Parkka qo‘shilishdan oldin disk
+bir necha kun yuk ostida ishlatiladi — erta nuqsonlilar shu paytda chiqadi.
+
+**Bir partiya disklar birga eskiradi.** Agar bir kunda 10 000 ta bir xil
+disk o‘rnatilsa, ular taxminan bir vaqtda eskirish bosqichiga kiradi.
+Bundan ham yomoni — bir partiyadagi disklarda bir xil ishlab chiqarish
+nuqsoni bo‘lishi mumkin. Shuning uchun bitta ob’ektning nusxalari
+**turli partiya, turli yosh, hatto turli ishlab chiqaruvchi** disklariga
+joylanadi. Bu “korrelyatsiyalangan buzilishlar”ga qarshi himoyaning bir
+qismi — 6-bo‘limda batafsil.
+</Deep>
+
+<Check q="Nega jim buzilishni (bit rot) disk o'zi aniqlay olmaydi va unga qarshi qanday himoya bor?">
+Disk o‘z ichida xatolarni tuzatuvchi kodlar ishlatadi va ko‘p xatolarni
+o‘zi aniqlaydi (o‘qib bo‘lmaydigan sektor — shunday aniqlangan xato). Lekin
+jim buzilish diskning **tashqarisida** yoki uning mantiqida yuz beradi:
+proshivka ma’lumotni noto‘g‘ri joyga yozdi, kontroller yoki kabel bitni
+o‘zgartirdi, server xotirasida bit o‘zgardi. Disk nuqtai nazaridan hammasi
+to‘g‘ri — u nima berilgan bo‘lsa, shuni saqladi va qaytardi.
+
+Himoya — **uchidan-uchiga** (end-to-end) nazorat summasi. Mijoz ob’ektni
+yuborayotganda summa hisoblanadi; har bir bosqichda (qabul qiluvchi server,
+diskka yozish, diskdan o‘qish, mijozga qaytarish) qayta hisoblanib,
+solishtiriladi. Mos kelmasa — o‘sha bo‘lak “buzilgan” deb belgilanadi va
+boshqa nusxadan olinadi.
+
+Ikkinchi qism — **fon tekshiruvi** (scrubbing): hech kim so‘ramagan
+ma’lumot ham muntazam o‘qilib, summasi tekshiriladi. Aks holda kam
+o‘qiladigan faylda buzilish yillar davomida yashirin qolishi va boshqa
+nusxa ham buzilgandan keyingina aniqlanishi mumkin. Bu 5-bo‘limning
+5 va 6-qadamlari.
+</Check>
+
+## 3. v0: bitta server va fayl tizimi
+
+Eng sodda ob’ekt ombori — bitta server, bitta katta disk va HTTP interfeys.
+Kalitni fayl yo‘liga aylantiramiz va baytlarni oddiy fayl sifatida
+saqlaymiz:
+
+```python
+import hashlib, os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+ROOT = "/data"
+
+def path_for(key: str) -> str:
+    # Bitta papkada millionlab fayl sekin — kalit xeshi bo'yicha 2 daraja papka
+    h = hashlib.sha256(key.encode()).hexdigest()
+    return os.path.join(ROOT, h[:2], h[2:4], h)
+
+class S3v0(BaseHTTPRequestHandler):
+    def do_PUT(self):
+        data = self.rfile.read(int(self.headers["Content-Length"]))
+        p = path_for(self.path)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        tmp = p + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(data); f.flush(); os.fsync(f.fileno())   # diskka haqiqatan yozilsin
+        os.replace(tmp, p)                                    # atomik: yo eski, yo yangi
+        self.send_response(200); self.end_headers()
+
+    def do_GET(self):
+        try:
+            with open(path_for(self.path), "rb") as f:
+                data = f.read()
+        except FileNotFoundError:
+            self.send_response(404); self.end_headers(); return
+        self.send_response(200); self.end_headers(); self.wfile.write(data)
+
+HTTPServer(("", 8080), S3v0).serve_forever()
+```
+
+Kodda ikkita muhim detal bor, ikkalasi ham to‘g‘ri. **`fsync`** — operatsion
+tizim ma’lumotni xotirada ushlab turmasdan, diskka haqiqatan yozishi uchun;
+busiz “yozildi” degan javobdan keyin elektr o‘chsa, fayl yo‘qolishi mumkin.
+**Vaqtinchalik fayl + `os.replace`** — yozish o‘rtasida xato bo‘lsa,
+yarim yozilgan fayl ko‘rinmaydi: yo eski versiya, yo to‘liq yangisi.
+
+Bu v0 **ishlaydi**: kichik jamoa uchun rasm va hujjatlarni saqlash, sekundiga
+yuzlab so‘rov, bir necha TB. Muammolar faqat vaqt va miqyos bilan chiqadi.
+
+## 4. Nima sindi
+
+### 4.1 Disk o‘ldi — ma’lumot ham
+
+<Calc title="Bitta diskning saqlanishi: 5 yil" result="5 yilda bitta diskdagi hamma narsani yo'qotish ehtimoli ~5% — har yigirma kompaniyadan biri">{`Disk yillik buzilish ehtimoli (AFR): ~1%
+Bir yilda omon qolish: 99%
+5 yilda omon qolish: 0.99^5 = ~95.1%
+  -> 5 yilda yo'qotish ehtimoli: ~4.9%
+
+Diskni RAID-1 (ko'zgu, 2 disk) qilsak:
+  ikkinchi disk birinchisi almashtirilguncha (masalan, 3 kun) buzilishi kerak
+  bir yilda: 2 x 0.01 (birinchisi) x 0.01 x 3/365 (ikkinchisi 3 kunda) = ~1.6e-6
+  -> "5-6 ta to'qqiz" — ancha yaxshi, lekin 11 dan uzoq
+  va bu faqat disk: server, elektr, yong'in hisobga olinmagan`}</Calc>
+
+Hisobning oxirgi qatori muhim: disklarni ko‘paytirish **bitta server
+ichida** ma’lum chegaragacha yordam beradi. Server blokining buzilishi,
+kontroller xatosi, noto‘g‘ri buyruq bilan formatlash, yong‘in — bularning
+hammasi ikki diskni **bir vaqtda** yo‘q qiladi. Nusxalar turli serverlarda,
+turli stoykalarda va turli binolarda bo‘lishi kerak.
+
+### 4.2 Butun ma’lumotlar markazi yonsa
+
+Bu nazariy xavf emas. 2021-yil mart oyida Yevropadagi yirik hosting
+provayderining Strasburgdagi ma’lumotlar markazida yong‘in chiqdi va bir
+bino butunlay yonib ketdi. Zaxirasi faqat o‘sha binoda (yoki qo‘shni
+binoda, xuddi shu maydonda) bo‘lgan mijozlar ma’lumotini butunlay yo‘qotdi.
+
+S3’ning javobi — **mavjudlik zonalari** (Availability Zone, AZ). Bitta AWS
+mintaqasi bir-biridan kilometrlab uzoqda joylashgan, alohida elektr,
+sovutish va tarmoqqa ega bo‘lgan bir nechta ma’lumotlar markazlari
+guruhidan iborat. Standart saqlash sinflari ma’lumotni **kamida uchta**
+AZ ga tarqatadi. Bitta AZ butunlay yo‘qolsa ham, ma’lumot saqlanadi.
+
+### 4.3 Hajm va tezlik tugaydi
+
+<Calc title="Bitta server qachon tugaydi" result="Bitta server ~1 PB va ~bir necha GB/s bilan cheklangan; S3 miqyosi uchun yuz minglab server kerak">{`Server: 60 ta disk x 20 TB = 1.2 PB xom hajm
+Tezlik: har disk ~200 MB/s ketma-ket, lekin tarmoq kartasi 25-100 Gbit/s
+  -> 60 x 200 MB/s = 12 GB/s disklar, tarmoq 100 Gbit/s = ~12 GB/s
+
+Tasodifiy kichik o'qishlar (4 KB rasmlar, JSON):
+  qattiq disk: ~100-200 IOPS (mexanik bosh harakatlanadi)
+  60 disk x 150 = ~9 000 kichik o'qish/s — bitta server
+
+Mashhur fayl: 1 ta video 100 000 marta/s so'ralsa
+  -> bitta server, bitta disk: jismonan imkonsiz`}</Calc>
+
+Hajmni ko‘paytirish uchun serverlar qo‘shamiz — lekin darhol savol tug‘iladi:
+**qaysi fayl qaysi serverda?** v0 da bu savol yo‘q edi (hammasi bitta
+diskda). Endi uning javobi — alohida, katta va o‘zi ham ishonchli bo‘lishi
+kerak bo‘lgan **indeks**. Bu 5-bo‘limning 2–3-qadamlari.
+
+### 4.4 Ro‘yxat berish (LIST) sekin
+
+Foydalanuvchi so‘raydi: “`2025/iyun/` bilan boshlanadigan barcha fayllarni
+ber”. v0 da kalitlar xesh bo‘yicha papkalarga tarqatilgan — xesh
+**tartibni yo‘q qiladi**. Ro‘yxat berish uchun butun diskni o‘qish kerak.
+
+<Calc title="Xesh bo'yicha tarqatilgan kalitlarda LIST" result="100 million fayl orasidan 1 000 tasini topish uchun 100 million yozuvni ko'rish kerak — daqiqalar">{`Diskda: 100 M ob'ekt, xesh bo'yicha 65 536 papkada
+So'rov: prefix = "2025/iyun/" (haqiqatda ~1 000 ta fayl)
+
+Xesh tartibni saqlamaydi -> barcha 100 M nomni ko'rish kerak
+  fayl tizimida katalog o'qish: ~1-5 mks / yozuv (keshda) — ~100-500 s
+  sovuq keshda (disk bo'ylab): soatlar
+
+Agar kalitlar TARTIBLANGAN indeksda saqlansa:
+  "2025/iyun/" ga ikkilik qidiruv: log2(1e8) = ~27 qadam
+  keyin ketma-ket 1 000 yozuv -> millisekundlar`}</Calc>
+
+Xulosa: kalitlar **tartiblangan** tuzilmada saqlanishi kerak (B-daraxt,
+LSM-daraxt yoki shunga o‘xshash). Lekin tartiblangan tuzilmaning o‘z
+muammosi bor — ketma-ket kalitlar (masalan, sana bilan boshlanuvchi)
+**bitta joyga** tushadi va o‘sha joy qiziydi. 5-bo‘limning 3-qadami va
+8-bo‘lim shu ziddiyat haqida.
+
+### 4.5 Jim buzilish
+
+v0 faylni yozadi va o‘qiydi — lekin baytlar to‘g‘riligini tekshirmaydi.
+Agar diskda yoki xotirada bit o‘zgarsa (2.3), foydalanuvchi buzilgan faylni
+oladi va **hech kim bilmaydi**. Rasm biroz buzilgan bo‘lib ko‘rinadi, arxiv
+ochilmaydi, ma’lumotlar bazasining zaxirasi tiklanmaydi — va bu faqat
+yillar o‘tib, zaxira kerak bo‘lganda aniqlanadi.
+
+<Callout type="xato" title="Zaxira nusxa bor — lekin tekshirilmagan">
+Ko‘p kompaniyalar “zaxira bor” deb xotirjam yuradi va birinchi marta uni
+tiklashga urinayotganda — haqiqiy avariya paytida — zaxira buzilgan yoki
+to‘liq emasligini biladi. Tekshirilmagan nusxa — nusxa emas. S3 buni
+tizim darajasida hal qiladi: har bir bo‘lak nazorat summasi bilan
+saqlanadi va fon jarayoni hamma ma’lumotni muntazam o‘qib tekshiradi.
+O‘z tizimlaringizda ham qoida shu: zaxiradan **muntazam** tiklab ko‘ring.
+</Callout>
+
+<Check q="v0 da fsync va vaqtinchalik fayl ishlatilgan. Ular qaysi muammoni hal qiladi va qaysini hal qilmaydi?">
+**Hal qiladi**: bitta server ichidagi **to‘satdan to‘xtash** (elektr o‘chishi,
+jarayon qulashi). `fsync` “yozildi” javobidan oldin ma’lumot diskda ekanini
+kafolatlaydi. Vaqtinchalik fayl va atomik `rename` esa yozish o‘rtasida
+to‘xtash yarim yozilgan faylni ko‘rsatmasligini ta’minlaydi — o‘quvchi yo
+eski, yo yangi versiyani ko‘radi.
+
+**Hal qilmaydi**: disk yoki serverning **o‘zi** yo‘qolishini (4.1), butun
+binoning yo‘qolishini (4.2), jim buzilishni (4.5). `fsync` baytlarni diskka
+yozadi, lekin disk ertaga o‘lsa, ular ham o‘ladi. Nazorat summasi yo‘q —
+buzilgan baytlar “to‘g‘ri” deb qaytariladi.
+
+Umumiy saboq: ishonchlilik **qatlamlardan** iborat. Har qatlam o‘z
+xavfidan himoya qiladi: `fsync` — to‘satdan to‘xtashdan, nusxalar — disk va
+server yo‘qolishidan, turli AZ — bino yo‘qolishidan, nazorat summasi — jim
+buzilishdan, versiyalash — inson xatosidan. Bitta qatlam boshqasining
+o‘rnini bosmaydi.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar uch guruhda. **Ma’lumotni yo‘qotmaslik** (1–8): nusxalar, katalog,
+joylashtirish, nazorat summalari, tiklash va erasure coding. **Foydalanish
+qulayligi va narx** (9–12): katta fayllar, saqlash sinflari, izchillik,
+inson xatosidan himoya. **Ichki sifat va yangi imkoniyatlar** (13–14):
+saqlash tugunini qayta yozish va shartli yozuvlar.
+
+Bu ketma-ketlik S3’ning aniq tarixiy xronologiyasi emas — ichki tafsilotlarning
+ko‘pi ochiq e’lon qilinmagan. Bu **mantiqiy** ketma-ketlik: har qadam
+oldingisining muammosini hal qiladi. Ochiq manbalarda tasdiqlangan joylar
+alohida belgilangan.
+
+<Step n={1} title="Uch nusxa, uch xil joyda" gain="Bitta disk, server yoki hatto bino yo'qolsa ham ma'lumot qoladi" cost="Hajm 3 barobar; har yozish uch joyga — kechikish va tarmoq trafigi">
+Oddiy tilda: muhim hujjatning uch nusxasini qilib, ularni uch xil shaharda
+saqlaysiz. Bittasi yonsa, qolgan ikkitasidan yangi nusxa olasiz.
+
+Har ob’ekt uch nusxada yoziladi — va nusxalar **turli** disklarda, turli
+serverlarda, turli AZ larda bo‘lishi shart. Mijozga “yozildi” javobi faqat
+nusxalar haqiqatan diskka yozilganidan keyin qaytadi: “bir nusxa yozildi,
+qolganlari keyin” — bu 4.1 dagi xavfni qaytaradi.
+
+Uch nusxaning kuchi bitta shartga bog‘liq: **buzilgan nusxa tez tiklanishi
+kerak**. Ma’lumot faqat hamma nusxa **tiklanishdan oldin** yo‘qolsa
+yo‘qoladi.
+
+<Calc title="Uch nusxa qancha to'qqiz beradi" result="Mustaqil buzilishlarda va 6 soatlik tiklashda — ~12 ta to'qqiz; tiklash 1 haftaga cho'zilsa — ~9, bir oyga — ~7.7">{`Disk buzilish tezligi: 1% yiliga -> lambda = 0.01 / yil
+Tiklash oynasi T (buzilgan nusxani boshqa diskda qayta yaratish vaqti)
+
+Ob'ekt yo'qolishi uchun (taxminiy, L = lambda):
+  birinchi nusxa buziladi:                  3 x L (yiliga)
+  shu T ichida qolgan 2 nusxa ham buziladi: (L x T)^2
+  P(yo'qotish, yiliga) = 3 x L^3 x T^2
+
+T = 6 soat = 6 / 8760 yil = 6.85e-4:
+  3 x (0.01)^3 x (6.85e-4)^2 = 3 x 1e-6 x 4.7e-7 = ~1.4e-12
+  -> ~11.8 ta to'qqiz
+
+T = 1 hafta = 0.0192 yil:  3 x 1e-6 x 3.7e-4 = ~1.1e-9 -> ~9 ta to'qqiz
+T = 1 oy = 0.083 yil:      3 x 1e-6 x 6.9e-3 = ~2.1e-8 -> ~7.7 ta to'qqiz`}</Calc>
+
+Formula `T²` ga bog‘liq: tiklash vaqti ikki barobar qisqarsa, yo‘qotish
+ehtimoli **to‘rt** barobar kamayadi. Bu S3 dizaynining eng muhim saboqlaridan
+biri: **nusxalar soni emas, tiklash tezligi** hal qiluvchi. Lekin bu hisob
+buzilishlar **mustaqil** deb faraz qiladi — haqiqatda ular ko‘pincha
+bog‘liq (bir partiya disklar, bir stoyka, bir elektr liniyasi). 6-bo‘lim
+shu farq haqida.
+</Step>
+
+<Step n={2} title="Katalog va javonlarni ajratish: metadata alohida" gain="Ma'lumot istalgan serverda bo'lishi mumkin; kalit bo'yicha qidiruv tez" cost="Katalogning o'zi — trillionlab yozuvli, ishonchli bo'lishi kerak bo'lgan ikkinchi tizim">
+Oddiy tilda: katta kutubxonada kitoblar javonlarda, lekin qaysi kitob
+qaysi javonda ekanini **katalog** biladi. Siz katalogga qaraysiz, keyin
+javonga borasiz. Katalog va javonlar alohida.
+
+S3’da ham shunday: **indeks** (metadata qatlami) har kalit uchun “baytlar
+qaysi saqlash tugunlarida, qaysi bo‘laklarda, hajmi va nazorat summasi
+qanday” degan yozuvni saqlaydi. **Saqlash tugunlari** esa faqat baytlar
+bo‘laklarini saqlaydi va ular haqida hech narsa bilmaydi — “bo‘lak ID
+si 7f3a… — mana baytlari”.
+
+```
+PUT rasmlar/2025/iyun/a.jpg:
+  1. baytlar -> saqlash tugunlari (bo'laklar, nusxalar)     -> bo'lak ID lar
+  2. indeks yozuvi: (rasmlar, 2025/iyun/a.jpg) ->
+       { versiya, hajm, summa, bo'laklar: [tugun 17: id1, tugun 402: id2, ...] }
+  3. faqat 2-qadam muvaffaqiyatli bo'lsa -> mijozga "200 OK"
+
+GET: indeks -> bo'lak joylari -> saqlash tugunlaridan o'qish
+```
+
+Tartib muhim: avval baytlar, keyin indeks. Agar teskari bo‘lsa, indeks
+“ob’ekt bor” desa-yu, baytlar hali yozilmagan bo‘lishi mumkin. To‘g‘ri
+tartibda yomon holat faqat bitta: baytlar yozildi, indeks yozilmadi —
+“yetim” bo‘laklar. Ular zararsiz (hech kim ularni ko‘rmaydi) va fon
+jarayoni vaqti-vaqti bilan ularni tozalaydi.
+
+<Calc title="Metadata ham katta ma'lumot" result="280 trillion ob'ekt x ~200-500 bayt = ~50-140 PB faqat katalog; u ham bo'linishi va nusxalanishi kerak">{`Bitta indeks yozuvi (taxminan):
+  bucket + kalit (o'rtacha ~60-100 bayt)
+  versiya ID, hajm, sana, nazorat summasi (~50 bayt)
+  bo'laklar joylashuvi (9-12 ta tugun ID + bo'lak ID, ~100-300 bayt)
+  -> ~200-500 bayt
+
+280 x 10^12 ob'ekt x 200-500 bayt = 56-140 x 10^15 bayt = ~56-140 PB
+
+Taqqoslash: bu ko'p kompaniyalarning BUTUN ma'lumot omboridan katta
+  -> katalog bitta ma'lumotlar bazasiga sig'maydi, u o'zi taqsimlangan tizim`}</Calc>
+</Step>
+
+<Step n={3} title="Indeksni kalit oraliqlari bo'yicha bo'lish" gain="Katalog gorizontal kengayadi; LIST tartiblangan va tez" cost="Ketma-ket kalitlar bir bo'lakka tushadi — 'issiq' bo'laklarni avtomatik bo'lish kerak">
+Katalogni bo‘lishning ikki usuli bor: kalit **xeshi** bo‘yicha (yuk tekis
+tarqaladi, lekin tartib yo‘qoladi — LIST sekin, 4.4) yoki kalit
+**oraliqlari** bo‘yicha (`a…f` bir serverda, `g…m` boshqasida — tartib
+saqlanadi, LIST tez). S3 tartibni saqlaydi: LIST javobi har doim kalitlar
+alifbo tartibida.
+
+Oraliqlar bo‘yicha bo‘lishning muammosi — **issiq nuqta**. Agar hamma
+yangi kalitlar `2025-06-14/…` bilan boshlansa, hamma yozuvlar bitta
+oraliqqa, bitta serverga tushadi. Yechim — oraliqlarni **avtomatik bo‘lish**:
+bitta oraliqqa yuk oshsa, u ikkiga bo‘linadi va biri boshqa serverga ko‘chadi.
+
+<Calc title="Prefiks bo'yicha tezlik chegarasi" result="Bitta prefiks ~3 500 yozish/s va ~5 500 o'qish/s; 10 ta prefiksga tarqatilsa — 35 000 / 55 000">{`S3 hujjatlaridagi chegara (2018-yildan):
+  har bir bo'lingan prefiksga: 3 500 PUT/COPY/POST/DELETE va 5 500 GET/HEAD sekundiga
+
+Misol: sekundiga 20 000 ta log fayl yoziladi
+  bitta prefiks "logs/2025-06-14/" -> 3 500 dan oshadi -> 503 "Slow Down"
+  S3 yuk oshganini ko'rib, oraliqni bo'ladi — lekin bu daqiqalar oladi
+
+Oldindan tarqatish: kalit boshiga 8 ta "chelak" (masalan, xesh % 8):
+  logs/0/2025-06-14/..., logs/1/..., ..., logs/7/...
+  -> 8 x 3 500 = 28 000 yozish/s sig'imi
+
+2018-yilgacha: chegara ~100-300 so'rov/s edi va AWS kalit boshiga
+  tasodifiy prefiks qo'yishni tavsiya qilgan; keyin chegara ~35 barobar oshdi`}</Calc>
+
+Bu Airbnb darsidagi “sharding kaliti — kafolat kaliti” g‘oyasining boshqa
+tomoni: bu yerda kalit mijozniki, va S3 uning qanday bo‘lishini
+bilmaydi. Shuning uchun tizim **moslashuvchan** — issiq joylarni o‘zi
+topib bo‘ladi — va mijozga oddiy qoida beradi: juda katta tezlik kerak
+bo‘lsa, yukni bir nechta prefiksga tarqating.
+</Step>
+
+<Step n={4} title="Joylashtirish: yukni minglab disklarga yoyish" gain="Bitta mijozning yuki minglab diskka tarqaladi — 'issiq' disk yo'q; yangi disklar asta-sekin to'ladi" cost="Joylashtirish xizmati — har yozishda qaror; yangi disklar darhol to'liq ishlatilmaydi">
+Har yangi ob’ekt bo‘laklari **qaysi disklarga** yozilishini joylashtirish
+(placement) xizmati hal qiladi. Qoidalar:
+
+```
+1. Bitta ob'ektning bo'laklari — turli disk, turli server, turli AZ
+2. Bo'sh joy bo'yicha muvozanat — lekin to'liq "eng bo'shiga" emas (pastda)
+3. Yuk bo'yicha muvozanat — hozir ko'p o'qilayotgan disklarga kamroq
+4. Turli partiya va yoshdagi disklar (2.3 Deep)
+```
+
+Ikkinchi qoidadagi nozik jihat — AWS muhandislari ochiq gapirgan
+kuzatuvlardan biri. Agar yangi, bo‘sh disklar parkka qo‘shilsa va har yangi
+yozuv “eng bo‘sh diskka” ketsa, **hamma** yangi ma’lumot bir vaqtda yangi
+disklarga tushadi. Yangi ma’lumot esa eng ko‘p o‘qiladigan ma’lumot (bugun
+yuklangan rasmni bugun ko‘rishadi). Natija: yangi disklar haddan tashqari
+qiziydi, eskilari bekor turadi. Shuning uchun yangi disklar **asta-sekin**
+to‘ldiriladi, va yangi hamda eski ma’lumot aralashtiriladi.
+
+<Calc title="Nega yukni yoyish kerak: bitta disk tezligi" result="Bitta disk sekundiga ~150 tasodifiy o'qish; mijozning 1 million o'qish/s yukini ~7 000+ diskka yoyish kerak">{`Qattiq disk (HDD): ~100-200 tasodifiy o'qish/s (mexanik bosh)
+  -> ~150 IOPS, ~200 MB/s ketma-ket
+
+Mijoz: ma'lumotlar tahlili, sekundiga 1 000 000 ta kichik GET
+  Kerakli disklar: 1 000 000 / 150 = ~6 700 disk (faqat shu mijozga)
+
+Agar mijozning barcha ob'ektlari 100 ta diskda bo'lganida:
+  100 x 150 = 15 000 o'qish/s — 65 barobar kam
+
+S3 yondashuvi: har mijoz ob'ektlari minglab disklarga sochilgan,
+  har disk minglab mijozlar ma'lumotini saqlaydi
+  -> alohida mijozlarning cho'qqilari bir-biriga to'g'ri kelmaydi,
+     disklar yuki "o'rtachalanadi"`}</Calc>
+
+Oxirgi qator — katta ko‘p mijozli tizimlarning asosiy iqtisodiy sirlaridan
+biri: **mijozlar yuki bir-biriga bog‘liq emas**. Bittasi tunda katta hisobot
+ishlatadi, boshqasi ertalab rasmlarni ko‘rsatadi. Agar hammaning ma’lumoti
+hamma disklarga yoyilgan bo‘lsa, har bir disk “o‘rtacha” yukni ko‘radi —
+va hech bir mijoz o‘z cho‘qqisida disklar chegarasiga urilmaydi.
+</Step>
+
+<Step n={5} title="Nazorat summalari: har bosqichda" gain="Jim buzilish (bit rot) aniqlanadi — buzilgan bo'lak hech qachon mijozga ketmaydi" cost="Hisoblash narxi (arzon) va format murakkabligi">
+Oddiy tilda: har bir qutiga uning ichidagi narsalar ro‘yxatini yopishtirasiz.
+Qutini ochganda ro‘yxat bilan solishtirasiz — nimadir o‘zgargan bo‘lsa,
+darhol bilasiz.
+
+Nazorat summasi — ma’lumotdan hisoblangan qisqa son (masalan, CRC32C — 4
+bayt, SHA-256 — 32 bayt). Bitta bit o‘zgarsa ham, summa butunlay boshqacha
+bo‘ladi. S3 summani **har bosqichda** tekshiradi:
+
+```
+Mijoz -> S3:   mijoz yuborishdan oldin summani hisoblaydi (masalan, CRC32C)
+               va sarlavhada yuboradi; S3 qabul qilib, qayta hisoblaydi -> mos?
+S3 ichida:     har bo'lak diskka o'z summasi bilan yoziladi
+Diskdan o'qish: summa qayta hisoblanadi -> mos kelmasa, bo'lak "buzilgan",
+               boshqa nusxadan olinadi va buzilgani tiklanadi
+S3 -> mijoz:   javobda summa; mijoz tekshirishi mumkin
+```
+
+Ochiq manbalarda: S3 uzoq vaqt `Content-MD5` sarlavhasini qo‘llab-quvvatlagan;
+2022-yilda qo‘shimcha algoritmlar (CRC32, CRC32C, SHA-1, SHA-256) qo‘shildi;
+2024-yil oxiridan esa yangi yuklashlar uchun nazorat summasi **standart
+bo‘yicha** hisoblanadi.
+
+<Calc title="Nazorat summasi narxi" result="CRC32C zamonaviy protsessorda ~10+ GB/s — ma'lumotni tarmoqdan olishdan ham tez; tekshirmaslik uchun hech qanday bahona yo'q">{`CRC32C (maxsus protsessor ko'rsatmasi bilan): ~10-20 GB/s bitta yadroda
+SHA-256 (apparat tezlatish bilan): ~1-2 GB/s bitta yadroda
+
+1 GB ob'ekt:
+  CRC32C: ~0.05-0.1 s CPU
+  tarmoq 10 Gbit/s orqali uzatish: ~0.8 s
+  -> tekshiruv uzatishdan ~10 barobar arzon
+
+Bitta bitning o'zgarishini CRC32 aniqlamaslik ehtimoli: 0
+  (CRC har qanday 1 bitli xatoni ushlaydi; tasodifiy ko'p bitli
+   buzilishni o'tkazib yuborish ehtimoli ~1 / 2^32)`}</Calc>
+</Step>
+
+<Step n={6} title="Doimiy tekshiruv va avtomatik tiklash" gain="Yashirin buzilishlar yillar emas, kunlar ichida topiladi; tiklash vaqti T qisqaradi" cost="Doimiy fon o'qish yuki; tiklash uchun tarmoq o'tkazuvchanligi">
+Nazorat summasi faqat **o‘qilgan** ma’lumotni tekshiradi. Kam ishlatiladigan
+fayl (5 yil oldingi zaxira) umuman o‘qilmasligi mumkin — va uning buzilishi
+boshqa nusxa ham buzilgunicha aniqlanmaydi. Shuning uchun **scrubber**
+(tozalovchi) fon jarayoni barcha bo‘laklarni muntazam o‘qib, tekshiradi.
+
+Tizim — bu doimiy halqa:
+
+<Flow nodes={["Scrubber: bo'lakni o'qish", "Nazorat summasi mos kelmadi yoki disk o'lik", "Buzilgan bo'laklar ro'yxati", "Boshqa nusxalardan tiklash", "Yangi diskka yozish", "Indeksni yangilash", "To'liq himoya tiklandi"]} caption="Saqlanish — bir martalik holat emas, to'xtovsiz jarayon" />
+
+<Calc title="Tiklash tezligi: bitta disk vs butun park" result="Bitta diskka tiklash ~28 soat; minglab disklarga parallel tiklash — daqiqalar. T qisqarsa, yo'qotish ehtimoli kvadratik kamayadi">{`20 TB disk buzildi.
+
+Klassik RAID usuli: bitta yangi diskka qayta yozish
+  20 TB / 200 MB/s = 100 000 s = ~28 soat
+  bu 28 soat davomida ma'lumot himoyasi pasaygan (1-qadam: T katta)
+
+Taqsimlangan usul: buzilgan diskdagi bo'laklar minglab ob'ektlarga tegishli,
+  ularning boshqa nusxalari minglab disklarda
+  -> 1 000 ta disk parallel ravishda har biri 20 GB tiklaydi
+  20 GB / 200 MB/s = 100 s — lekin tarmoq va ustuvorlik bilan: ~10-30 daqiqa
+
+1-qadam formulasi bilan: T 28 soatdan 20 daqiqaga -> 84 barobar qisqa
+  -> yo'qotish ehtimoli 84^2 = ~7 000 barobar kam`}</Calc>
+
+Bu S3’ning (va har qanday katta ob’ekt omborining) eng muhim ichki
+g‘oyasi: **tiklash parallel**. Buzilgan disk bitta “o‘rinbosar” diskka
+emas, butun parkka tiklanadi. Shuning uchun park qancha katta bo‘lsa,
+tiklash shuncha tez va saqlanish shuncha yuqori. Kichik tizimda bu
+imkonsiz — miqyos bu yerda **dushman emas, ittifoqchi**.
+</Step>
+
+<Step n={7} title="Erasure coding: uch nusxa o'rniga matematik zaxira" gain="Xuddi shunday yoki yuqoriroq saqlanish — lekin hajm 3x emas, ~1.3-1.8x" cost="Kodlash hisob-kitobi; bitta bo'lakni tiklash uchun k ta bo'lakni o'qish (tarmoq yuki)">
+Uch nusxa ishonchli, lekin qimmat: 1 PB ma’lumot uchun 3 PB disk.
+Erasure coding (o‘chirishga chidamli kodlash) xuddi shunday himoyani
+ancha arzon beradi.
+
+**Oddiy tilda, eng kichik misol.** Ikki son bor: A = 5 va B = 7. Ularni
+ikki diskda saqlaymiz, uchinchi diskda esa ularning **yig‘indisini** —
+P = 12. Endi istalgan **bitta** disk yo‘qolsa, uni tiklash mumkin:
+A yo‘qolsa, A = P − B = 5. Uch nusxada 3 ta joy ishlatib 1 ta sonni himoya
+qilgan edik; bu yerda 3 ta joy ishlatib **2 ta** sonni himoya qildik.
+
+Kompyuterda yig‘indi o‘rniga XOR ishlatiladi (bitlar bo‘yicha “farq”):
+
+```
+A = 1011 0010
+B = 0110 1100
+P = A XOR B = 1101 1110
+
+B yo'qoldi: B = A XOR P = 1011 0010 XOR 1101 1110 = 0110 1100  ✓
+```
+
+Bu bitta paritet — faqat **bitta** yo‘qotishga chidaydi. Umumiy holat —
+**Reed–Solomon** kodi: ma’lumot `k` ta bo‘lakka bo‘linadi, ulardan `m` ta
+qo‘shimcha (paritet) bo‘lak hisoblanadi, va **istalgan** `k` tasidan butun
+ma’lumot tiklanadi. Ya’ni istalgan `m` ta bo‘lak yo‘qolishiga chidaydi.
+
+<Calc title="Uch nusxa va Reed-Solomon (6, 3): narx va himoya" result="RS(6,3) — 1.5x hajm va istalgan 3 ta yo'qotishga chidash; uch nusxa — 3x hajm va 2 ta yo'qotishga chidash">{`1 PB foydali ma'lumot:
+
+Uch nusxa (3x):
+  disk hajmi: 3 PB
+  chidaydi: istalgan 2 ta nusxa yo'qolishiga (uchinchisi qolsa)
+
+RS(6, 3): 6 ta ma'lumot bo'lagi + 3 ta paritet = 9 bo'lak
+  disk hajmi: 9 / 6 = 1.5 PB
+  chidaydi: 9 bo'lakdan istalgan 3 tasining yo'qolishiga
+
+Saqlanish (1-qadam uslubida, T = 6 soat, L = 1% yiliga):
+  ob'ekt yo'qoladi, agar 9 bo'lakdan 4 tasi bir T oynasida yo'qolsa
+  birinchi bo'lak: 9 x L
+  T ichida qolgan 8 tadan yana 3 tasi: C(8,3) x (L x T)^3 = 56 x (L x T)^3
+  P = 9 x 56 x L^4 x T^3 = 504 x 1e-8 x 3.2e-10 = ~1.6e-15 -> ~14.8 ta to'qqiz
+  Uch nusxa: ~1.4e-12 (~11.8 ta to'qqiz)
+  -> RS(6,3) ~1 000 barobar ishonchliroq, yarim narxda
+
+Farq: 1 EB ma'lumotda 3 EB o'rniga 1.5 EB disk -> 1.5 EB tejash
+  20 TB disk bilan: ~75 000 disk kam`}</Calc>
+
+<Deep title="Reed-Solomon ichida: nega istalgan k ta bo'lak yetadi">
+Reed–Solomon’ning g‘oyasi maktab matematikasidan: **ikki nuqta orqali
+faqat bitta to‘g‘ri chiziq o‘tadi**. Uch nuqta orqali — bitta parabola.
+Umuman, `k` ta nuqta `k−1` darajali ko‘phadni to‘liq aniqlaydi.
+
+```
+Ma'lumot: k = 2 ta son, d0 = 5, d1 = 7
+Ko'phad: f(x) = d0 + d1 x x = 5 + 7x      (to'g'ri chiziq)
+
+Bo'laklar — ko'phadning turli nuqtalardagi qiymati:
+  f(0) = 5,  f(1) = 12,  f(2) = 19,  f(3) = 26      (4 bo'lak, k=2, m=2)
+
+Istalgan 2 tasi yetarli. Masalan, faqat f(1)=12 va f(3)=26 qoldi:
+  chiziq qiyaligi: (26 - 12) / (3 - 1) = 7  -> d1 = 7
+  f(1) = d0 + 7 = 12                         -> d0 = 5   ✓
+```
+
+Haqiqiy kodda ikki farq bor. Birinchisi — sonlar oddiy butun sonlar emas,
+**chekli maydon** (masalan, GF(256) — 256 elementli, har element bitta bayt)
+elementlari. Unda qo‘shish — XOR, ko‘paytirish esa maxsus jadvallar bilan;
+natija har doim bitta baytga sig‘adi va bo‘lish har doim mumkin. Ikkinchisi —
+**tizimli** (systematic) shakl: birinchi `k` ta bo‘lak ma’lumotning o‘zi
+(nusxasi), faqat qolgan `m` tasi hisoblangan. Shunda oddiy o‘qishda hech
+narsa dekodlanmaydi — ma’lumot bo‘laklari shunchaki birlashtiriladi;
+matematika faqat biror bo‘lak yo‘q bo‘lgandagina ishga tushadi.
+
+Dekodlash chiziqli algebra bilan: bo‘laklar = (kodlash matritsasi) × (ma’lumot).
+Qolgan `k` ta bo‘lakka mos `k × k` matritsa olinadi, uning teskarisi
+hisoblanadi va ko‘paytiriladi. Kodlash matritsasi shunday tanlanadiki
+(masalan, Koshi yoki Vandermond matritsalari), uning **istalgan** `k` ta
+qatoridan tuzilgan matritsa teskarilanadi. Amaliyotda (18-bo‘lim) aynan
+shuni yozasiz.
+</Deep>
+</Step>
+
+<Step n={8} title="Erasure coding zonalar bo'ylab" gain="Butun AZ yo'qolsa ham ma'lumot saqlanadi va o'qiladi" cost="Paritet ko'proq kerak (~1.8x); o'qish va tiklash zonalararo tarmoqdan o'tadi">
+7-qadamdagi RS(6,3) bitta binoda yaxshi. Lekin 4.2 dagi xavf — butun
+bino (AZ) yo‘qolishi. Agar 9 bo‘lak 3 ta AZ ga teng taqsimlansa (har birida
+3 ta), bitta AZ yo‘qolganda 3 bo‘lak yo‘qoladi — RS(6,3) aynan shu chegarada.
+Shu paytda boshqa AZ da bitta disk buzilsa — 4 ta yo‘qotish, ma’lumot
+tiklanmaydi.
+
+<Calc title="Zonani yo'qotishga chidaydigan kodni tanlash" result="3 ta AZ da 'bitta AZ + yana bitta disk'ga chidash uchun m bir AZ dagi bo'laklardan kamida bittaga ko'p bo'lishi kerak; natija ~1.8-2x hajm">{`3 ta AZ, n = k + m bo'lak, har AZ da n/3 bo'lak.
+Talab: bitta AZ yo'qolishi (n/3 bo'lak) + yana 1 disk -> m >= n/3 + 1
+
+Variantlar:
+  RS(6,3):  n=9,  har AZ da 3, m=3 -> 3 >= 4?  YO'Q   hajm 1.50x
+  RS(6,6):  n=12, har AZ da 4, m=6 -> 6 >= 5?  HA     hajm 2.00x
+  RS(10,8): n=18, har AZ da 6, m=8 -> 8 >= 7?  HA     hajm 1.80x
+  RS(12,9): n=21, har AZ da 7, m=9 -> 9 >= 8?  HA     hajm 1.75x
+
+Uch nusxa (har AZ da bitta):              3.00x — AZ + 1 disk: HA
+
+Qo'shimcha narx: n katta bo'lsa, bitta ob'ekt ko'p diskka bo'linadi
+  -> kichik ob'ektlar uchun bo'laklar juda mayda bo'lib ketadi`}</Calc>
+
+Jadvaldagi so‘nggi qator erasure coding’ning muhim cheklovini ko‘rsatadi:
+**kichik ob’ektlar uchun yaramaydi**. 4 KB faylni 18 bo‘lakka bo‘lsak, har
+bo‘lak ~230 bayt — har biri uchun metadata, disk operatsiyasi va tarmoq
+so‘rovi. Amalda kichik ob’ektlar boshqacha saqlanadi (masalan, ko‘p kichik
+ob’ekt bitta katta “to‘plam”ga yig‘ilib, to‘plam kodlanadi, yoki kichiklar
+uchun nusxalash ishlatiladi). S3’ning aniq kod parametrlari ochiq e’lon
+qilinmagan; jadval — tamoyilni ko‘rsatish uchun.
+</Step>
+
+<Step n={9} title="Multipart upload: katta faylni qismlab yuklash" gain="5 TB gacha fayllar; parallel yuklash; uzilishda faqat bitta qism qayta yuboriladi" cost="Mijoz uchun murakkabroq API; tugallanmagan yuklashlar joy egallaydi">
+10 GB videoni bitta so‘rovda yuklash — yomon fikr: 20 daqiqadan keyin
+tarmoq uzilsa, hammasi boshidan. S3’da bitta PUT chegarasi 5 GB; undan
+kattasi uchun — **bo‘laklab yuklash** (multipart upload):
+
+```
+1. CreateMultipartUpload           -> upload_id
+2. UploadPart(upload_id, 1, baytlar)  -> ETag1     \
+   UploadPart(upload_id, 2, baytlar)  -> ETag2      >  parallel, istalgan tartibda,
+   ...                                             /   har biri 5 MB - 5 GB
+   UploadPart(upload_id, N, baytlar)  -> ETagN    /    N <= 10 000
+3. CompleteMultipartUpload(upload_id, [(1,ETag1), ..., (N,ETagN)])
+   -> ob'ekt birdaniga paydo bo'ladi (atomik)
+```
+
+<Calc title="Multipart: tezlik va chidamlilik" result="10 GB fayl: 10 ta parallel oqim bilan ~10 barobar tez; uzilishda faqat 100 MB qayta yuboriladi, 10 GB emas">{`Fayl: 10 GB, bitta TCP oqim ~100 MB/s (uzoq masofa, tipik)
+
+Bitta PUT: 10 000 MB / 100 MB/s = 100 s
+  uzilish 90-soniyada -> hammasi qaytadan: +100 s
+
+Multipart, 100 MB qismlar (100 ta), 10 ta parallel oqim:
+  10 x 100 MB/s = 1 000 MB/s (mijoz tarmog'i ko'tarsa) -> ~10 s
+  uzilish -> faqat bitta 100 MB qism qayta: +1 s
+
+Cheklovlar: qism 5 MB - 5 GB, ko'pi bilan 10 000 qism
+  -> eng katta ob'ekt: 10 000 x 5 GB = 50 TB? Yo'q — ob'ekt chegarasi 5 TB
+  (5 TB / 10 000 = ~500 MB qism — juda katta fayl uchun qismlar kattalashadi)`}</Calc>
+
+Bu darsdagi skin ham shuni ko‘rsatadi: o‘ng tomondagi “Yuklash holati”
+darsni 10 qismga bo‘lgan va o‘qiganingiz sari qismlar “yuklanadi”. Oxirgi
+qadam — `Complete` — hamma qismlar tayyor bo‘lgandagina ob’ektni ko‘rinadigan
+qiladi.
+
+Bitta tuzoq: tugallanmagan yuklashlar (mijoz 2-qadamda to‘xtadi) qismlarini
+S3 saqlab turadi va ular uchun **pul olinadi**. Hayot sikli qoidasi
+(“7 kundan eski tugallanmagan yuklashlarni o‘chir”) — deyarli har bir
+bucket uchun foydali sozlama.
+</Step>
+
+<Step n={10} title="Saqlash sinflari va hayot sikli" gain="Kam ishlatiladigan ma'lumot 5-20 barobar arzon" cost="O'qish narxi va kechikishi oshadi; minimal saqlash muddati; noto'g'ri tanlov qimmatga tushadi">
+Ma’lumotning ko‘pchiligi yozilgandan keyin tez “soviydi”: kechagi loglar
+bugun kerak, o‘tgan yilgisi — deyarli hech qachon. Hamma narsani bir xil
+narxda saqlash — isrof. S3 bir nechta **saqlash sinfi** taklif qiladi:
+
+| Sinf | Qachon | Saqlash narxi (taxminan, GB/oy) | O‘qish |
+| --- | --- | --- | --- |
+| Standard | Tez-tez o‘qiladi | ~$0.023 | Millisekundlar, arzon |
+| Standard-IA | Oyiga bir martadan kam | ~$0.0125 | Millisekundlar, har GB uchun to‘lov |
+| Glacier Instant Retrieval | Chorakda bir marta | ~$0.004 | Millisekundlar, qimmatroq o‘qish |
+| Glacier Flexible Retrieval | Yiliga bir-ikki marta | ~$0.0036 | Daqiqalar-soatlar |
+| Glacier Deep Archive | Deyarli hech qachon (qonuniy arxiv) | ~$0.001 | 12 soatgacha |
+| Intelligent-Tiering | Noma’lum | Avtomatik ko‘chiradi | Kuzatuv uchun kichik to‘lov |
+
+<Calc title="Loglarni 3 yil saqlash: bitta sinf vs hayot sikli" result="Hayot sikli qoidasi bilan narx ~6 barobar kam">{`Har oy 100 TB yangi log, 3 yil saqlanadi (oxirida ~3.6 PB)
+
+Hammasi Standard'da (o'rtacha ~1.8 PB saqlanadi 36 oy davomida):
+  1 800 000 GB x 0.023 $ x 36 oy = ~1.49 M $
+
+Hayot sikli: 30 kun Standard -> 90 kungacha Standard-IA -> keyin Deep Archive
+  Standard:   100 TB x 0.023 $ x 36 oy          = ~83 K $
+  IA:         200 TB x 0.0125 $ x 36 oy         = ~90 K $
+  Deep Arch.: o'rtacha ~1.5 PB x 0.001 $ x 36   = ~54 K $
+  Jami: ~227 K $  (+ ko'chirish so'rovlari narxi, bir necha K $)
+
+Tejash: ~1.49 M $ -> ~0.23 M $ (~6.5 barobar)`}</Calc>
+
+Muhim nozik jihat: arzon sinflar **o‘qishni** qimmatlashtiradi. Agar
+“arxiv” deb qo‘yilgan ma’lumotni tahlilchilar har kuni o‘qisa, o‘qish
+to‘lovlari saqlashdagi tejashni tezda yeb qo‘yadi. Intelligent-Tiering
+aynan shu noaniqlik uchun: u har ob’ektning oxirgi o‘qilgan vaqtini
+kuzatadi va sinfni o‘zi o‘zgartiradi.
+</Step>
+
+<Step n={11} title="Kuchli izchillik (2020)" gain="Yozgandan keyin har qanday o'qish va LIST yangi holatni ko'radi — ilovalar oddiylashadi" cost="Metadata qatlamida kesh izchilligi protokoli; ichki murakkablik">
+2006-yildan 2020-yilgacha S3 **oxir-oqibat izchil** (eventually consistent)
+edi: yangi ob’ektni yozgandan so‘ng uni darhol o‘qish odatda ishlagan,
+lekin mavjud ob’ektni **qayta yozish** yoki **o‘chirish**dan keyin qisqa vaqt
+eski versiya ko‘rinishi mumkin edi. LIST ham yangi ob’ektni darhol
+ko‘rsatmasligi mumkin edi.
+
+<Calc title="Oxir-oqibat izchillik qanday muammo yaratgan" result="Tahlil tizimi eski fayl ro'yxati bilan ishlaydi va natija jim noto'g'ri bo'ladi">{`Ma'lumotlar quvuri:
+  10:00:00 — 1-bosqich "kun/part-0000 ... part-0099" (100 fayl) yozadi
+  10:00:01 — 2-bosqich LIST "kun/" qiladi -> 97 ta fayl ko'rinadi (3 tasi hali yo'q)
+  10:00:02 — 2-bosqich 97 faylni qayta ishlaydi -> hisobot 3% kam
+
+Hech qanday xato xabari yo'q. Hisobot "muvaffaqiyatli".
+
+Aylanma yo'llar (2020-yilgacha): alohida izchil katalog (masalan,
+  DynamoDB'da fayllar ro'yxati) — EMRFS consistent view, S3Guard kabi
+  vositalar aynan shu uchun yaratilgan edi`}</Calc>
+
+2020-yil dekabrda S3 barcha so‘rovlar uchun **kuchli yozishdan-keyin-o‘qish
+izchilligi**ni e’lon qildi — qo‘shimcha to‘lovsiz va tezlikni pasaytirmasdan.
+Werner Vogels’ning 2021-yildagi maqolasida qanday qilingani tushuntirilgan:
+muammo metadata qatlamidagi **keshlar** edi. Keshlar tezlik beradi, lekin
+eskirishi mumkin. Yechim — metadata tizimiga har kalit uchun “eng oxirgi
+yozuv qaysi” ekanini biladigan komponent (maqolada “witness” — guvoh)
+qo‘shish. O‘qish keshdan olinadi, lekin avval guvohdan “keshdagi versiya
+eng yangisimi?” deb so‘raladi. Guvohga so‘rov juda arzon (faqat versiya
+belgisi), shuning uchun tezlik saqlanadi.
+
+Muhandislik jihatidan qiziq tomoni — ular bu o‘zgarishni **formal usullar**
+bilan tekshirgan: protokol modeli yozilib, uning izchillikni buzmasligi
+avtomatik isbotlangan. Trillionlab ob’ektli tizimda “testda ishladi” —
+yetarli dalil emas.
+</Step>
+
+<Step n={12} title="Versiyalash va Object Lock: inson xatosidan himoya" gain="Noto'g'ri o'chirish yoki qayta yozishni qaytarish mumkin; to'lov talab qiluvchi viruslar arxivni o'chira olmaydi" cost="Har versiya — alohida saqlash narxi; eski versiyalarni tozalash qoidasi kerak">
+1–11-qadamlar apparat va dasturiy nosozliklardan himoya qiladi. Lekin
+ma’lumot yo‘qotishning eng keng tarqalgan sabablaridan biri — **odamning
+o‘zi**: noto‘g‘ri skript `DELETE` ni noto‘g‘ri prefiksga yubordi, yoki
+buzilgan fayl yaxshisining ustiga yozildi. Tizim buni “to‘g‘ri buyruq” deb
+bajaradi — 11 ta to‘qqiz bu yerda yordam bermaydi.
+
+**Versiyalash** yoqilganda, qayta yozish yangi versiya yaratadi (eskisi
+saqlanadi), o‘chirish esa “o‘chirildi” belgisini qo‘yadi (ma’lumot saqlanadi).
+Xato bo‘lsa — oldingi versiyaga qaytish mumkin.
+
+**Object Lock** (2018) — undan qat’iyroq: belgilangan muddatgacha ob’ektni
+**hech kim**, hatto hisob egasi ham o‘chira olmaydi (WORM — bir marta yoz,
+ko‘p marta o‘qi). Bu qonuniy talablar (moliyaviy yozuvlarni 7 yil saqlash)
+va to‘lov talab qiluvchi viruslarga (ransomware) qarshi himoya: hujumchi
+hisobga kirsa ham, zaxiralarni o‘chira olmaydi.
+
+<Deep title="'Saqlanish' — texnik raqam emas, tashkiliy jarayon">
+AWS’ning S3 bo‘yicha katta muhandisi Andy Warfield 2023-yildagi maqolasida
+muhim fikrni aytgan: 11 ta to‘qqiz — bu **statistik model**, va model faqat
+unga kiritilgan xavflarni hisobga oladi (disk buzilishi, tiklash vaqti).
+Haqiqiy tizimda xavflar ko‘proq: dastur xatosi hamma nusxani bir xil
+buzishi, noto‘g‘ri konfiguratsiya, xato buyruq, yangi versiyadagi regressiya.
+
+Shuning uchun S3’da saqlanish **jarayon** sifatida boshqariladi:
+
+```
+1. Har yangi xavf turi uchun "saqlanish tahdidi modeli"
+   (masalan: "yangi disk proshivkasi ma'lumotni noto'g'ri joyga yozsa?")
+2. Har xavfga qarshi himoya va uni TEKSHIRADIGAN mexanizm
+   (nazorat summasi, scrubbing, formal tekshiruv, ikki bosqichli tasdiq)
+3. Har o'zgarish (kod, konfiguratsiya, apparat) bu model bo'yicha ko'rib chiqiladi:
+   "bu o'zgarish qaysi himoyani chetlab o'tishi mumkin?"
+4. Himoyalar mustaqil: bitta xato ikkitasini birdaniga buzmasin
+```
+
+Oxirgi qoida — Airbnb darsidagi “kafolat mexanizmi va uni tekshiruvchi
+mexanizm mustaqil bo‘lishi kerak” tamoyilining S3 miqyosidagi ko‘rinishi.
+Masalan, yangi kod ham ma’lumotni yozadi, ham uni tekshiradi — agar
+tekshiruv xuddi shu kodni ishlatsa, yozishdagi xato tekshiruvda ham
+takrorlanadi va sezilmaydi.
+</Deep>
+</Step>
+
+<Step n={13} title="ShardStore: saqlash tugunini qayta yozish" gain="Yangi, soddaroq saqlash tuguni; to'g'rilik yengil formal usullar bilan tekshirilgan" cost="Katta qayta yozish loyihasi; eski va yangi tugunlar uzoq vaqt yonma-yon">
+Saqlash tuguni — diskda bo‘laklarni saqlaydigan dastur — S3’ning eng quyi
+qatlami. 2021-yilgi SOSP konferensiyasidagi maqola (Bornholt va boshq.)
+AWS’ning **ShardStore** deb atalgan yangi saqlash tugunini tasvirlaydi:
+Rust tilida yozilgan, kalit-qiymat ombori, ichida LSM-daraxtga o‘xshash
+tuzilma (bo‘laklar joylashuvi indeksi), va qulashdan keyin izchillikni
+saqlaydigan (crash consistency) yozish tartibi.
+
+Maqolaning asosiy g‘oyasi — **yengil formal usullar**. To‘liq matematik
+isbot juda qimmat; testlar esa hamma holatni qamramaydi. Oradagi yo‘l:
+
+```
+1. Har komponent uchun oddiy "namunaviy model" (reference model) —
+   xuddi shu interfeys, lekin oddiy xotiradagi lug'at sifatida
+2. Xususiyatga asoslangan testlar: millionlab tasodifiy amallar ketma-ketligi
+   haqiqiy kodda va modelda bajariladi, natijalar solishtiriladi
+3. Qulash testlari: ketma-ketlikning tasodifiy joyida "elektr o'chdi",
+   keyin tiklanish — model bilan mos kelishi kerak
+4. Parallellik uchun model tekshiruvi (barcha tartiblarni sinash)
+```
+
+Bu yondashuv darslikdagi amaliyot testlari bilan bir xil ruhda: Airbnb
+darsidagi “mustaqil tekshiruvchi” va Uber darsidagi “Dijkstra emas,
+boshqa g‘oyadagi orakul” — **oddiy, aniq to‘g‘ri model bilan murakkab
+kodni solishtirish**. ShardStore maqolasida bu usul bilan ishlab chiqarishga
+chiqishidan oldin topilgan ko‘plab nozik xatolar tasvirlangan — ularning
+ko‘pchiligi oddiy testlar bilan topilmagan bo‘lardi.
+</Step>
+
+<Step n={14} title="Shartli yozuvlar va tez sinf: S3 — kelishuv vositasi" gain="'Faqat mavjud bo'lmasa yoz' — S3 ustida qulf, jurnal va jadval formatlari quriladi; bir necha ms kechikish" cost="Shartli yozuvlar raqobatda qayta urinish talab qiladi; tez sinf bitta AZ da (saqlanish modeli boshqacha)">
+Uzoq vaqt S3’da “agar bu kalit hali yo‘q bo‘lsa, yoz” degan atomik amal yo‘q
+edi. Ikki mijoz bir vaqtda `jurnal/000123.json` ni yozsa — oxirgi yozgan
+yutadi, birinchisining ishi jim yo‘qoladi. Shu sababli S3 ustidagi jadval
+formatlari (Delta Lake, Apache Iceberg kabilar) qo‘shimcha kelishuv tizimi
+(masalan, DynamoDB) talab qilgan.
+
+2024-yilda S3 **shartli yozuvlar**ni qo‘shdi: `If-None-Match: *` (faqat
+kalit mavjud bo‘lmasa yoz) va keyinroq `If-Match: <ETag>` (faqat ob’ekt
+hali shu versiyada bo‘lsa, qayta yoz). Bu Airbnb darsidagi noyob cheklov
+va idempotentlik kalitining S3’dagi analogi.
+
+<Calc title="Shartli yozuv bilan jurnal: ikki yozuvchi" result="Ikkinchi yozuvchi 412 xato oladi va keyingi raqamni sinaydi — hech narsa jim yo'qolmaydi">{`Jurnal: jurnal/000001.json ... jurnal/000122.json mavjud
+
+Yozuvchi A: PUT jurnal/000123.json, If-None-Match: *  -> 200 OK
+Yozuvchi B: PUT jurnal/000123.json, If-None-Match: *  -> 412 Precondition Failed
+  B: jurnalni qayta o'qiydi, 000123 ni ko'radi, o'z o'zgarishini
+     A ning natijasi ustiga qayta quradi -> PUT jurnal/000124.json -> 200 OK
+
+Shartsiz (2024-yilgacha, qo'shimcha tizimsiz):
+  A va B ikkalasi 200 OK oladi, B ning fayli A nikini jim almashtiradi
+  -> A ning tranzaksiyasi yo'qoldi, hech kim bilmaydi`}</Calc>
+
+Xuddi shu davrda (2023) **S3 Express One Zone** sinfi paydo bo‘ldi: bitta
+AZ da, maxsus “katalog bucket”lari bilan, bir raqamli millisekund
+kechikish. U tez-tez o‘qiladigan oraliq ma’lumotlar (ML o‘qitish, tahlil)
+uchun. Narxi — saqlanish modeli: ma’lumot bitta AZ da, ya’ni 4.2 dagi xavf
+qaytadi. Bu ongli murosa: tezlik uchun bir qatlam himoyadan voz kechiladi.
+</Step>
+
+<Check q="Nega saqlanish hisobida nusxalar sonidan ko'ra tiklash vaqti muhimroq?">
+Chunki ma’lumot faqat **barcha** nusxalar **tiklanishdan oldin** yo‘qolganda
+yo‘qoladi. Birinchi nusxa buzilgach, soat ishlay boshlaydi: qolgan nusxalar
+shu oyna (`T`) ichida buzilishi kerak.
+
+1-qadam formulasida yo‘qotish ehtimoli `T²` ga (uch nusxada) yoki `T³` ga
+(RS(6,3) da) proporsional. `T` ni 28 soatdan 20 daqiqaga qisqartirish
+(6-qadam: parallel tiklash) ehtimolni uch nusxada ~7 000 barobar
+kamaytiradi — bu to‘rtinchi nusxa qo‘shishdan ancha samarali va arzon.
+
+Shuning uchun S3 kabi tizimlarda ikki narsa hal qiluvchi: **tez aniqlash**
+(disk o‘lganini yoki bo‘lak buzilganini darhol bilish — scrubbing,
+nazorat summalari) va **tez tiklash** (minglab disklarga parallel). Ikkalasi
+ham katta park bo‘lganda yaxshi ishlaydi. Ammo bitta ogohlantirish: bu
+hisob buzilishlar **mustaqil** deb faraz qiladi. Agar bitta hodisa (elektr,
+dastur xatosi) ko‘p diskni birdaniga o‘chirsa, `T` ahamiyatini yo‘qotadi —
+bu 6-bo‘lim mavzusi.
+</Check>
+
+## 6. Saqlanish: modeldan haqiqatgacha
+
+5-bo‘limdagi hisoblar bitta muhim faraz ustida qurilgan: disklar
+**bir-biridan mustaqil** buziladi. Bu bo‘limda bu farazning qachon
+buzilishini va S3 kabi tizim unga qanday javob berishini ko‘ramiz.
+
+### 6.1 Korrelyatsiyalangan buzilishlar
+
+Oddiy tilda: uchta nusxani uch xil javonga qo‘ydingiz — lekin uchala javon
+bitta xonada va xonada suv quvuri yorildi. Nusxalar “mustaqil” edi, xavf esa
+umumiy.
+
+| Umumiy sabab | Nimani birdaniga o‘chiradi | Himoya |
+| --- | --- | --- |
+| Bitta disk partiyasi nuqsoni | Bir vaqtda o‘rnatilgan minglab disk | Nusxalar turli partiya va yoshdagi disklarda |
+| Stoyka elektr yoki tarmog‘i | Stoykadagi ~20–40 server | Nusxalar turli stoykalarda |
+| Butun bino (AZ) | Minglab stoyka | Nusxalar turli AZ da (4.2) |
+| Dastur xatosi (yangi versiya) | U o‘rnatilgan **hamma** server | Bosqichma-bosqich chiqarish, mustaqil tekshiruv |
+| Inson buyrug‘i | Buyruq tegadigan hamma narsa | Cheklovlar, ikki bosqichli tasdiq, versiyalash |
+
+Oxirgi ikki qator eng xavfli: ular jismoniy joylashuvga **bog‘liq emas**.
+Uchta AZ dagi uchta nusxa yong‘indan himoya qiladi, lekin uchala AZ ga
+bir vaqtda chiqarilgan dastur xatosidan himoya qilmaydi.
+
+<Calc title="Mustaqil va korrelyatsiyalangan: bitta stoyka misoli" result="Agar ikki nusxa bitta stoykada bo'lsa, stoyka hodisalari saqlanishni 11 ta to'qqizdan ~7-8 tagacha tushiradi">{`Uch nusxa, T = 6 soat, disk AFR = 1% (5-bo'lim: ~1.4e-12 yiliga)
+
+Endi faraz: 2 nusxa bir stoykada (joylashtirish xatosi), 3-si boshqa joyda
+Stoyka hodisasi (elektr, kommutator yonishi, ma'lumot bilan): yiliga 0.1%
+  stoyka hodisasi: ikki nusxa birdaniga -> 1 ta nusxa qoldi
+  shu T ichida uchinchi disk ham buzilishi: L x T = 0.01 x 6.85e-4 = 6.9e-6
+  P = 0.001 x 6.9e-6 = ~6.9e-9 yiliga -> ~8 ta to'qqiz
+
+Ya'ni bitta joylashtirish qoidasining buzilishi saqlanishni
+  ~5 000 barobar yomonlashtiradi — disklar sifatidan qat'i nazar`}</Calc>
+
+Hisob ko‘rsatadiki, saqlanish **joylashtirish qoidalariga** juda sezgir.
+Shuning uchun joylashtirish xizmati (5-bo‘lim 4-qadam) nafaqat qoidalarga
+amal qiladi, balki alohida **auditor** jarayon muntazam ravishda har ob’ekt
+bo‘laklari haqiqatan turli stoyka va AZ larda ekanini tekshiradi. Server
+ko‘chirilganda yoki stoyka qayta tashkil qilinganda qoida jim buzilishi
+mumkin.
+
+### 6.2 Dastur xatosi — eng katta xavf
+
+Apparat buzilishlari statistik jihatdan yaxshi o‘rganilgan va nusxalar
+ularga qarshi ishlaydi. Dastur xatosi boshqacha: **u barcha nusxaga bir xil
+ta’sir qiladi**. Agar yangi kod bo‘laklarni noto‘g‘ri siqsa, u hamma yangi
+yozuvlarni bir xil noto‘g‘ri siqadi — uchta nusxa ham, to‘qqizta bo‘lak ham.
+
+<Deep title="Dastur xatolariga qarshi himoya qatlamlari">
+Ochiq manbalarda (Warfield maqolasi, ShardStore maqolasi) tasvirlangan
+tamoyillar asosida, bunday tizimlarda odatda quyidagi qatlamlar ishlatiladi:
+
+**1. Bosqichma-bosqich chiqarish.** Yangi versiya avval bitta serverga,
+keyin bitta stoykaga, keyin bitta AZ ga, keyin bitta mintaqaga. Har
+bosqich orasida kuzatuv: nazorat summasi xatolari ko‘paydimi? Tiklash
+hajmi o‘sdimi? Muhimi — **bitta ob’ektning barcha bo‘laklari hech qachon
+bir vaqtda yangi kod bilan yozilmaydi**: bir AZ yangi versiyada bo‘lsa,
+boshqalari eski.
+
+**2. Mustaqil tekshirish yo‘li.** Yozish kodi va tekshirish kodi turli
+bo‘lishi kerak. Agar yozishdan keyin ma’lumot **boshqa kod** (masalan,
+scrubber’ning oddiyroq, o‘zgarmagan versiyasi) bilan o‘qib tekshirilsa,
+yozishdagi xato tekshiruvda ushlanadi.
+
+**3. O‘qib tekshirish (read-after-write verification).** Yozishdan so‘ng
+“yozildi” deyishdan oldin, bo‘lak diskdan qayta o‘qilib, summasi
+tekshiriladi. Qimmat (ikki barobar disk operatsiyasi), lekin diskka
+noto‘g‘ri yozilgan ma’lumotni darhol ushlaydi.
+
+**4. Formal va xususiyatga asoslangan tekshiruv.** 5-bo‘lim 11 va
+13-qadamlar: protokollar modeli, namunaviy modellar bilan solishtirish,
+qulash testlari.
+
+**5. O‘chirishni kechiktirish.** Ma’lumot fizik jihatdan darhol o‘chirilmaydi:
+“o‘chirildi” belgisi qo‘yiladi, haqiqiy o‘chirish esa bir muddatdan keyin.
+Agar dastur xatosi noto‘g‘ri ob’ektlarni o‘chirgan bo‘lsa, ularni hali
+qaytarish mumkin.
+
+Umumiy g‘oya: apparatga qarshi — **fazoviy xilma-xillik** (turli joylar);
+dasturga qarshi — **vaqtdagi xilma-xillik** (turli versiyalar, turli
+vaqtda) va **mantiqiy xilma-xillik** (turli kod yo‘llari).
+</Deep>
+
+### 6.3 11 ta to‘qqizni qanday o‘lchash mumkin?
+
+To‘g‘ridan-to‘g‘ri — imkonsiz. 11 ta to‘qqiz — yuz milliard ob’ekt-yilda
+bitta yo‘qotish. Buni “kuzatib” tasdiqlash uchun milliardlab yillar kerak.
+Shuning uchun saqlanish **model** bilan baholanadi, va modelning
+kiritmalari o‘lchanadi:
+
+| O‘lchanadigan kiritma | Qanday |
+| --- | --- |
+| Disk buzilish tezligi | Park statistikasi: model, partiya, yosh bo‘yicha |
+| Aniqlash vaqti | Disk o‘lganidan “buzilgan” deb belgilangungacha |
+| Tiklash vaqti | Belgilangandan to‘liq himoya tiklangungacha — taqsimot, ayniqsa dumi |
+| Jim buzilishlar | Scrubber topgan summa xatolari soni |
+| Joylashtirish buzilishlari | Auditor topgan qoidaga zid ob’ektlar |
+
+Modelning eng sezgir parametri — **tiklash vaqtining dumi** (p99.9).
+O‘rtacha tiklash 20 daqiqa bo‘lsa ham, agar ba’zi bo‘laklar navbatda bir
+hafta kutib qolsa, ular butun parkning saqlanishini belgilaydi.
+
+<Check q="Uch nusxa uch AZ da. Bu 'bitta AZ yo'qolishi'dan himoya qiladi. Qaysi xavflardan himoya qilmaydi va ular uchun nima kerak?">
+Uch AZ dagi uch nusxa **jismoniy** va **joylashuvga bog‘liq** xavflardan
+himoya qiladi: disk, server, stoyka, bino. U himoya qilmaydigan xavflar —
+barcha nusxaga **bir xil** ta’sir qiladigan narsalar:
+
+**Dastur xatosi.** Yangi kod hamma AZ da bir xil noto‘g‘ri yozadi yoki
+o‘chiradi. Himoya: bosqichma-bosqich chiqarish (hech qachon hamma AZ ga
+birdaniga emas), mustaqil tekshirish yo‘li, kechiktirilgan o‘chirish.
+
+**Mijozning o‘z xatosi.** Skript kerakli fayllarni o‘chiradi yoki buzilgan
+versiya bilan ustiga yozadi. S3 buni to‘g‘ri buyruq sifatida bajaradi va
+uch AZ da bir xil bajaradi. Himoya: versiyalash, Object Lock, o‘chirish
+uchun MFA, alohida hisobdagi nusxa (replikatsiya).
+
+**Hisobning buzilishi.** Hujumchi kalitlarni o‘g‘irlab, hamma narsani
+o‘chiradi. Himoya: minimal huquqlar, Object Lock, boshqa hisob va
+mintaqaga nusxa.
+
+Umumiy qoida: saqlanish modeli **qaysi xavflarni** qamrab olganini aniq
+bilish kerak. “11 ta to‘qqiz” — apparat modeli; inson va dastur xatolari
+uchun alohida himoyalar kerak.
+</Check>
+
+## 7. Erasure coding: narx va tiklash
+
+### 7.1 Tiklash narxi — yashirin xarajat
+
+Erasure coding hajmni tejaydi, lekin bitta muhim narsani qimmatlashtiradi:
+**tiklash**. Uch nusxada yo‘qolgan bo‘lakni tiklash uchun bitta nusxani
+nusxalash kifoya. RS(k, m) da esa bitta bo‘lakni tiklash uchun **k ta**
+bo‘lakni o‘qish kerak.
+
+<Calc title="Bitta bo'lakni tiklash: nusxa va RS(10,4)" result="RS(10,4) da bitta 1 GB bo'lakni tiklash uchun 10 GB tarmoq trafigi — nusxalashdan 10 barobar ko'p">{`Yo'qolgan bo'lak: 1 GB
+
+Uch nusxa: boshqa nusxadan 1 GB o'qib, yangi joyga 1 GB yozish
+  tarmoq: ~1 GB
+
+RS(10, 4): istalgan 10 ta bo'lakni o'qib, dekodlab, yo'qolganini hisoblash
+  tarmoq: 10 x 1 GB = 10 GB (+ 1 GB yozish)
+
+Kuniga 27 disk x 20 TB = 540 TB tiklash (1.3):
+  nusxalash: ~540 TB tarmoq trafigi kuniga = ~50 Gbit/s doimiy
+  RS(10,4):  ~5.4 PB kuniga = ~500 Gbit/s doimiy — zonalararo bo'lsa, juda qimmat`}</Calc>
+
+Bu muammo katta miqyosdagi tizimlarda shunchalik jiddiyki, maxsus kodlar
+ixtiro qilingan. Eng mashhuri — **LRC** (Local Reconstruction Codes),
+Microsoft Azure Storage’da 2012-yilda tasvirlangan: bo‘laklar kichik
+guruhlarga bo‘linadi va har guruhga o‘zining “mahalliy” pariteti
+qo‘shiladi. Bitta bo‘lak yo‘qolganda (eng ko‘p uchraydigan holat) faqat
+o‘z guruhidagi bir necha bo‘lak o‘qiladi.
+
+<Deep title="LRC: mahalliy paritet bilan tiklash">
+Azure’dagi LRC(12, 2, 2) sxemasi misolida:
+
+```
+12 ta ma'lumot bo'lagi ikki guruhga: A1..A6 va B1..B6
+Mahalliy paritetlar: PA = XOR(A1..A6),  PB = XOR(B1..B6)
+Global paritetlar (Reed-Solomon uslubida): G1, G2 — barcha 12 tasidan
+Jami: 12 + 2 + 2 = 16 bo'lak -> hajm 16/12 = 1.33x
+
+Bitta bo'lak yo'qoldi (A3):
+  A3 = PA XOR A1 XOR A2 XOR A4 XOR A5 XOR A6  -> faqat 6 ta bo'lak o'qiladi
+  (oddiy RS(12,4) da: 12 ta bo'lak)
+
+Ikki bo'lak yo'qoldi (A3 va B5, turli guruhlarda):
+  har biri o'z guruhidan — yana 6 tadan
+
+Uch yoki to'rtta yo'qotish: global paritetlar ishga tushadi (qimmat,
+  lekin kamdan-kam)
+```
+
+Natija: hajm RS(12,4) bilan bir xil (1.33x), lekin eng ko‘p uchraydigan
+holatda tiklash **ikki barobar arzon**. Narxi — nazariy jihatdan har
+qanday 4 ta yo‘qotishga emas, balki “ko‘pchilik” 4 talik kombinatsiyalarga
+chidash; amalda saqlanish RS’ga juda yaqin qoladi.
+
+Bu misol muhim muhandislik tamoyilini ko‘rsatadi: **eng ko‘p uchraydigan
+holatni arzonlashtiring**, kamdan-kam holat qimmatroq bo‘lsa ham. Bitta
+disk buzilishi — kundalik; to‘rtta bir vaqtda — deyarli hech qachon.
+</Deep>
+
+### 7.2 Qachon nusxa, qachon kod
+
+| Mezon | Uch nusxa | Erasure coding |
+| --- | --- | --- |
+| Hajm | 3x | ~1.3–2x |
+| Kichik ob’ektlar | Yaxshi | Yomon (bo‘laklar juda mayda) |
+| O‘qish kechikishi | Bitta nusxadan — tez | Bir necha bo‘lakdan (yoki tizimli bo‘lsa — ma’lumot bo‘laklaridan) |
+| Tiklash trafigi | Kam (1x) | Ko‘p (k x), LRC bilan kamroq |
+| Hisob | Yo‘q | Kodlash va dekodlash (arzon, lekin bor) |
+| Qachon | Issiq, kichik, tez o‘zgaradigan | Katta, sovuq, uzoq saqlanadigan |
+
+Katta tizimlar ko‘pincha **ikkalasini** ishlatadi: yangi yozilgan
+ma’lumot avval nusxalar bilan (tez, oddiy), keyin fon jarayonida
+erasure coding’ga o‘tkaziladi (arzon). Bu 5-bo‘lim 10-qadamdagi saqlash
+sinflari g‘oyasining ichki ko‘rinishi — ma’lumot soviydi, himoya usuli
+o‘zgaradi.
+
+<Callout type="info" title="Oddiy tilda: nusxa va kod">
+Uch nusxa — kitobning uchta to‘liq nusxasi uch xil kutubxonada. Oddiy,
+tez, lekin uch barobar qog‘oz. Erasure coding — kitobni 6 bo‘lakka bo‘lib,
+yana 3 ta “tiklash sahifasi” yozib, 9 bo‘lakni 9 joyga tarqatish. Istalgan
+6 bo‘lakni yig‘sangiz, kitob to‘liq tiklanadi. Qog‘oz 1.5 barobar, himoya
+kuchliroq — lekin bitta bo‘lak yo‘qolsa, uni yozish uchun 6 joyga borish
+kerak.
+</Callout>
+
+<Check q="Nega erasure coding kichik ob'ektlar uchun yomon tanlov?">
+Uchta sabab.
+
+**Bo‘laklar juda mayda.** 4 KB fayl RS(10,4) da 14 bo‘lakka bo‘linadi,
+har biri ~400 bayt. Har bo‘lak alohida disk operatsiyasi, alohida
+metadata yozuvi va alohida tarmoq so‘rovi talab qiladi. Diskning bitta
+operatsiyasi (qattiq diskda ~5–10 ms) 400 bayt uchun ham, 1 MB uchun ham
+deyarli bir xil turadi — ya’ni samaradorlik 1 000 barobar past.
+
+**Metadata ulushi.** 2-qadamdagi indeks yozuvi (~200–500 bayt) — 14 ta
+bo‘lak joylashuvi bilan kattaroq. 4 KB ma’lumot uchun metadata hajmi
+ma’lumotning o‘ziga yaqinlashadi.
+
+**O‘qish kechikishi.** Tizimli kodda ham kichik ob’ektni o‘qish uchun
+10 ta diskka murojaat qilish kerak, va javob eng sekin diskka bog‘liq
+(“dum kechikishi”). Uch nusxada — bitta diskdan.
+
+Shuning uchun kichik ob’ektlar yo nusxalanadi, yo ko‘plari bitta katta
+“konteyner”ga yig‘ilib, konteyner kodlanadi. Ikkinchisining narxi — ob’ekt
+o‘chirilganda konteynerda “teshik” qoladi va vaqti-vaqti bilan konteynerlarni
+qayta yig‘ish (siqish, compaction) kerak.
+</Check>
+
+## 8. Metadata va izchillik
+
+### 8.1 LIST: millionlab kalitni sahifalab o‘qish
+
+LIST har chaqiriqda ko‘pi bilan 1 000 kalit qaytaradi, va keyingi sahifa
+uchun **davom ettirish belgisi** (continuation token) beradi. Kalitlar
+tartiblangan (5-bo‘lim, 3-qadam), shuning uchun belgi aslida “oxirgi
+qaytarilgan kalit” — keyingi sahifa undan keyingidan boshlanadi.
+
+`delimiter` parametri “papkalar” illyuziyasini yaratadi: `prefix=2025/`
+va `delimiter=/` so‘ralsa, S3 `2025/` dan keyingi birinchi `/` gacha
+bo‘lgan qismlarni guruhlaydi va “umumiy prefikslar” sifatida qaytaradi
+(`2025/iyun/`, `2025/iyul/`) — ichidagi har bir faylni emas.
+
+<Calc title="100 million ob'ektli bucket'ni to'liq ro'yxatlash" result="100 000 ta LIST so'rovi; ketma-ket ~3 soat; prefikslar bo'yicha parallel — daqiqalar">{`Bucket: 100 M ob'ekt
+LIST: 1 000 kalit / so'rov -> 100 000 so'rov
+Har so'rov: ~100 ms (tarmoq + indeks)
+
+Ketma-ket: 100 000 x 0.1 s = 10 000 s = ~2.8 soat
+  (har sahifa oldingisining belgisiga bog'liq — parallel qilib bo'lmaydi)
+
+Parallel: kalitlar maydonini oldindan bo'lish, masalan birinchi belgi
+  bo'yicha 36 ta prefiks (0-9, a-z), har biriga alohida LIST oqimi
+  -> ~2.8 soat / 36 = ~5 daqiqa
+
+Muqobil: S3 Inventory — kunlik to'liq ro'yxat fayl sifatida
+  (millionlab LIST o'rniga bitta tayyor CSV/Parquet fayl)`}</Calc>
+
+### 8.2 Oxir-oqibat izchillikdan kuchli izchillikka
+
+5-bo‘lim 11-qadamda natija berildi. Bu yerda — nega muammo umuman paydo
+bo‘lgani va uni hal qilishning qiyin tomoni.
+
+<Flow nodes={["PUT: yangi versiya indeksga yozildi", "Metadata keshlari: eski versiya hali turibdi", "GET keshdan: ESKI versiya (2020-yilgacha)", "Guvoh: 'bu kalitning oxirgi versiyasi v7'", "GET: kesh v6 -> eskirgan, indeksdan v7", "Mijoz har doim yangi versiyani ko'radi"]} caption="Keshlar tezlik beradi; guvoh ularning eskirganini arzon aniqlaydi" />
+
+Muammoning ildizi — **keshlar**. Trillionlab kalitli indeksdan har GET
+uchun to‘g‘ridan-to‘g‘ri o‘qish sekin va qimmat; shuning uchun metadata
+qatlamida ko‘p darajali keshlar bor. Kesh — nusxa, nusxa esa eskiradi.
+Oddiy yechimlar yaroqsiz: keshni o‘chirsak — tezlik yo‘qoladi; har yozishda
+hamma keshni tozalasak — yozish sekinlashadi va tozalash xabari yo‘qolsa,
+baribir eski qiymat qoladi.
+
+Guvoh yondashuvi o‘rtadagi yo‘l: har kalit uchun **faqat versiya belgisi**
+(bir necha bayt) kichik, tez va izchil tizimda saqlanadi. O‘qishda
+keshdagi versiya guvoh bilan solishtiriladi — mos bo‘lsa, keshdan
+javob; mos bo‘lmasa, indeksdan yangisi olinadi. Guvoh ma’lumotning o‘zini
+emas, faqat “kim eng yangi”ni saqlagani uchun, u kichik va tez.
+
+<Deep title="Nega izchillik bepul emas: CAP va kechikish">
+Taqsimlangan tizimlarda klassik murosa: nusxalar orasida tarmoq uzilsa,
+yo **izchillik** (hamma bir xil ko‘radi), yo **mavjudlik** (hamma javob
+oladi) tanlanadi (CAP teoremasi). Uzilish bo‘lmasa ham, izchillik
+**kechikish** narxiga ega: yozish tasdiqlanishidan oldin boshqa nusxalar
+bilan kelishish kerak (PACELC).
+
+S3 2020-yilda bu murosani qanday “bepul” qildi? Aslida bepul emas —
+narx boshqa joyga ko‘chirildi:
+
+```
+Yozish: indeks yozuvi + guvohdagi versiyani oshirish
+  -> guvoh bir necha nusxada, kelishilgan holda (qo'shimcha ~ms)
+  -> lekin yozish allaqachon ma'lumotni 3 AZ ga yozgan (o'nlab ms),
+     shuning uchun qo'shimcha narx nisbatan kichik
+
+O'qish: kesh + guvohga kichik so'rov
+  -> guvoh tez (xotirada, faqat versiyalar) — ~sub-ms
+  -> ko'pchilik holda kesh to'g'ri, indeksga borish shart emas
+
+Tarmoq uzilishida: guvohga yetib bo'lmasa, o'qish kutadi yoki xato beradi
+  -> izchillik mavjudlikdan ustun (1-bo'lim Check: "shubha bo'lsa —
+     noto'g'ri javob berma")
+```
+
+Asosiy saboq: izchillik kechikish narxini **eng arzon joyga**
+ko‘chirish bilan amalga oshiriladi. Yozish allaqachon sekin (ko‘p AZ ga
+yozish) — unga bir oz qo‘shish sezilmaydi. O‘qish tez bo‘lishi kerak — unga
+faqat eng kichik tekshiruv qo‘shiladi.
+</Deep>
+
+### 8.3 Issiq kalit va issiq prefiks
+
+5-bo‘lim 3-qadamdagi oraliqlar bo‘yicha bo‘lish **prefiks** issiq bo‘lganda
+yordam beradi (oraliqni bo‘lish mumkin). Lekin bitta **kalit** issiq
+bo‘lsa-chi — masalan, yangi o‘yin yangilanishi 1 million qurilma tomonidan
+bir daqiqada yuklab olinadi?
+
+<Calc title="Bitta mashhur ob'ekt" result="Bitta ob'ekt S3'dan to'g'ridan-to'g'ri ~5 500 GET/s; million yuklab olish uchun CDN kerak">{`O'yin yangilanishi: 2 GB, 1 000 000 qurilma, 10 daqiqada
+  so'rovlar: ~1 700/s (o'rtacha) — bu hali chegarada
+  trafik: 1 000 000 x 2 GB / 600 s = ~3.3 TB/s = ~27 Tbit/s
+
+Muammo so'rovlar soni emas, TRAFIK: bitta ob'ektning bo'laklari
+  cheklangan diskda; ~27 Tbit/s ni bir necha o'n disk bera olmaydi
+
+Yechim: CDN (CloudFront va boshqalar) — ob'ekt dunyo bo'ylab
+  yuzlab chekka serverlarda keshlanadi; S3 faqat har chekka server
+  uchun bir marta o'qiladi -> S3 ga yuk: yuzlab so'rov, yuzlab GB`}</Calc>
+
+Bu YouTube darsidagi CDN g‘oyasi bilan bir xil: **ombor — haqiqat
+manbai, tarqatish — boshqa qatlamning ishi**. S3 ko‘p mijozlar uchun
+“hamma narsani saqlaydigan” joy, lekin “hammaga birdaniga beradigan”
+joy emas.
+
+<Check q="Nega kesh izchillik muammosini keltirib chiqaradi va 'guvoh' yondashuvi uni qanday arzon hal qiladi?">
+Kesh — ma’lumotning **nusxasi**, va asl ma’lumot o‘zgarganda nusxa
+avtomatik yangilanmaydi. Agar yozish indeksni yangilasa-yu, bir nechta
+keshda eski yozuv qolsa, o‘sha keshlardan o‘qigan mijozlar eski versiyani
+ko‘radi. Bu 2020-yilgacha S3’dagi “qayta yozishdan keyin eski versiya”
+muammosining mohiyati.
+
+Keshni to‘liq olib tashlash — tezlik va narxni yo‘qotish. Har yozishda
+barcha keshlarni tozalash — qimmat va ishonchsiz (tozalash xabari yo‘qolishi
+mumkin, va “qaysi keshlarda bu kalit bor” ni bilish kerak).
+
+Guvoh yondashuvi savolni o‘zgartiradi: “keshdagi qiymat to‘g‘rimi?” o‘rniga
+“keshdagi versiya eng yangisimi?”. Buning uchun faqat kalitning **oxirgi
+versiya belgisi** kerak — bir necha bayt. Bu belgilar kichik, tez va izchil
+tizimda saqlanadi. O‘qish: keshdan qiymat + guvohdan versiya → mos kelsa,
+javob; kelmasa — indeksdan. Ko‘pchilik holda kesh to‘g‘ri, va qo‘shimcha
+narx — kichik versiya so‘rovi.
+
+Umumiy tamoyil: **katta ma’lumotni keshlang, kichik “haqiqat belgisi”ni
+izchil saqlang**. Bu HTTP’dagi ETag va “If-None-Match” mexanizmi bilan bir
+xil g‘oya.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="Ob'ekt ombori (S3 tamoyillari asosida)"
+  layers={[
+    { name: "Mijozlar", boxes: ["SDK va CLI", "Veb-ilovalar", "Tahlil tizimlari", "CDN"], note: "Har so'rov imzolangan; katta fayllar — bo'laklab (9-qadam), nazorat summasi bilan (5-qadam)." },
+    { name: "Old qatlam (front-end)", boxes: ["DNS va yuk taqsimlash", "Autentifikatsiya va ruxsat", "Tezlik cheklovi", "So'rovni yo'naltirish"], note: "Holatsiz serverlar: istalgan biri istalgan so'rovni qabul qiladi." },
+    { name: "Metadata (katalog)", boxes: ["Kalit oraliqlari bo'yicha indeks", "Keshlar", "Guvoh (versiyalar)", "LIST"], note: "Trillionlab yozuv; kalit -> bo'laklar joylashuvi (2-3, 11-qadamlar)." },
+    { name: "Joylashtirish", boxes: ["Qaysi disklar", "AZ va stoyka qoidalari", "Yuk va bo'sh joy muvozanati"], note: "Har yangi yozuv uchun qaror (4-qadam); auditor qoidalarni tekshiradi (6.1)." },
+    { name: "Saqlash tugunlari", boxes: ["Bo'laklar va nazorat summalari", "ShardStore", "Millionlab disk, 3+ AZ"], note: "Faqat 'bo'lak ID -> baytlar'ni biladi (13-qadam)." },
+    { name: "Fon jarayonlari", boxes: ["Scrubber", "Tiklash", "Erasure coding'ga o'tkazish", "Hayot sikli va tozalash"], note: "Tizim doimo o'zini tuzatib turadi (6-qadam)." },
+  ]}
+/>
+
+Diagrammada eng muhim chiziq — **metadata va saqlash tugunlari orasidagi
+chegara** (2-qadam). Yuqorida — kichik yozuvlar, ko‘p so‘rov, izchillik
+talab qiladigan tizim. Pastda — katta baytlar, oddiy interfeys, faqat
+saqlanish. Ular turlicha masshtablanadi: metadata so‘rovlar soni bo‘yicha,
+saqlash tugunlari baytlar va disklar bo‘yicha.
+
+Oxirgi qatlam — **fon jarayonlari** — ko‘pincha diagrammalarda chizilmaydi,
+lekin S3 uchun eng muhimlaridan biri. Foydalanuvchi so‘rovlari to‘xtasa ham,
+ular ishlayveradi: tekshiradi, tiklaydi, ko‘chiradi, tozalaydi.
+
+<Flow nodes={["Mijoz: PUT + CRC32C", "Old qatlam: imzo va ruxsat", "Joylashtirish: 3 AZ, turli stoykalar", "Saqlash tugunlari: bo'laklar + summalar diskka", "Indeks: kalit -> bo'laklar (+ guvoh versiyasi)", "200 OK: endi har qanday GET yangi versiyani ko'radi"]} caption="Bitta PUT'ning yo'li: '200 OK' faqat ma'lumot bir nechta AZ da diskka yozilgandan keyin" />
+
+<Timeline
+  rows={[
+    { when: "2006", what: "S3 ishga tushadi (14-mart)", why: "PUT, GET, DELETE, LIST — va GB/oy uchun narx. Oxir-oqibat izchil." },
+    { when: "2010", what: "Versiyalash", why: "Inson xatosidan himoya: eski versiyalar saqlanadi (12-qadam)." },
+    { when: "2012", what: "Glacier — arxiv saqlash", why: "Sovuq ma'lumot uchun arzon sinf (10-qadam)." },
+    { when: "2017", what: "us-east-1 dagi katta uzilish", why: "Xato buyruq indeks va joylashtirish tizimlarini o'chirdi; saqlanish buzilmadi (10-bo'lim)." },
+    { when: "2018", what: "Prefiks chegarasi ~35x oshdi; Object Lock; Intelligent-Tiering; Block Public Access", why: "Tezlik, qonuniy saqlash, avtomatik sinf va ochiq bucket'lardan himoya." },
+    { when: "2020", what: "Kuchli izchillik", why: "Keshlar + guvoh; qo'shimcha narxsiz (11-qadam, 8.2)." },
+    { when: "2021-2024", what: "ShardStore maqolasi; qo'shimcha nazorat summalari; standart shifrlash; Express One Zone; shartli yozuvlar", why: "Ichki to'g'rilik, yaxlitlik va yangi qo'llanishlar (13-14-qadamlar)." },
+  ]}
+/>
+
+Tarixdagi eng qiziq kuzatuv: S3’ning API si 2006-yildan beri deyarli
+o‘zgarmagan — PUT, GET, DELETE, LIST. Ichkarida esa hamma narsa, ehtimol,
+bir necha marta qayta yozilgan: saqlash tugunlari, indeks, izchillik
+modeli. **Oddiy va barqaror interfeys** ichki qismlarni mijozlarni
+buzmasdan almashtirish imkonini beradi — bu S3’ning uzoq umrining
+sirlaridan biri.
+
+## 10. Ishonchlilik: 2017-yil 28-fevral
+
+### 10.1 Bir buyruq, to‘rt soat
+
+<Timeline
+  rows={[
+    { when: "09:37", what: "Muhandis kichik server guruhini xizmatdan chiqarish buyrug'ini ishga tushiradi", why: "Maqsad — to'lov tizimining bir qismini tuzatish. Buyruq parametrida xato: ko'proq server tanlandi." },
+    { when: "09:37", what: "Ikki muhim quyi tizim serverlari o'chadi", why: "Indeks (metadata) va joylashtirish tizimi o'z sig'imining katta qismini yo'qotadi." },
+    { when: "~09:40", what: "us-east-1 da S3 so'rovlari xato qaytaradi", why: "S3 ga tayanadigan boshqa AWS xizmatlari va minglab saytlar ishlamay qoladi." },
+    { when: "09:37-12:26", what: "Indeks tizimi to'liq qayta ishga tushiriladi", why: "Tizim yillar davomida to'liq qayta ishga tushirilmagan edi; tekshiruvlar kutilganidan uzoq davom etdi." },
+    { when: "12:26", what: "GET, LIST, DELETE tiklanadi", why: "Indeks ishlaydi — mavjud ma'lumotni o'qish mumkin." },
+    { when: "13:54", what: "PUT tiklanadi", why: "Joylashtirish tizimi (yangi yozuvlar uchun) indeksga bog'liq edi — undan keyin tiklandi." },
+  ]}
+/>
+
+AWS’ning ochiq hisobotida muhim jumla bor: **ma’lumot yo‘qolmadi**. Saqlanish
+buzilmadi — faqat mavjudlik. Bu 1-bo‘limdagi farqning jonli misoli: tizim
+bir necha soat javob bermadi, lekin barcha ob’ektlar joyida qoldi.
+
+Hisobotda tasvirlangan tuzatishlar uch guruhda:
+
+| Muammo | Tuzatish |
+| --- | --- |
+| Bitta buyruq juda ko‘p sig‘imni olib tashlay oldi | Vosita sig‘imni **sekin** olib tashlaydi va minimal chegaradan pastga tushirmaydi |
+| Qayta ishga tushirish soatlab davom etdi | Tizimlar kichik mustaqil bo‘laklarga (**hujayralar**, cells) bo‘linadi — har biri tez qayta ishga tushadi |
+| Katta tizim yillar davomida qayta ishga tushirilmagan | Tiklash jarayonlari muntazam sinaladi |
+
+<Calc title="Qayta ishga tushirish vaqti va hujayralar" result="Bitta katta tizim yillar davomida o'sgan hajmni tekshirish uchun soatlar oladi; 100 ta hujayra — parallel va har biri daqiqalarda">{`Indeks tizimi qayta ishga tushganda: har bo'lakning yaxlitligini tekshirish,
+  nusxalarni moslash, keshlarni isitish
+
+Faraz: 1 000 ta server, har biri 20 ta indeks bo'lagini tekshiradi,
+  bo'lak ~10 daqiqa, lekin kelishish uchun navbat bilan (bog'liqliklar)
+  -> ketma-ket qismlar tufayli ~2-3 soat
+
+Hujayralarga bo'lingan tizim: 100 ta mustaqil hujayra, har biri 10 server
+  har hujayra o'z-o'zidan tiklanadi: ~10-20 daqiqa
+  hammasi parallel -> butun tizim ~20 daqiqa
+  va bitta xato buyruq odatda faqat BITTA hujayraga tegadi -> 1% mijoz`}</Calc>
+
+<Deep title="Hujayrali arxitektura: portlash radiusini cheklash">
+“Portlash radiusi” (blast radius) — bitta nosozlik qancha mijozga ta’sir
+qiladi. 2017-yilgi hodisada radius — butun mintaqa edi. Hujayrali
+arxitekturada tizim bir nechta **to‘liq mustaqil nusxaga** bo‘linadi, har
+biri mijozlarning bir qismiga xizmat qiladi.
+
+```
+Oldin:  [ yagona katta indeks tizimi ] <- barcha bucket'lar
+Keyin:  [hujayra 1] [hujayra 2] ... [hujayra N]
+            ^             ^                ^
+        bucket'lar A  bucket'lar B     bucket'lar Z
+        (xesh bo'yicha tayinlangan)
+```
+
+Uchta qoida:
+
+**1. Hujayralar hech narsani bo‘lishmaydi** — alohida serverlar, alohida
+ma’lumotlar, alohida konfiguratsiya. Bitta hujayradagi xato boshqasiga
+o‘tmaydi.
+
+**2. Yangi versiya hujayralarga navbat bilan chiqariladi** (6.2 Deep):
+avval bitta hujayra, kuzatuv, keyin keyingilari. Xato chiqsa — faqat bitta
+hujayra zarar ko‘radi.
+
+**3. Yo‘naltirish qatlami juda oddiy** — mijozni o‘z hujayrasiga yuborish.
+U o‘zi hujayralarga bo‘linmagan yagona qism, shuning uchun eng oddiy va eng
+kam o‘zgaradigan bo‘lishi kerak.
+
+Narxi: har hujayra alohida boshqariladi, sig‘im har birida alohida
+rejalashtiriladi, va hujayralararo harakatlar (masalan, bucket’ni boshqa
+hujayraga ko‘chirish) murakkab. Lekin katta tizimlar uchun bu narx
+“bitta xato — butun mintaqa” xavfidan ancha arzon. Bu g‘oya Slack
+darsidagi “shard’lar” va WhatsApp’dagi “har server — o‘z foydalanuvchilari”
+tamoyillariga yaqin.
+</Deep>
+
+<Callout type="maslahat" title="Xavfli buyruqlar sekin va cheklangan bo'lsin">
+2017-yilgi hodisaning asosiy saboqlaridan biri — vositalar haqida. Agar
+buyruq katta tizimdan sig‘im olib tashlashi mumkin bo‘lsa, u: (1) **sekin**
+ishlashi (birdaniga emas, bosqichma-bosqich), (2) **minimal chegarani**
+bilishi (“bu tizimda kamida N server qolishi kerak”) va (3) katta hajmda
+**qo‘shimcha tasdiq** so‘rashi kerak. Inson xato qiladi — bu muqarrar.
+Vositaning vazifasi — xatoning **narxini** cheklash.
+</Callout>
+
+### 10.2 Degradatsiya: nima ishlaydi, nima yo‘q
+
+2017-yilgi hodisada GET joylashtirish tizimidan oldin tiklandi. Bu
+tasodif emas: o‘qish uchun faqat indeks kerak, yozish uchun esa indeks
+**va** joylashtirish. Tizim qismlari orasidagi bog‘liqlikni bilish tiklash
+tartibini belgilaydi: eng muhim va eng kam bog‘liq funksiya birinchi.
+
+Mijoz tomonida ham degradatsiya mumkin: muhim ma’lumotni **boshqa
+mintaqaga** nusxalash (Cross-Region Replication) — bir mintaqa ishlamasa,
+ilova boshqasidan o‘qiydi. Narxi — ikki barobar saqlash va mintaqalararo
+trafik, hamda nusxaning biroz kechikishi (odatda soniyalar-daqiqalar).
+
+<Check q="2017-yilgi hodisada S3 ishlamadi, lekin AWS 'ma'lumot yo'qolmadi' dedi. Buni qanday tushunish kerak va mijoz nimaga tayyor bo'lishi kerak?">
+Hodisa **mavjudlik**ni buzdi, **saqlanish**ni emas. Indeks va joylashtirish
+tizimlari (katalog va “qayerga yozish” xizmati) ishlamadi, shuning uchun
+so‘rovlarga javob berib bo‘lmadi. Lekin saqlash tugunlaridagi baytlar va
+indeksning o‘zidagi yozuvlar joyida edi — tizim qayta ishga tushgach, hamma
+narsa qaytdi.
+
+Mijoz uchun saboq ikki qismli. Birinchisi — **saqlanishga ishonsa bo‘ladi,
+mavjudlikka esa rejalashtirish kerak**. 99.99% — yiliga ~53 daqiqa; va bu
+o‘rtacha, bitta hodisa soatlab davom etishi mumkin. Ikkinchisi — **bog‘liqliklar
+zanjiri**: ko‘p xizmatlar S3 ga tayangan, shuning uchun S3 to‘xtashi ularni
+ham to‘xtatdi (hatto AWS’ning o‘z holat sahifasi ham bir muddat yangilanmadi,
+chunki u S3 da saqlangan edi).
+
+Amaliy choralar: muhim ma’lumotni boshqa mintaqaga nusxalash; ilovada
+S3 ishlamaganda **degradatsiya rejimi** (keshdan eski versiyani ko‘rsatish,
+yozishlarni navbatga qo‘yish); va o‘z monitoringingizni kuzatayotgan tizimga
+bog‘lamaslik.
+</Check>
+
+## 11. Xavfsizlik
+
+### 11.1 Eng keng tarqalgan muammo — ochiq bucket
+
+S3’dagi eng ko‘p ma’lumot sizib chiqishlari hech qachon S3’ni “buzish”
+bilan bo‘lmagan. Ular **noto‘g‘ri sozlama** bilan bo‘lgan: kimdir bucket’ni
+“hamma o‘qiy oladi” qilib qo‘ygan va unda millionlab mijozlar ma’lumoti
+bo‘lgan. 2010-yillarning o‘rtasida bunday hodisalar juda ko‘p edi.
+
+AWS javobi — **xavfsiz standart sozlamalar**:
+
+| Yil | O‘zgarish | Ma’nosi |
+| --- | --- | --- |
+| 2018 | Block Public Access | Hisob yoki bucket darajasida “hech narsa ochiq bo‘lmasin” degan bitta kalit |
+| 2023 | Yangi bucket’larda Block Public Access va ACL o‘chirilgan — standart | Ochiq qilish uchun ongli qadam kerak |
+| 2023 | Barcha yangi ob’ektlar standart shifrlanadi (SSE-S3) | Diskdagi ma’lumot har doim shifrlangan |
+
+Bu Airbnb darsidagi “maqsadli ishqalanish” tamoyilining boshqa ko‘rinishi:
+xavfli amal (ma’lumotni butun internetga ochish) **mumkin**, lekin standart
+emas va uni qilish uchun bir necha ongli qadam kerak.
+
+<Calc title="Ochiq bucket qanchalik tez topiladi" result="Taxmin qilinadigan nomli ochiq bucket soatlar ichida skanerlar tomonidan topiladi — 'hech kim bilmaydi' degan xavfsizlik ishlamaydi">{`Bucket nomlari global va DNS da ko'rinadi: nom.s3.amazonaws.com
+Hujumchilar skanerlari: kompaniya nomi + "backup", "prod", "data", "logs"...
+
+Faraz: skaner sekundiga 1 000 nomni tekshiradi
+  lug'at: 10 000 kompaniya x 200 qo'shimcha so'z = 2 M nom
+  2 000 000 / 1 000 = 2 000 s = ~33 daqiqa — butun lug'at
+
+Xulosa: "nomini hech kim bilmaydi" — himoya emas.
+  Himoya faqat ruxsatlar: Block Public Access, minimal huquqlar`}</Calc>
+
+### 11.2 Vaqtinchalik havola: presigned URL
+
+Tez-tez uchraydigan vazifa: foydalanuvchi o‘z fayllarini yuklab olsin,
+lekin bucket ochiq bo‘lmasin. Yechim — **imzolangan havola** (presigned
+URL): server maxfiy kaliti bilan ma’lum ob’ekt uchun, ma’lum muddatga
+havola yaratadi. Havola egasi faqat shu ob’ektni, faqat shu muddat ichida
+ola oladi.
+
+<Deep title="Imzolangan havola qanday ishlaydi">
+Imzo — HMAC (xeshga asoslangan xabar autentifikatsiya kodi). Server
+(sizning ilovangiz) va S3 ikkalasi ham maxfiy kalitni biladi; mijoz
+bilmaydi.
+
+```
+Server tayyorlaydi:
+  so'rov tavsifi = "GET" + "/rasmlar/2025/a.jpg" + "muddati: 2025-06-14T11:00Z"
+                   + kim (kalit ID) + boshqa sarlavhalar
+  imzo = HMAC-SHA256(maxfiy_kalit, so'rov tavsifi)   (aslida bir necha qadamli)
+  URL = https://rasmlar.s3.../2025/a.jpg?X-Amz-Expires=...&X-Amz-Signature=imzo...
+
+Mijoz URL bilan so'raydi.
+S3 xuddi shu tavsifni o'zi tuzadi, o'zi imzolaydi va solishtiradi:
+  imzo mos + muddat o'tmagan + kalit egasining ruxsati bor -> baytlar
+  URL da biror narsa o'zgartirilgan (boshqa fayl nomi) -> imzo mos emas -> 403
+```
+
+Muhim nozik jihatlar:
+
+**Havola — egasiga beriladigan kalit.** Uni kim olsa (masalan, log faylidan,
+brauzer tarixidan), muddati tugaguncha foydalanadi. Muddatni qisqa qiling
+(daqiqalar, kunlar emas).
+
+**Imzo kalit egasining huquqlari bilan cheklangan.** Havola yaratgan
+kalitning o‘zi faylni o‘qish huquqiga ega bo‘lmasa, havola ham ishlamaydi.
+Kalit bekor qilinsa, u yaratgan havolalar ham ishlamay qoladi.
+
+**Yuklash uchun ham ishlaydi.** PUT uchun imzolangan havola — foydalanuvchi
+faylni to‘g‘ridan-to‘g‘ri S3 ga yuklaydi, sizning serveringiz orqali emas.
+Bu server trafigini va xarajatini keskin kamaytiradi.
+</Deep>
+
+<Callout type="ogoh" title="Kalitlarni kodga yozmang">
+S3 ga kirish kalitlari (access key) GitHub’dagi ochiq kodda — eng keng
+tarqalgan xavfsizlik xatolaridan biri. Avtomatik skanerlar ochiq
+repozitoriylarni daqiqalar ichida tekshiradi va topilgan kalitlar bilan
+ma’lumotni o‘g‘irlaydi yoki qimmat resurslar ishga tushiradi. Qoida:
+serverda — vaqtinchalik rol (IAM role) kalitlari, mijozda — faqat
+imzolangan havolalar. Doimiy kalit kerak bo‘lsa — maxfiy ma’lumotlar
+omborida, kodda emas.
+</Callout>
+
+<Check q="Foydalanuvchilar profil rasmlarini yuklaydi va boshqalar ularni ko'radi. Bucket'ni ochiq qilmasdan buni qanday tashkil qilasiz?">
+Ikki yo‘nalish alohida.
+
+**Yuklash**: ilova serveri foydalanuvchini tekshiradi va unga **PUT uchun
+imzolangan havola** beradi — aniq kalit (`profil/<foydalanuvchi_id>/<uuid>.jpg`),
+qisqa muddat (masalan, 5 daqiqa), hajm va tur cheklovi bilan. Foydalanuvchi
+faylni to‘g‘ridan-to‘g‘ri S3 ga yuklaydi — server trafigi yo‘q. Yuklangandan
+so‘ng S3 hodisasi (yoki server tekshiruvi) rasmni tekshiradi (hajm, tur,
+zararli tarkib) va profilga biriktiradi.
+
+**Ko‘rish**: bucket yopiq qoladi. Rasmlar CDN orqali beriladi, CDN esa S3
+dan **maxsus kirish huquqi** bilan o‘qiydi (bucket siyosatida faqat CDN
+ruxsatga ega). Agar rasmlar maxfiy bo‘lsa (faqat do‘stlarga) — ilova har
+ko‘rish uchun **GET imzolangan havola** yaratadi yoki CDN’ning imzolangan
+havolalaridan foydalanadi.
+
+Natija: bucket hech qachon ochiq emas, hech bir mijozda doimiy kalit yo‘q,
+har bir kirish — vaqt va ob’ekt bilan cheklangan.
+</Check>
+
+## 12. Iqtisod: bir terabayt qancha turadi
+
+### 12.1 Mijoz nima uchun to‘laydi
+
+S3 hisobida odatda to‘rtta qator bor: **saqlash** (GB/oy), **so‘rovlar**
+(har 1 000 ta uchun), **ma’lumotni tashqariga chiqarish** (GB uchun) va
+qo‘shimcha xizmatlar. Ko‘pchilik faqat birinchisini o‘ylaydi — va hisob
+kelganda hayron bo‘ladi.
+
+<Calc title="Ikki xil ilova, bir xil hajm, turli hisob" result="Bir xil 10 TB: video arxivi ~$230/oy, mayda fayllar bilan ishlaydigan ilova — ~$16 400/oy; hisobni hajm emas, so'rovlar va trafik belgilaydi">{`Narxlar (taxminan, standart sinf):
+  saqlash: 0.023 $ / GB-oy
+  PUT: 0.005 $ / 1 000 so'rov      GET: 0.0004 $ / 1 000 so'rov
+  internetga chiqish: ~0.09 $ / GB
+
+Ilova A — video arxivi: 10 TB, kam o'qiladi
+  saqlash: 10 000 GB x 0.023 = 230 $
+  so'rovlar: arzimas; chiqish: kam
+  Jami: ~230 $/oy
+
+Ilova B — foydalanuvchi JSON fayllari: 10 TB, 5 milliard kichik fayl
+  saqlash: 230 $
+  kuniga 50 M PUT -> oyiga 1.5 mlrd -> 1.5 M x 0.005 = 7 500 $  (!)
+  kuniga 500 M GET -> oyiga 15 mlrd -> 15 M x 0.0004 = 6 000 $
+  chiqish: oyiga 30 TB -> 30 000 x 0.09 = 2 700 $
+  Jami: ~16 400 $/oy — saqlash hisobning atigi 1.4% i`}</Calc>
+
+Hisob kutilmagan xulosani beradi: kichik fayllar bilan ishlaydigan ilovada
+**saqlash deyarli bepul**, asosiy xarajat — so‘rovlar va trafik. Bu
+optimallashtirish yo‘nalishini o‘zgartiradi: fayllarni siqish emas,
+**kichik fayllarni yirikroq to‘plamlarga birlashtirish** (so‘rovlar soni
+kamayadi) va **CDN** orqali berish (chiqish trafigi arzonroq, S3 GET
+kamayadi).
+
+### 12.2 Provayder nima uchun to‘laydi
+
+Mijoz narxi — bitta tomon. Provayder tomonida xarajat asosan **disklar**,
+serverlar, elektr va binolar. Saqlanish usuli bu xarajatni bevosita
+belgilaydi.
+
+<Calc title="1 PB foydali ma'lumotning 'xom' narxi" result="Uch nusxa bilan ~3 PB disk, RS kodi bilan ~1.8 PB — farq taxminan 60 ta 20 TB disk va ularning serverlari, elektri, joyi">{`Faraz: 20 TB disk ~ 350 $, server va stoyka ulushi bilan diskka ~600 $
+  (elektr, sovutish, bino, tarmoq — yana shuncha, 5 yil ichida)
+  -> ~1 200 $ / disk / 5 yil -> ~60 $ / TB / 5 yil = ~1 $ / TB-oy
+
+1 PB foydali ma'lumot:
+  uch nusxa (3x):       3 000 TB -> ~3 000 $ / oy
+  RS, zonalararo (1.8x): 1 800 TB -> ~1 800 $ / oy
+  + bo'sh zaxira joy (~20%), tiklash uchun sig'im, metadata
+
+Mijoz narxi: 1 PB x 0.023 $/GB = ~23 000 $ / oy
+  -> xom xarajat narxning kichik qismi; qolgani — tarmoq, metadata,
+     muhandislik, fon jarayonlari, zaxira sig'im va, albatta, foyda`}</Calc>
+
+Raqamlar taxminiy, lekin tartib muhim: erasure coding butun saqlash
+xarajatini ~40% kamaytiradi. S3 miqyosida (eksabaytlar) bu yiliga yuz
+millionlab dollar. Shuning uchun 7-bo‘limdagi murakkablik (kodlash,
+tiklash trafigi, LRC) iqtisodiy jihatdan oqlanadi.
+
+<Callout type="info" title="Nega arxiv sinflari shunchalik arzon">
+Deep Archive’da saqlash Standard’dan ~23 barobar arzon. Sabab — **o‘qish
+va’dasi**: ma’lumot 12 soatda olinadi, millisekundlarda emas. Bu provayderga
+ma’lumotni eng arzon muhitda saqlash (zich, kam quvvat ishlatadigan
+qurilmalar, ehtimol lenta yoki kamdan-kam aylantiriladigan disklar) va
+o‘qishlarni yig‘ib, navbat bilan bajarish imkonini beradi. Ichki tafsilotlar
+ochiq e’lon qilinmagan, lekin iqtisodiy mantiq aniq: **kechikishga rozi
+bo‘lish — arzonlikning eng kuchli manbai**.
+</Callout>
+
+## 13. Sig‘im rejalashtirish
+
+### 13.1 Disklar kattalashadi, lekin tezlashmaydi
+
+Qattiq disklarning hajmi yillar davomida o‘n barobarlab oshdi (2 TB → 20+
+TB), lekin **tezligi** deyarli o‘zgarmadi: mexanik bosh sekundiga ~100–200
+tasodifiy o‘qish qiladi, xuddi 15 yil oldingidek. Bu S3 kabi tizimlar uchun
+jim, lekin jiddiy muammo.
+
+<Calc title="Har terabaytga to'g'ri keladigan tezlik tushmoqda" result="Disk hajmi 10x oshdi, IOPS o'zgarmadi — har TB uchun o'qish qobiliyati 10x kamaydi">{`2010-yil atrofida: 2 TB disk, ~150 IOPS -> 75 IOPS / TB
+Bugun:            20 TB disk, ~150 IOPS -> 7.5 IOPS / TB
+
+Bir xil 1 PB ma'lumot:
+  2010: 500 disk x 150 = 75 000 o'qish/s sig'imi
+  bugun: 50 disk x 150 = 7 500 o'qish/s sig'imi
+
+Agar mijozlar shu 1 PB ni avvalgidek o'qisa (75 000 o'qish/s),
+  bugungi 50 disk yetmaydi — disklar TEZLIK bo'yicha tugaydi, hajm bo'yicha emas
+
+Tiklash vaqti ham: 20 TB / 200 MB/s = ~28 soat (bitta diskka),
+  2 TB / 150 MB/s = ~4 soat edi -> parallel tiklash (6-qadam) muhimroq`}</Calc>
+
+Oqibatlari: **issiq ma’lumot** va **sovuq ma’lumot** bir diskda
+aralashtiriladi (4-qadam) — har disk hajmning katta qismini sovuq
+ma’lumot bilan to‘ldiradi, tezligini esa oz miqdordagi issiq ma’lumotga
+beradi. Juda issiq ma’lumot uchun — SSD va keshlar (Express One Zone,
+14-qadam). Va har yangi, kattaroq disk avlodi bilan “bu diskda qancha
+issiq ma’lumot bo‘lishi mumkin” degan savol qayta hisoblanadi.
+
+### 13.2 O‘sish va zaxira sig‘im
+
+<Calc title="Sig'im rejasi: o'sish, zaxira va tiklash uchun joy" result="Ishlatilgan hajmning ~25-35% ga teng bo'sh joy kerak: o'sish, tiklash va disklar yetkazib berish muddati uchun">{`Hozirgi ma'lumot: 100 PB foydali (x1.8 kodlash = 180 PB disk)
+O'sish: oyiga ~3% (yillik ~40%)
+
+Disk yetkazib berish va o'rnatish muddati: ~3 oy
+  -> 3 oylik o'sish uchun joy oldindan bo'lishi kerak: 180 x 0.09 = ~16 PB
+
+Tiklash uchun bo'sh joy: bitta AZ butunlay yo'qolsa ham,
+  uning ma'lumoti qolgan AZ larda qayta tiklanishi uchun joy
+  (3 AZ da — har AZ da ~1/3 ga yaqin bo'sh joy kerak bo'lishi mumkin;
+   amalda bu kod sxemasi va siyosatga bog'liq)
+
+Kutilmagan o'sish (katta mijoz, yangi xizmat): ~5-10%
+
+Jami bo'sh joy: ~25-35% -> 180 PB ishlatilgan uchun ~230-240 PB o'rnatilgan`}</Calc>
+
+<Deep title="Nega bo'sh joy 'isrof' emas">
+Moliyaviy nuqtai nazardan bo‘sh disk — ishlamayotgan pul. Lekin saqlash
+tizimida bo‘sh joy uchta vazifani bajaradi, va ularning hech biri ixtiyoriy
+emas.
+
+**Tiklash maydoni.** Disk buzilganda uning bo‘laklari **boshqa** disklarga
+tiklanadi. Agar hamma disk 98% to‘la bo‘lsa, tiklash uchun joy yo‘q —
+himoya tiklanmaydi va 1-qadamdagi `T` cheksizga intiladi.
+
+**Yozish samaradorligi.** Deyarli to‘la disklarda joylashtirish (4-qadam)
+tanlovi kamayadi: yangi yozuv faqat bir nechta diskka ketadi — ular qiziydi.
+Ko‘p bo‘sh joy — yukni keng tarqatish imkoniyati.
+
+**Vaqt.** Disk buyurtma berishdan ishlagungacha oylar o‘tadi. Talab bu
+muddatda kutmaydi. Bo‘sh joy — kelajakdagi o‘sish uchun **vaqt zaxirasi**.
+
+Shuning uchun katta saqlash tizimlarida “to‘lganlik” chegarasi (masalan,
+75–80%) ogohlantirish emas, **qat’iy qoida**: undan oshsa, yangi yozuvlar
+boshqa hujayraga yoki mintaqaga yo‘naltiriladi, sig‘im esa favqulodda
+tartibda qo‘shiladi.
+</Deep>
+
+<Check q="Nega katta disklar ob'ekt ombori uchun ham foydali, ham xavfli?">
+**Foydali**: bir TB narxi arzonlashadi, bir xil hajm uchun kamroq server,
+elektr va joy kerak. Saqlash xarajati — S3 iqtisodining asosi (12.2), va
+katta disklar uni kamaytiradi.
+
+**Xavfli**: ikki sababga ko‘ra. Birinchisi — **tezlik**: disk hajmi
+oshadi, IOPS esa yo‘q; har TB ga to‘g‘ri keladigan o‘qish qobiliyati
+kamayadi (13.1). Agar mijozlar ma’lumotni avvalgidek o‘qisa, disklar hajm
+bo‘yicha emas, tezlik bo‘yicha tugaydi. Ikkinchisi — **tiklash**: katta
+disk buzilganda ko‘proq ma’lumot himoyasiz qoladi va uni qayta tiklash
+ko‘proq vaqt oladi (bitta diskka ~28 soat). Tiklash vaqti `T` esa
+saqlanishni kvadratik belgilaydi.
+
+Javob — ikki qismli: **parallel tiklash** (buzilgan diskni minglab
+disklarga tiklash, 6-qadam) va **issiq va sovuq ma’lumotni aralashtirish**
+(har disk asosan sovuq ma’lumot bilan to‘ladi, tezligi esa kichik issiq
+qismga yetadi). Juda issiq ma’lumot esa SSD asosidagi alohida sinflarga
+ko‘chiriladi.
+</Check>
+
+## 14. Kuzatuv: jim xatolarni ovozli qilish
+
+### 14.1 Metrikalar
+
+| Qatlam | Metrika | Nima uchun |
+| --- | --- | --- |
+| Saqlanish | Himoyasi pasaygan bo‘laklar soni va ularning yoshi | “Nechta ob’ekt hozir to‘liq himoyalanmagan va qancha vaqtdan beri” — saqlanishning asosiy o‘lchovi |
+| Tiklash | Tiklash navbati uzunligi, p50/p99.9 tiklash vaqti | 1-qadamdagi `T` — bevosita |
+| Yaxlitlik | Scrubber topgan nazorat summasi xatolari, disk turi va partiyasi bo‘yicha | Jim buzilish manbasini topish |
+| Joylashtirish | Qoidaga zid ob’ektlar (auditor) | 6.1 — korrelyatsiyalangan xavf |
+| Mavjudlik | Xato ulushi (5xx), 503 “Slow Down” ulushi prefiks bo‘yicha | Mijoz ko‘radigan muammo, issiq prefikslar |
+| Kechikish | GET/PUT p50/p99, birinchi bayt vaqti | Disk va tarmoq holati |
+| Sig‘im | To‘lganlik, IOPS / TB, bo‘sh joy zaxirasi | 13-bo‘lim |
+
+Birinchi qator eng muhimi va eng g‘ayrioddiysi: u **yo‘qolgan** ma’lumotni
+emas (bu raqam nol bo‘lishi kerak), balki **xavf ostidagi** ma’lumotni
+o‘lchaydi. Bitta bo‘lagi yo‘qolgan ob’ekt hali to‘liq saqlangan, lekin
+himoyasi kamaygan. Bunday ob’ektlar soni va ular shu holatda qancha vaqt
+turgani — saqlanishning “erta ogohlantirish” signali.
+
+<Calc title="Himoyasi pasaygan ob'ektlar: odatiy va xavfli holat" result="Odatiy kunda ~0.1% bo'lak tiklash navbatida, 20 daqiqa ichida; agar navbat soatlar davom etsa — saqlanish modeli bir necha to'qqiz yo'qotadi">{`Odatiy holat: soatiga ~1 disk buziladi (1.3)
+  disk: 20 TB, bo'lak o'rtacha ~64 MB -> ~300 000 bo'lak
+  parallel tiklash ~20 daqiqa -> istalgan paytda ~100 000 bo'lak navbatda
+
+Park: jami ~1e10-1e11 bo'lak -> himoyasi pasaygan ulush ~0.0001-0.001%
+
+Xavfli holat: tarmoq muammosi tufayli tiklash sekinlashdi, T = 6 soat
+  navbat 18 barobar uzun, har bo'lak 18 barobar ko'p vaqt himoyasiz
+  -> 5-bo'lim formulasi: uch nusxada yo'qotish ehtimoli 18^2 = ~320 barobar
+  -> bu metrika o'sishi = navbatchi uchun eng yuqori ustuvorlikdagi signal`}</Calc>
+
+### 14.2 Kanareyka ob’ektlar
+
+Metrikalar tizimning **ichidan** o‘lchaydi. Lekin mijoz ko‘radigan narsa —
+tashqaridan. Shuning uchun **kanareyka** (canary) jarayonlari mijoz kabi
+ishlaydi: har mintaqada, har AZ da doimiy ravishda ma’lum ob’ektlarni
+yozadi, o‘qiydi, nazorat summasini tekshiradi, ro‘yxatlaydi va o‘chiradi.
+Ichki metrikalar “hammasi yaxshi” desa ham, kanareyka ob’ekti o‘qilmasa —
+bu haqiqiy muammo.
+
+<Callout type="xato" title="O'z monitoringingizni kuzatilayotgan tizimga qo'ymang">
+2017-yilgi hodisada AWS holat sahifasi bir muddat yangilanmadi, chunki u
+S3 dagi ma’lumotlarga tayangan edi — aynan ishlamayotgan tizimga. Bu klassik
+xato: kuzatuv, ogohlantirish va holat sahifasi kuzatilayotgan tizimdan
+**mustaqil** bo‘lishi kerak — boshqa mintaqada, boshqa infratuzilmada.
+Aks holda eng kerakli paytda ular birinchi bo‘lib o‘chadi.
+</Callout>
+
+<Check q="11 ta to'qqizni to'g'ridan-to'g'ri o'lchab bo'lmaydi. Unda saqlanish yaxshi ekanini qanday bilamiz?">
+Saqlanish **modelning kiritmalari** orqali kuzatiladi. Yo‘qotishlar soni
+(nol) juda kam ma’lumot beradi — u faqat “hali yomon narsa bo‘lmadi”
+deydi. Lekin yo‘qotishga olib keladigan jarayonlar o‘lchanadi:
+
+**Buzilish tezligi** — disklar, serverlar, stoykalar, partiyalar bo‘yicha.
+Agar bitta partiya disklari odatdagidan ko‘p buzila boshlasa, bu model
+kiritmasi o‘zgardi degani — va shu partiyadagi ma’lumotni oldindan
+ko‘chirish mumkin.
+
+**Tiklash vaqti taqsimoti**, ayniqsa dumi — `T` bevosita.
+
+**Himoyasi pasaygan ob’ektlar** soni va yoshi (14.1) — hozir qancha
+ma’lumot “bir qadam” uzoqlikda.
+
+**Jim buzilishlar** — scrubber topgan summa xatolari. Ular nolga yaqin
+bo‘lmaydi (katta parkda muqarrar), lekin ularning **o‘zgarishi** muhim.
+
+**Joylashtirish qoidalari** — auditor topgan zid holatlar (6.1).
+
+Bu kiritmalar modelga qo‘yiladi va saqlanish baholanadi. Muhimi — har
+kiritma uchun chegara va ogohlantirish bor, va ular **natijadan** (yo‘qotish)
+ancha oldin signal beradi. Bu Uber darsidagi “haqiqat kech keladi —
+sabab signallarini kuzating” tamoyilining ekstremal ko‘rinishi: bu yerda
+natija deyarli hech qachon kelmaydi.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "S3'ni fayl tizimi kabi ishlatish (mount, faylni joyida o'zgartirish)", pro: "Eski dasturlar o'zgartirishsiz ishlaydi", con: "Har kichik o'zgarish — butun ob'ektni qayta yozish; rename = nusxa + o'chirish; sekin va qimmat (2.2)" },
+    { choice: "Millionlab kichik fayl (1-10 KB)", pro: "Har yozuv alohida — oddiy kod", con: "So'rovlar narxi saqlashdan 50-70x qimmat (12.1); erasure coding samarasiz (7.2)" },
+    { choice: "Barcha kalitlar bitta ketma-ket prefiks bilan (sana yoki raqam)", pro: "Tartibli, o'qish oson", con: "Yuqori tezlikda bitta indeks oralig'i qiziydi -> 503 Slow Down (3-qadam)" },
+    { choice: "Zaxira faqat shu bucket'dagi versiyalar", pro: "Qo'shimcha xarajat va sozlama yo'q", con: "Hisob buzilsa yoki noto'g'ri siyosat o'chirsa — zaxira ham ketadi (6.3 Check)" },
+    { choice: "Kalitlarni kodda yoki mijoz ilovasida saqlash", pro: "Sozlash tez", con: "Ochiq repozitoriydan daqiqalarda o'g'irlanadi (11.2 Callout)" },
+  ]}
+/>
+
+**Birinchi qator** — eng keng tarqalgan tushunmovchilik. S3 kalitlari
+papkaga o‘xshaydi, konsol papkalarni ko‘rsatadi, va S3’ni disk sifatida
+ulaydigan vositalar ham bor. Lekin ostida — o‘zgarmas ob’ektlar (2.2).
+Log faylga har soniyada bir qator qo‘shadigan dastur har soniyada butun
+faylni qayta yuklaydi. “Papkani qayta nomlash” — millionlab nusxa olish va
+o‘chirish. Ob’ekt omborini ob’ekt ombori kabi ishlatish kerak: fayllarni
+bir marta yozish, butunligicha o‘qish.
+
+**Ikkinchi qator** 12.1-dagi hisobning xulosasi: kichik fayllarda asosiy
+xarajat — so‘rovlar. Mayda yozuvlarni vaqt yoki hajm bo‘yicha to‘plamlarga
+birlashtirish (masalan, har daqiqadagi hodisalarni bitta faylga) so‘rovlar
+sonini yuzlab barobar kamaytiradi.
+
+**Uchinchi qator** 2018-yilgacha juda og‘riqli edi (chegara ~100–300
+so‘rov/s). Bugun chegara ancha yuqori va S3 issiq oraliqlarni o‘zi bo‘ladi,
+lekin juda katta tezlikda (sekundiga o‘n minglab yozuv) bitta prefiks baribir
+tor joy bo‘lib qoladi.
+
+**To‘rtinchi qator** — “zaxira” va “nusxa” ni adashtirish. Versiyalar bitta
+bucket, bitta hisob ichida: shu hisobdagi xato yoki hujum ularni ham
+o‘chirishi mumkin. Haqiqiy zaxira — **mustaqil**: boshqa hisob, boshqa
+mintaqa, Object Lock bilan.
+
+**Beshinchi qator** har yili minglab hodisalarga sabab bo‘ladi va texnik
+emas, intizom masalasi.
+
+<Deep title="Nega S3'ni disk sifatida ulash sekin: bitta tahrir hisobi">
+Faraz: 1 GB CSV fayl S3’ga disk sifatida ulangan (FUSE vositasi orqali), va
+dastur uning o‘rtasidagi bitta qatorni o‘zgartiradi.
+
+```
+Oddiy disk:
+  o'zgarish: 1 blok (4 KB) qayta yoziladi -> ~0.1 ms (SSD)
+
+S3 ustidagi "disk":
+  1. vosita butun ob'ektni yuklab oladi (agar keshda bo'lmasa): 1 GB
+  2. mahalliy nusxada qatorni o'zgartiradi
+  3. fayl yopilganda butun ob'ektni qaytadan PUT qiladi: 1 GB
+  -> 2 GB tarmoq trafigi, ~10-20 soniya, 1 ta PUT narxi
+  -> ikki jarayon bir vaqtda yozsa: oxirgisi yutadi, birinchisining
+     o'zgarishi jim yo'qoladi (14-qadamdagi shartli yozuvsiz)
+```
+
+Bu vositalar foydali — asosan **o‘qish** uchun (katta fayllarni ketma-ket
+o‘qish, ML o‘qitish ma’lumotlari). Lekin “S3 — bu disk” degan g‘oyaga
+tayangan dastur arxitekturasi bir kun kelib yuqoridagi hisobga duch keladi.
+To‘g‘ri yondashuv: tez-tez o‘zgaradigan holat — ma’lumotlar bazasida yoki
+blok diskda, S3 da — tugallangan, o‘zgarmas natijalar.
+</Deep>
+
+<Callout type="xato" title="Oltinchi antinaqsh: 'S3 hech qachon ishlamay qolmaydi' deb qurish">
+11 ta to‘qqiz — saqlanish, mavjudlik emas. Ilova S3 ishlamay qolishini
+(yoki sekinlashishini, yoki 503 qaytarishini) kutmasa, 2017-yilgi kabi
+hodisada u ham butunlay to‘xtaydi. Qayta urinish eksponensial kutish va
+tasodifiy siljish (jitter) bilan bo‘lishi, muhim o‘qishlar uchun kesh yoki
+boshqa mintaqadagi nusxa bo‘lishi, yozishlar esa kerak bo‘lsa navbatga
+qo‘yilishi kerak. Ishonchli ombor — ishonchli ilovaning **bir qismi**,
+uning o‘rnini bosuvchi emas.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Uch nusxa", pro: "Oddiy; tez o'qish; arzon tiklash; kichik ob'ektlar uchun yaxshi", con: "3x hajm — eksabayt miqyosida juda qimmat" },
+    { choice: "Erasure coding", pro: "~1.3-2x hajm, yuqoriroq saqlanish", con: "Tiklash trafigi k barobar; kichik ob'ektlar uchun samarasiz; hisob-kitob" },
+    { choice: "Oxir-oqibat izchillik", pro: "Oddiy keshlar, past kechikish", con: "Ilovalar eski ma'lumotni ko'radi — jim xatolar (11-qadam)" },
+    { choice: "Kuchli izchillik", pro: "Ilovalar oddiy; 'yozdim — ko'raman'", con: "Metadata qatlamida kesh izchilligi protokoli; ichki murakkablik" },
+    { choice: "Bitta AZ (Express One Zone)", pro: "Bir raqamli ms kechikish, arzonroq so'rovlar", con: "AZ yo'qolsa — ma'lumot yo'qolishi mumkin" },
+    { choice: "Ko'p AZ (standart)", pro: "Bino yo'qolishiga chidaydi", con: "Har yozish zonalararo — o'nlab ms; qimmatroq" },
+  ]}
+/>
+
+Jadvaldagi har juftlik bir savolga turli javob: **qaysi xavf uchun qancha
+to‘laymiz?** Uch nusxa va erasure coding — hajm va tiklash tezligi
+o‘rtasida. Izchillik modellari — ilova oddiyligi va ichki murakkablik
+o‘rtasida. Bir va ko‘p AZ — tezlik va bino yo‘qolishiga chidamlilik
+o‘rtasida. S3’ning sinflar tizimi aynan shu: mijozga xavf va narxni o‘zi
+tanlash imkonini beradi.
+
+<Versus
+  left={{ title: "Uch nusxa", points: [
+    "Hajm: 3x",
+    "Chidaydi: 2 ta yo'qotishga",
+    "Bitta bo'lakni tiklash: 1x trafik",
+    "O'qish: istalgan bitta nusxadan",
+    "Kichik ob'ektlar: yaxshi",
+  ] }}
+  right={{ title: "Erasure coding RS(10,4)", points: [
+    "Hajm: 1.4x",
+    "Chidaydi: istalgan 4 ta yo'qotishga",
+    "Bitta bo'lakni tiklash: 10x trafik (LRC bilan kamroq)",
+    "O'qish: 10 ta ma'lumot bo'lagidan (tizimli kod)",
+    "Kichik ob'ektlar: yomon — to'plamlarga yig'iladi",
+  ] }}
+/>
+
+<Versus
+  left={{ title: "Ob'ekt ombori (S3)", points: [
+    "Butun ob'ekt yoziladi va o'qiladi",
+    "HTTP orqali, istalgan joydan",
+    "Deyarli cheksiz hajm, GB/oy uchun to'lov",
+    "11 ta to'qqiz saqlanish, ko'p AZ",
+    "Kechikish: o'nlab ms",
+  ] }}
+  right={{ title: "Blok disk (masalan, server diski)", points: [
+    "4 KB bloklar, joyida o'zgartirish",
+    "Bitta serverga ulanadi",
+    "Oldindan tanlangan hajm, ajratilgan GB uchun to'lov",
+    "Odatda bitta AZ ichida nusxalanadi",
+    "Kechikish: sub-ms",
+  ] }}
+/>
+
+Ikkinchi taqqoslash tanlovni aniqlashtiradi: ma’lumotlar bazasi fayllari,
+operatsion tizim, tez-tez o‘zgaradigan holat — **blok diskda**. Rasmlar,
+videolar, zaxiralar, loglar, tahlil ma’lumotlari, ML to‘plamlari — **ob’ekt
+omborida**. Ko‘p zamonaviy tizimlar ikkalasini birlashtiradi: ma’lumotlar
+bazasi blok diskda ishlaydi, lekin o‘z jurnali va suratlarini doimiy
+ravishda S3 ga yozadi — shunda server yo‘qolsa ham, holat tiklanadi.
+
+<Deep title="Mijoz tomonida qayta urinish: 503 va eksponensial kutish">
+S3 yuk ko‘p bo‘lganda `503 Slow Down` qaytaradi — bu “keyinroq urinib ko‘r”
+degani. Noto‘g‘ri qayta urinish muammoni kuchaytiradi.
+
+```
+Yomon:  xato -> darhol qayta urinish -> xato -> darhol -> ...
+  1 000 ta mijoz x har biri sekundiga 100 marta = issiq oraliqqa
+  100 000 so'rov/s — oraliq hech qachon "sovumaydi"
+
+Yaxshi: eksponensial kutish + tasodifiy siljish (jitter)
+  urinish 1: kutish tasodifiy [0, 100 ms]
+  urinish 2: [0, 200 ms]
+  urinish 3: [0, 400 ms] ... chegara, masalan, 20 s
+  -> mijozlar urinishlari vaqtda tarqaladi, yuk tushadi, S3 oraliqni
+     bo'lishga ulguradi (3-qadam)
+```
+
+Ikkinchi nozik jihat — **idempotentlik**. PUT tabiiy ravishda idempotent:
+bir xil baytlarni ikki marta yozish natijani o‘zgartirmaydi. Lekin
+“faylni o‘qib, raqamni oshirib, qayta yozish” kabi ketma-ketlik — yo‘q:
+qayta urinish raqamni ikki marta oshirishi mumkin. Bu holatda 14-qadamdagi
+shartli yozuv (`If-Match: <ETag>`) kerak: “faqat men o‘qigan versiya
+hali o‘zgarmagan bo‘lsa, yoz”. Bu Airbnb darsidagi optimistik
+qulflashning aynan o‘zi.
+</Deep>
+
+<Callout type="maslahat" title="Qaysi metrikani optimallashtiryapsiz?">
+Ob’ekt omborida kamida to‘rtta metrika bir-biriga zid: **saqlanish**
+(yo‘qolmaslik), **mavjudlik** (hozir javob berish), **kechikish** (tez
+javob berish) va **narx**. Bittasini optimallashtirish boshqasini
+yomonlashtiradi: bir AZ — tez va arzon, lekin kam saqlanish; erasure
+coding — arzon va ishonchli, lekin tiklash va kichik ob’ektlar uchun
+qimmat. Intervyuda “eng yaxshi saqlash usuli qaysi?” degan savolga
+“qaysi ma’lumot, qancha vaqt, qanchalik tez-tez o‘qiladi va yo‘qolishi
+qanchaga tushadi?” deb qarshi savol bering.
+</Callout>
+
+### Butun dars o‘nta gapda
+
+1. **Bitta disk ~2 ta to‘qqiz beradi, S3 11 tasini va’da qiladi** — farqni
+   nusxalar, tez tiklash va doimiy tekshiruv to‘ldiradi (1.2).
+2. **Saqlanish va mavjudlik — turli va’dalar**: fayl yo‘qolmasligi va hozir
+   javob olish. Birinchisi qat’iyroq (1.3 Check, 10-bo‘lim).
+3. **Katta parkda buzilish — kundalik holat**: million diskda soatiga bittasi.
+   Tiklash avtomatik va doimiy bo‘lishi shart (1.3).
+4. **Yo‘qotish ehtimoli tiklash vaqtining kvadratiga bog‘liq** — shuning uchun
+   buzilgan disk minglab disklarga parallel tiklanadi (1 va 6-qadamlar).
+5. **Erasure coding uch nusxadan arzonroq va ishonchliroq**, lekin tiklash
+   qimmatroq va kichik fayllar uchun yaramaydi (7-qadam, 7-bo‘lim).
+6. **Mustaqillik — asosiy faraz**: nusxalar turli disk, stoyka va AZ da,
+   dastur yangilanishlari bosqichma-bosqich (6-bo‘lim).
+7. **Katalog va javonlar alohida**: metadata — trillionlab kichik yozuv,
+   ma’lumot — katta baytlar; ular turlicha masshtablanadi (2-3-qadamlar).
+8. **Jim buzilishni faqat nazorat summasi topadi** — har bosqichda va fon
+   tekshiruvida (5-6-qadamlar).
+9. **Kuchli izchillik keshlarni o‘chirmasdan qo‘shildi** — kichik “guvoh”
+   eng yangi versiyani biladi (11-qadam, 8.2).
+10. **Inson xatosi — alohida xavf**: versiyalash, Object Lock, sekin va
+    cheklangan vositalar, mustaqil zaxira (12-qadam, 10-bo‘lim).
+
+## 17. Intervyu savollari
+
+<Callout type="info" title="Ob'ekt ombori savoliga qanday yondashish">
+“S3’ni loyihalang” savolida birinchi daqiqalarni ikki ajratishga
+bering: (1) **saqlanish va mavjudlik** — ular turli va’dalar; (2) **metadata
+va ma’lumot** — turli masshtablanadigan ikki tizim. Keyin raqamlar: disk
+buzilish tezligi, park hajmi, “kuniga nechta disk buziladi”. Shundan
+keyin nusxalar va erasure coding tanlovi, tiklash tezligi va nazorat
+summalari tabiiy kelib chiqadi.
+</Callout>
+
+### 17.1 Saqlanish
+
+<QA q="11 ta to'qqiz saqlanish nimani anglatadi?">
+Bitta ob’ektning bir yilda yo‘qolish ehtimoli ~10⁻¹¹. Amaliy tilda:
+10 million ob’ekt saqlasangiz, o‘rtacha 10 000 yilda bitta ob’ekt yo‘qoladi.
+Bu **statistik model**: u disk buzilish tezligi, tiklash vaqti va nusxalar
+joylashuvidan hisoblanadi. U apparat xavflarini qamraydi; dastur xatolari
+va inson xatolari alohida himoya talab qiladi (bosqichma-bosqich chiqarish,
+versiyalash, Object Lock). Mavjudlik (99.99%) — butunlay boshqa va’da.
+</QA>
+
+<QA q="Disk yiliga 1% ehtimol bilan buziladi. Uch nusxa bilan qanday saqlanishga erishasiz va nima hal qiluvchi?">
+Ob’ekt faqat birinchi nusxa buzilgach, u tiklangunga qadar qolgan ikkitasi
+ham buzilsa yo‘qoladi: `P ≈ 3λ × (λT)²`. `T` = 6 soat bo‘lsa — ~10⁻¹²,
+ya’ni ~12 ta to‘qqiz. `T` = 1 oy bo‘lsa — ~7.7. Hal qiluvchi — tiklash
+vaqti: u kvadratda. Shuning uchun tiklash parallel (buzilgan disk minglab
+disklarga tiklanadi, 28 soat emas, daqiqalar), aniqlash tez (scrubbing,
+nazorat summalari). Va farazning chegarasi: buzilishlar mustaqil bo‘lishi
+kerak — nusxalar turli disk, server, stoyka va AZ da.
+</QA>
+
+<QA q="Korrelyatsiyalangan buzilishlar nima va ularga qarshi qanday himoya bor?">
+Bitta sabab bir nechta nusxani birdaniga yo‘q qilishi: bir partiya disklar
+nuqsoni, stoyka elektri, bino yong‘ini, dastur xatosi, inson buyrug‘i.
+Mustaqillik farazi buziladi va saqlanish bir necha tartibga tushadi.
+Himoya: nusxalar turli partiya, stoyka va AZ da; joylashtirish qoidalarini
+auditor muntazam tekshiradi; dastur yangilanishlari bosqichma-bosqich
+(hech qachon bir ob’ektning hamma bo‘lagi bir vaqtda yangi kod bilan
+yozilmaydi); o‘chirish kechiktiriladi; inson xatolariga — versiyalash va
+cheklangan vositalar.
+</QA>
+
+<QA q="Jim buzilish (bit rot) qanday aniqlanadi va tuzatiladi?">
+Uchidan-uchiga nazorat summalari: mijoz yuborishda hisoblaydi, har qatlam
+qayta tekshiradi, disklarda har bo‘lak o‘z summasi bilan saqlanadi, har
+o‘qishda tekshiriladi. Kam o‘qiladigan ma’lumot uchun — scrubber: fon
+jarayoni hamma narsani muntazam o‘qib tekshiradi. Summa mos kelmasa, bo‘lak
+buzilgan deb belgilanadi, boshqa nusxadan (yoki erasure coding bilan qolgan
+bo‘laklardan) tiklanib, yangi joyga yoziladi. Mijozga buzilgan bayt hech
+qachon ketmaydi.
+</QA>
+
+<QA q="Erasure coding qanday ishlaydi? Oddiy misol bering.">
+Ma’lumot `k` ta bo‘lakka bo‘linadi, ulardan `m` ta paritet bo‘lak
+hisoblanadi; istalgan `k` ta bo‘lakdan butun ma’lumot tiklanadi. Eng oddiy
+holat — XOR: A va B ma’lumot, P = A XOR B; bittasi yo‘qolsa, qolgan
+ikkitasining XOR i uni beradi. Umumiy holat — Reed–Solomon: bo‘laklar —
+ko‘phadning turli nuqtalardagi qiymatlari (chekli maydonda), `k` ta nuqta
+ko‘phadni to‘liq aniqlaydi. RS(6,3) — 1.5x hajm, istalgan 3 ta yo‘qotishga
+chidaydi; uch nusxa — 3x hajm, 2 ta yo‘qotishga.
+</QA>
+
+<QA q="Erasure coding'ning kamchiliklari qanday?">
+Tiklash qimmat: bitta bo‘lakni tiklash uchun `k` ta bo‘lakni o‘qish kerak
+(RS(10,4) da 10 barobar trafik). Kichik ob’ektlar uchun samarasiz: bo‘laklar
+juda mayda, har biri alohida disk operatsiyasi va metadata. O‘qish bir
+nechta diskka bog‘liq — dum kechikishi oshadi. Kodlash hisob-kitobi
+(arzon, lekin bor). Yechimlar: LRC (mahalliy paritet — tiklash arzonroq),
+kichik ob’ektlarni to‘plamlarga yig‘ish, yangi ma’lumotni avval nusxalab,
+keyin kodlashga o‘tkazish.
+</QA>
+
+<QA q="Bitta AZ yo'qolishiga chidaydigan erasure coding sxemasini qanday tanlaysiz?">
+3 AZ da `n = k + m` bo‘lak teng taqsimlansa, bir AZ `n/3` bo‘lakni olib
+ketadi. Talab “AZ + yana bitta disk” bo‘lsa: `m ≥ n/3 + 1`. RS(6,3) yetmaydi
+(3 ≥ 4 emas). RS(10,8) — 18 bo‘lak, har AZ da 6, `m = 8 ≥ 7` — ishlaydi,
+hajm 1.8x. Uch nusxa 3x. Ya’ni zonalararo kodlash bitta joydagidan
+qimmatroq (1.8x vs 1.4x), lekin uch nusxadan ancha arzon. Qo‘shimcha
+narx — o‘qish va tiklash zonalararo tarmoqdan o‘tadi.
+</QA>
+
+<QA q="Nega disk buzilganda tiklash parallel bo'lishi kerak?">
+Bitta 20 TB diskni bitta yangi diskka tiklash ~28 soat (200 MB/s). Shu
+vaqt davomida uning ma’lumoti kamroq himoyalangan. Taqsimlangan tizimda
+buzilgan diskdagi bo‘laklar minglab turli ob’ektlarga tegishli, ularning
+qolgan nusxalari minglab disklarda — tiklash minglab disk o‘rtasida parallel
+bo‘ladi va daqiqalar oladi. `T` 84 barobar qisqarsa, uch nusxada yo‘qotish
+ehtimoli ~7 000 barobar kamayadi. Katta park — bu yerda afzallik.
+</QA>
+
+<QA q="Nega ikki nusxa katta disklar davrida yetarli emas?">
+Bitta nusxa buzilganda qolgan yagona nusxani to‘liq o‘qib tiklash kerak.
+20 TB diskda bu ~1.6 × 10¹⁴ bit; spetsifikatsiyadagi o‘qib bo‘lmaydigan
+xato darajasi (10¹⁴–10¹⁵ bitda bitta) bilan kamida bitta xatoga duch kelish
+ehtimoli 15–80%. O‘sha bo‘lak uchun boshqa nusxa yo‘q — u yo‘qoladi. Bundan
+tashqari, katta diskni tiklash uzoq (~28 soat bitta diskka), va bu vaqtda
+ikkinchi diskning buzilishi ham ehtimoldan xoli emas. Shuning uchun kamida
+uch nusxa yoki unga teng kod (RS) — va parallel tiklash.
+</QA>
+
+### 17.2 Metadata va izchillik
+
+<QA q="Nega metadata va ma'lumot alohida saqlanadi?">
+Ular turlicha: metadata — kichik yozuvlar, ko‘p so‘rov, izchillik talab
+qiladi; ma’lumot — katta baytlar, oddiy “ID → baytlar” interfeysi, faqat
+saqlanish. Alohida bo‘lsa, har biri o‘z yuki bo‘yicha masshtablanadi, va
+ma’lumot istalgan diskda bo‘lishi mumkin — indeks qayerdaligini biladi.
+Yozish tartibi: avval baytlar, keyin indeks yozuvi, keyin “200 OK”. Aks
+holda indeks mavjud bo‘lmagan baytlarga ishora qilishi mumkin. Yetim
+bo‘laklar (indeksga yetmagan) fon jarayonida tozalanadi.
+</QA>
+
+<QA q="Metadata indeksini qanday bo'lasiz: xesh bo'yichami yoki oraliq bo'yicha?">
+Oraliq bo‘yicha — chunki LIST tartiblangan bo‘lishi kerak va prefiks
+bo‘yicha ro‘yxat (`2025/iyun/`) tez ishlashi kerak. Xesh bo‘yicha bo‘lish
+yukni tekis tarqatadi, lekin tartibni yo‘q qiladi — LIST uchun hamma
+bo‘lakni ko‘rish kerak. Oraliqlarning muammosi — issiq oraliq (ketma-ket
+kalitlar). Yechim: yuk oshganda oraliqni avtomatik bo‘lish va boshqa
+serverga ko‘chirish; mijozga esa juda yuqori tezlik uchun kalitlarni bir
+nechta prefiksga tarqatish tavsiyasi.
+</QA>
+
+<QA q="S3 2020-yilgacha oxir-oqibat izchil edi. Bu qanday muammolar keltirib chiqargan?">
+Qayta yozish yoki o‘chirishdan keyin qisqa vaqt eski versiya ko‘rinishi,
+LIST yangi ob’ektlarni darhol ko‘rsatmasligi mumkin edi. Ma’lumotlar
+quvurlarida bu jim xatolarga olib kelgan: keyingi bosqich LIST qilib,
+100 fayldan 97 tasini ko‘radi va hisobot 3% kam chiqadi — xato xabarisiz.
+Aylanma yo‘llar — alohida izchil katalog (masalan, DynamoDB’da fayllar
+ro‘yxati), bu esa murakkablik va xarajat qo‘shgan.
+</QA>
+
+<QA q="Kuchli izchillikni keshlarni yo'qotmasdan qanday qo'shasiz?">
+Keshlar qoladi, lekin ularning eskirganini arzon aniqlash yo‘li qo‘shiladi:
+har kalitning oxirgi versiya belgisini saqlaydigan kichik, tez va izchil
+komponent (Vogels maqolasida — “witness”). Yozish belgini yangilaydi;
+o‘qish keshdan qiymat va guvohdan versiyani oladi — mos kelsa keshdan
+javob, bo‘lmasa indeksdan. Guvoh faqat bir necha baytni saqlaydi, shuning
+uchun tez. Qo‘shimcha narx yozishga tushadi — u allaqachon ko‘p AZ ga
+yozishdan sekin, va farq sezilmaydi.
+</QA>
+
+<QA q="LIST'da 100 million ob'ektni tez ro'yxatlash kerak. Qanday qilasiz?">
+LIST sahifali: 1 000 kalit va davom ettirish belgisi — sahifalar ketma-ket,
+100 000 so‘rov, ~3 soat. Tezlashtirish: kalitlar maydonini prefikslar
+bo‘yicha bo‘lib (masalan, birinchi belgi bo‘yicha 36 ta), parallel LIST
+oqimlari — daqiqalar. Muntazam kerak bo‘lsa — S3 Inventory: kunlik to‘liq
+ro‘yxat fayl sifatida (CSV yoki Parquet). Umuman, ob’ektlarni tez-tez
+to‘liq ro‘yxatlashga tayanadigan dizayn — ogohlantiruvchi belgi: bunday
+katalog ko‘pincha alohida ma’lumotlar bazasida saqlanadi.
+</QA>
+
+<QA q="S3 ustida ikki yozuvchi bitta jurnal faylini yozadi. Ma'lumot yo'qolmasligini qanday ta'minlaysiz?">
+Shartli yozuvlar bilan (2024): har yozuvchi keyingi raqamli faylni
+`If-None-Match: *` bilan yozadi — agar kalit allaqachon bo‘lsa, 412 qaytadi
+va yozuvchi jurnalni qayta o‘qib, keyingi raqamni sinaydi. Mavjud
+ob’ektni yangilash uchun — `If-Match: <ETag>` (optimistik qulf). Bu
+imkoniyatdan oldin S3 ustidagi jadval formatlari (Delta Lake, Iceberg)
+alohida kelishuv xizmatiga (masalan, DynamoDB) tayangan. Shartsiz PUT
+bilan oxirgi yozgan yutadi va birinchisining ishi jim yo‘qoladi.
+</QA>
+
+<QA q="Juda mashhur bitta ob'ekt (o'yin yangilanishi) S3'ni qanday yuklaydi va nima qilasiz?">
+Muammo odatda so‘rovlar soni emas, **trafik**: million qurilma × 2 GB
+10 daqiqada — ~27 Tbit/s; bitta ob’ektning bo‘laklari cheklangan disklarda
+va buni bera olmaydi. Yechim — CDN: ob’ekt dunyo bo‘ylab yuzlab chekka
+serverlarda keshlanadi, S3 har chekka server uchun bir marta o‘qiladi.
+Ob’ektni o‘zgartirmasdan, yangi versiyani yangi kalit bilan chiqarish
+keshni boshqarishni osonlashtiradi (keshni tozalash kerak emas).
+</QA>
+
+### 17.3 Tizim, narx va amaliyot
+
+<QA q="Katta faylni qanday ishonchli yuklaysiz?">
+Multipart upload: `Create` → qismlarni parallel `UploadPart` (5 MB–5 GB,
+10 000 tagacha) → `Complete` ro‘yxat bilan — ob’ekt atomik paydo bo‘ladi.
+Afzalliklar: parallel oqimlar (tezlik), uzilishda faqat bitta qism qayta
+yuboriladi, har qism o‘z nazorat summasi bilan. Tugallanmagan yuklashlar
+qismlari joy egallaydi va pul turadi — hayot sikli qoidasi bilan tozalanadi.
+</QA>
+
+<QA q="Saqlash sinfini qanday tanlaysiz?">
+O‘qish chastotasi va kechikish talabiga qarab. Tez-tez o‘qiladi —
+Standard. Oyiga bir martadan kam — Standard-IA (saqlash arzon, o‘qish
+pullik, minimal muddat bor). Kamdan-kam, lekin tez kerak — Glacier Instant
+Retrieval. Yiliga bir-ikki marta, soatlab kutish mumkin — Glacier Flexible
+yoki Deep Archive. Noma’lum — Intelligent-Tiering. Hayot sikli qoidalari
+bilan avtomatlashtiriladi: 30 kundan keyin IA, 90 kundan keyin arxiv. Tuzoq:
+arxivdagi ma’lumotni tez-tez o‘qish — o‘qish to‘lovlari tejashni yeydi.
+</QA>
+
+<QA q="Nega kichik fayllar bilan ishlaydigan ilovaning S3 hisobi kutilganidan katta?">
+Chunki kichik fayllarda asosiy xarajat — so‘rovlar va trafik, saqlash emas.
+10 TB, 5 milliard kichik fayl, kuniga 50 M PUT va 500 M GET — oyiga ~$13 500
+so‘rovlarga va ~$230 saqlashga (12.1). Yechimlar: yozuvlarni to‘plamlarga
+birlashtirish (daqiqalik fayllar), Parquet kabi formatlar (bitta faylda
+ko‘p yozuv, qismini o‘qish mumkin), CDN (GET va trafik arzonroq), keshlash.
+</QA>
+
+<QA q="Ob'ekt omborini noldan loyihalashda birinchi 30 daqiqada nimalarga e'tibor berasiz?">
+Talablar: saqlanish (necha to‘qqiz), mavjudlik, izchillik, ob’ekt hajmlari
+taqsimoti. Raqamlar: park hajmi, disk buzilish tezligi → kuniga nechta disk;
+so‘rovlar va ob’ektlar soni → metadata hajmi. Arxitektura: metadata va
+ma’lumot alohida; old qatlam holatsiz. Saqlanish: nusxalar yoki erasure
+coding, turli AZ, parallel tiklash, nazorat summalari, scrubbing. Keyin
+izchillik (keshlar va guvoh), LIST (tartiblangan indeks, oraliqlarni bo‘lish),
+katta fayllar (multipart), narx (saqlash sinflari). Oxirida — inson xatolari:
+versiyalash, cheklangan vositalar.
+</QA>
+
+<QA q="2017-yilgi S3 uzilishidan qanday saboqlar olindi?">
+Xato parametrli buyruq kutilganidan ko‘p serverni o‘chirdi va indeks hamda
+joylashtirish tizimlari to‘liq qayta ishga tushirilishi kerak bo‘ldi —
+yillar davomida bunday qilinmagan, tekshiruvlar soatlab davom etdi.
+Saboqlar: vositalar sig‘imni sekin olib tashlasin va minimal chegaradan
+pastga tushirmasin; tizimlar kichik hujayralarga bo‘linsin (tez qayta ishga
+tushadi, portlash radiusi kichik); tiklash muntazam sinalsin; monitoring
+va holat sahifasi kuzatilayotgan tizimga bog‘liq bo‘lmasin. Ma’lumot
+yo‘qolmadi — faqat mavjudlik buzildi.
+</QA>
+
+<QA q="Bucket'dagi ma'lumotni sizib chiqishdan qanday himoya qilasiz?">
+Block Public Access hisob darajasida yoqilgan (2023-yildan yangi bucket’larda
+standart). Minimal huquqlar: har ilova faqat kerakli prefiksga, faqat kerakli
+amallarga. Doimiy kalitlar o‘rniga vaqtinchalik rollar; mijozlarga — faqat
+imzolangan havolalar (qisqa muddatli). Shifrlash (SSE-S3 standart, maxfiy
+ma’lumot uchun o‘z kalitingiz bilan KMS). Kirish jurnallari va g‘ayrioddiy
+faollik ogohlantirishlari. Nomning maxfiyligiga tayanmaslik — skanerlar
+taxmin qilinadigan nomlarni daqiqalarda tekshiradi.
+</QA>
+
+<QA q="To'lov talab qiluvchi virus (ransomware) hisobingizga kirdi. S3'dagi zaxiralarni qanday himoya qilasiz?">
+Hujumchi hisob huquqlari bilan zaxiralarni o‘chirishga yoki shifrlangan
+versiya bilan almashtirishga urinadi. Himoya: Object Lock (compliance
+rejimi) — belgilangan muddatgacha hech kim, hatto root ham, o‘chira olmaydi;
+versiyalash — ustiga yozish eskisini saqlaydi; zaxiralar **boshqa hisobda**
+va boshqa mintaqada (asosiy hisob buzilsa ham kira olmaydi); o‘chirish
+uchun MFA. Muntazam tiklash sinovi — zaxira haqiqatan ishlashini bilish uchun.
+</QA>
+
+<QA q="Nega S3'ning API'si 2006-yildan beri deyarli o'zgarmagan va bu qanday afzallik beradi?">
+PUT, GET, DELETE, LIST — oddiy, o‘zgarmas ob’ektlar ustida. Oddiy interfeys
+ichki qismlarni mijozlarni buzmasdan almashtirish imkonini beradi: saqlash
+tugunlari (ShardStore), indeks, izchillik modeli, kodlash sxemalari o‘zgargan,
+mijoz kodi esa o‘sha. O‘zgarmaslik (joyida tahrir yo‘q, rename yo‘q) tizimni
+taqsimlash, nusxalash va keshlashni osonlashtiradi. Yangi imkoniyatlar
+(shartli yozuvlar, nazorat summalari) eski API ni buzmasdan, ixtiyoriy
+sarlavhalar sifatida qo‘shilgan.
+</QA>
+
+<QA q="S3 va ma'lumotlar bazasi o'rtasida chegara qayerda? Qachon S3 yetarli emas?">
+S3 — butun ob’ektlarni yozish va o‘qish uchun: fayllar, arxivlar, loglar,
+tahlil ma’lumotlari. U tez-tez o‘zgaradigan kichik holat (hisob balansi,
+savat, sessiya), tranzaksiyalar (bir nechta yozuvni atomik o‘zgartirish),
+ikkinchi darajali indekslar (email bo‘yicha qidirish) va sub-millisekund
+kechikish uchun mos emas. Tipik arxitektura: ma’lumotlar bazasida — holat
+va indekslar, S3 da — katta baytlar (rasm, fayl) va ma’lumotlar bazasi
+yozuvida — ob’ekt kaliti. Ma’lumotlar bazasining o‘zi esa zaxira va
+jurnalini S3 ga yozadi.
+</QA>
+
+<QA q="Imzolangan havola (presigned URL) qanday ishlaydi va qanday xavflari bor?">
+Server maxfiy kaliti bilan so‘rov tavsifini (amal, bucket, kalit, muddat,
+sarlavhalar) HMAC-SHA256 bilan imzolaydi va imzoni URL ga qo‘shadi. S3 xuddi
+shu tavsifni tuzib, o‘zi imzolaydi va solishtiradi: mos va muddat o‘tmagan
+bo‘lsa — ruxsat. URL dagi har qanday o‘zgarish imzoni buzadi. Xavflar:
+havola — kalit, uni olgan har kim muddati tugaguncha foydalanadi (loglar,
+brauzer tarixi); shuning uchun muddat qisqa. Havola yaratgan kalitning
+huquqlari bilan cheklangan va kalit bekor qilinsa, havolalar ham ishlamaydi.
+PUT havolasi foydalanuvchiga faylni serveringizni chetlab, to‘g‘ridan-to‘g‘ri
+S3 ga yuklash imkonini beradi.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/amazon-s3/` da:
+`store.py` — Reed–Solomon kodlash va ob’ekt ombori, oltita joy TODO;
+`gf.py` — tayyor GF(256) arifmetikasi; `cluster.py` — uchta AZ dagi soxta
+disklar, ularni “o‘ldirish” va jim buzish imkoniyati bilan; `check.py` —
+20 ta tekshiruv, taxminan bir soniya. Faqat Python standart kutubxonasi.
+
+<Deep title="GF(256) oddiy tilda: nega oddiy sonlar ishlamaydi">
+Reed–Solomon kodining 7-qadamdagi misolida oddiy butun sonlar ishlatildi:
+`f(x) = 5 + 7x`. Kompyuterda bunday arifmetikaning ikki muammosi bor.
+
+**Natija baytga sig‘maydi.** Baytlar 0..255. Ularni ko‘paytirsak va
+qo‘shsak, 60 000 dan katta sonlar chiqadi — paritet bo‘lagi ma’lumot
+bo‘lagidan kattaroq bo‘lib ketadi.
+
+**Bo‘lish har doim mumkin emas.** Tiklashda tenglamalar tizimini yechish
+kerak, ya’ni bo‘lish. Butun sonlarda 7 ni 2 ga bo‘lib bo‘lmaydi (kasr chiqadi).
+
+Chekli maydon GF(256) ikkala muammoni hal qiladi. Unda faqat 256 ta
+“son” bor (har biri — bitta bayt), va ular ustida shunday qo‘shish va
+ko‘paytirish aniqlanganki:
+
+```
+qo'shish:      a + b = a XOR b          (masalan, 5 + 7 = 2; va a + a = 0)
+ayirish:       xuddi qo'shish           (a - b = a XOR b)
+ko'paytirish:  jadval orqali, natija har doim 0..255 ichida
+bo'lish:       0 dan boshqa har qanday songa mumkin, natija ham bayt
+
+Maktab qonunlari saqlanadi: a x (b + c) = a x b + a x c,
+  har a != 0 uchun a x inv(a) = 1
+```
+
+Shuning uchun maktabdagi “chiziqli tenglamalar tizimini yechish” (Gauss
+usuli) GF(256) da ham aynan ishlaydi — faqat har `+` o‘rniga XOR, har `×`
+o‘rniga jadval. `gf.py` buni tayyor beradi: `mul`, `inv`, `mat_inv`. Sizning
+vazifangiz — shu arifmetika ustida kodlash va tiklashni yozish.
+
+Tezlik uchun bitta hiyla: bitta songa ko‘paytirish — bu 256 ta natijali
+jadval, ya’ni **bayt almashtirish**. Python’ning `bytes.translate` usuli
+butun blokni shunday jadval bilan bir zumda almashtiradi — `gf.scale` aynan
+shu. Ikki blokni qo‘shish (XOR) esa ularni katta butun son sifatida XOR
+qilish orqali — `gf.xor`. Ikkalasi ham C tezligida ishlaydi.
+</Deep>
+
+<Task title="1-daraja: disk buzilishini his qilish">
+Oddiy skript yozing: 1 000 ta “disk”, har biri yiliga 1% ehtimol bilan
+buziladi (har soatlik qadamda tasodifiy). Har buzilgan disk T soatdan
+keyin tiklanadi. Ob’ekt — 3 ta tasodifiy diskda nusxa. 10 yillik
+simulyatsiya.
+
+**Tekshiruv mezoni:** (1) T = 6, 24, 168, 720 soat uchun bir vaqtda uch
+nusxasi ham buzilgan ob’ektlar sonini sanang (10⁶ ob’ekt bilan); (2) natijani
+5-bo‘lim 1-qadamdagi formula bilan solishtiring — T ikki barobar oshsa, yo‘qotish
+~4 barobar oshishini ko‘rsating; (3) “korrelyatsiya” qo‘shing: yiliga bir
+marta 20 ta disklik stoyka birdaniga o‘ladi, va ob’ektlarning 5% ida ikki
+nusxa bir stoykada — natija qanday o‘zgaradi (6.1)?
+</Task>
+
+<Task title="2-daraja: erasure coding bilan ob'ekt ombori (asosiy topshiriq)">
+`store.py` dagi `generator`, `encode`, `decode`, `_place`, `put`, `get` va
+`scrub` ni yozing. `python check.py` ularni barcha bo‘laklar kombinatsiyalari,
+disk va butun AZ o‘limi, jim buzilishlar va to‘liq tiklash bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 20/20 OK`. Shu jumladan: (4,2) va (8,4)
+generatorlarining barcha `k` talik qatorlari teskarilanadi; istalgan `k` ta
+bo‘lakdan 0 baytdan 12 KB gacha ma’lumot aniq tiklanadi; 1 MB kodlash va
+tiklash 3 soniyadan tez; jim buzilgan bo‘laklar hech qachon noto‘g‘ri
+baytlarga aylanmaydi; scrub’dan keyin yana 3 disk o‘lsa ham hammasi
+o‘qiladi. Keyin tajriba: `get` dagi `crc32` tekshiruvini olib tashlang va
+qaysi testlar yiqilishini ko‘ring — 5-qadamni o‘z ko‘zingiz bilan tasdiqlang.
+</Task>
+
+<Task title="3-daraja: LRC va tiklash trafigi">
+2-darajadagi omborga ikkinchi kodlash usulini qo‘shing: LRC (7.1 Deep) —
+12 ma’lumot bo‘lagi ikki guruhga, har guruhga XOR paritet, va ikkita global
+paritet (Koshi qatorlari). Har tiklashda nechta bo‘lak o‘qilganini sanang.
+
+**Tekshiruv mezoni:** (1) bitta bo‘lak yo‘qolganda o‘qilgan bo‘laklar soni:
+RS(12,4) — 12, LRC — 6; (2) 1 000 ta tasodifiy “bitta disk o‘ldi” holatida
+jami tiklash trafigi — ikki usul uchun; (3) LRC qaysi 4 talik yo‘qotishlarga
+chidamaydi — hammasini sanab chiqing va ulushini toping (Azure maqolasidagi
+raqam bilan solishtiring); (4) 7.2-dagi jadvalni o‘z o‘lchovlaringiz bilan
+to‘ldiring.
+</Task>
+
+<Task title="4-daraja: saqlanish va narx modeli">
+Skript yoki jadval: kirish — disk AFR, disk hajmi va tezligi, park hajmi,
+kod sxemasi (uch nusxa, RS(k,m), LRC), AZ lar soni, tiklash parallelligi,
+korrelyatsiyalangan hodisalar tezligi (stoyka, AZ), disk narxi. Chiqish —
+yillik yo‘qotish ehtimoli (to‘qqizlar soni), xom hajm, tiklash trafigi,
+oylik narx.
+
+**Tekshiruv mezoni:** (1) 5-bo‘lim 1, 7, 8-qadamlar va 12.2-dagi hisoblarni
+takrorlang; (2) “11 ta to‘qqiz”ga erishish uchun uch nusxa va RS(10,8)
+ning eng arzon parametrlarini toping; (3) disk hajmini 10 TB dan 30 TB ga
+oshirsak (tezlik o‘zgarmaydi), tiklash vaqti va saqlanish qanday o‘zgaradi
+va buni qanday qoplash mumkin (13-bo‘lim)?
+</Task>
+
+<Deep title="Monte Karlo bilan saqlanishni tekshirish: nega formula yetmaydi">
+5-bo‘limdagi formulalar (`3λ(λT)²`) ikki soddalashtirishga tayanadi:
+buzilishlar mustaqil va tiklash vaqti doimiy. Haqiqatda ikkalasi ham
+noto‘g‘ri — tiklash navbati yuk ostida uzayadi, buzilishlar esa
+guruhlanadi. Shuning uchun katta tizimlarda saqlanish **simulyatsiya**
+bilan ham tekshiriladi:
+
+```
+har soat qadamida:
+  har disk: tasodifiy buzilish (yoshiga qarab AFR)
+  har stoyka: kamdan-kam "hammasi birga" hodisa
+  buzilgan disklar bo'laklari tiklash navbatiga
+  navbat tezligi: tarmoq sig'imi / (navbatdagi bo'laklar)
+  har ob'ekt: sog' bo'laklar soni < k bo'lsa -> "yo'qoldi"
+```
+
+Muammo — ehtimol juda kichik (10⁻¹¹): oddiy simulyatsiya milliardlab yil
+yurishi kerak. Yechim — **muhimlik bo‘yicha tanlash** (importance sampling):
+buzilishlarni sun’iy ravishda ko‘paytirib simulyatsiya qilish va natijani
+ehtimollar nisbati bilan tuzatish; yoki “ob’ekt himoyasi pasaygan” holatlarni
+alohida o‘rganish (14.1). 4-daraja topshirig‘ining ikkinchi qismi aynan
+shu: formula va simulyatsiya qayerda farq qiladi?
+</Deep>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan o‘n beshta
+varianti bilan sinalgan: teskarisiz Koshi qatorlari va boshqa noto‘g‘ri
+generatorlar, to‘ldirishsiz kodlash, teskari matritsani noto‘g‘ri
+tomonidan ko‘paytirish, paritetda qator raqamini adashtirish, `get` da
+nazorat summasini tekshirmaslik, `LostError` ni “yutib” bo‘sh javob qaytarish,
+AZ chegarasini yoki disk bandligini e’tiborsiz qoldirish, o‘lik diskni
+tanlash, scrub’da indeksni yangilamaslik, faqat o‘lik disklarni tekshirish,
+tiklangan bo‘lakni shu ob’ektning boshqa bo‘lagi turgan diskka yozish va
+boshqalar. Har biri kamida bitta testni yiqitadi.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Ob’ekt ombori | Fayllarni kalit bo‘yicha butunligicha saqlaydigan tizim |
+| Bucket | Ob’ektlar uchun eng yuqori “konteyner”, nomi global |
+| Kalit (key) | Ob’ektning to‘liq nomi; papkalar — faqat `/` bilan illyuziya |
+| Metadata | Ob’ekt haqidagi ma’lumot: hajm, sana, tur, nazorat summasi, joylashuv |
+| Saqlanish (durability) | Ma’lumot yo‘qolmasligi ehtimoli (yillik) |
+| Mavjudlik (availability) | So‘rovga hozir javob olish ehtimoli |
+| AFR | Diskning yillik buzilish ehtimoli |
+| AZ | Mavjudlik zonasi: mustaqil elektr va tarmoqli ma’lumotlar markazlari guruhi |
+| Nusxalash (replication) | Bir xil ma’lumotni bir nechta joyda saqlash |
+| Erasure coding | k ma’lumot + m paritet bo‘lak; istalgan k tasidan tiklash |
+| Reed–Solomon | Chekli maydondagi ko‘phadlarga asoslangan erasure kod |
+| GF(256) | 256 elementli chekli maydon: har element — bayt, qo‘shish — XOR |
+| Tizimli kod | Birinchi k bo‘lak — ma’lumotning o‘zi |
+| LRC | Mahalliy paritetli kod: bitta bo‘lakni tiklash arzonroq |
+| Nazorat summasi | Ma’lumotdan hisoblangan qisqa son; o‘zgarishni aniqlaydi |
+| Jim buzilish (bit rot) | Disk xato bermasdan qaytargan noto‘g‘ri bayt |
+| Scrubbing | Barcha ma’lumotni muntazam o‘qib tekshiradigan fon jarayoni |
+| Tiklash oynasi (T) | Buzilishdan to‘liq himoya tiklangungacha vaqt |
+| Korrelyatsiyalangan buzilish | Bitta sabab bir nechta nusxani birdaniga yo‘q qilishi |
+| Joylashtirish (placement) | Bo‘laklar qaysi disklarga yozilishini hal qilish |
+| Multipart upload | Katta faylni qismlab, parallel yuklash |
+| Saqlash sinfi | Narx va o‘qish tezligi darajasi (Standard, IA, Glacier...) |
+| Hayot sikli | Ob’ektlarni vaqt bo‘yicha sinfdan sinfga ko‘chirish yoki o‘chirish |
+| Kuchli izchillik | Yozishdan keyingi har qanday o‘qish yangi holatni ko‘radi |
+| Guvoh (witness) | Kalitning oxirgi versiyasini biluvchi kichik izchil komponent |
+| Object Lock | Belgilangan muddatgacha o‘chirib bo‘lmaydigan ob’ekt (WORM) |
+| Imzolangan havola | Muddatli, bitta ob’ektga ruxsat beruvchi URL |
+| Hujayra (cell) | Tizimning mustaqil bo‘lagi: nosozlik faqat unga ta’sir qiladi |
+| Shartli yozuv | Faqat shart bajarilsa yozish (kalit yo‘q / versiya mos) |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Ob’ektlar va so‘rovlar | 280 T+ ob’ekt, 100 M+ so‘rov/s (2023) | Andy Warfield, “Building and operating a pretty big storage system called S3” (2023) |
+| Saqlanish va mavjudlik | 11 ta to‘qqiz; Standard uchun 99.99% loyihalangan | S3 hujjatlari |
+| 10 million ob’ekt — 10 000 yilda bitta | — | S3 hujjatlari (FAQ) |
+| Ob’ekt hajmi | 0 bayt – 5 TB; bitta PUT 5 GB gacha | S3 hujjatlari |
+| Multipart | 5 MB – 5 GB qism, 10 000 tagacha | S3 hujjatlari |
+| Prefiks tezligi | 3 500 yozish/s, 5 500 o‘qish/s (2018-yildan) | AWS e’loni (2018), S3 hujjatlari |
+| Kuchli izchillik | 2020-yil dekabr | AWS e’loni; Werner Vogels, “Diving Deep on S3 Consistency” (2021) |
+| 2017-yilgi uzilish | 09:37 – 13:54 (PST) | AWS hodisa hisoboti (2017) |
+| ShardStore | 2021 | Bornholt va boshq., SOSP 2021 |
+| LRC(12,2,2) | 1.33x, bitta bo‘lak tiklash 2x arzon | Huang va boshq., USENIX ATC 2012 |
+| Narxlar | Standard ~$0.023/GB-oy va boshqalar | AWS narxlar sahifasi (us-east-1, taxminan) |
+| Disk AFR | ~1–2% | Ochiq disk statistikalari (masalan, Backblaze hisobotlari) |
+| O‘qib bo‘lmaydigan xato | 10¹⁴–10¹⁵ bitda bitta | Disk ishlab chiqaruvchilar spetsifikatsiyalari |
+| 2-daraja natijalari | 20/20; 15 mutatsiya | `docs/amaliyot/amazon-s3/`, referens implementatsiya |
+
+Park hajmi va disklar soni, kunlik buzilishlar, ob’ekt hajmlari taqsimoti,
+metadata hajmi, S3’ning ichki kod parametrlari, tiklash vaqtlari va
+tezliklari, provayder xarajatlari, sig‘im zaxiralari — **illyustratsiya
+uchun taxminiy**. S3’ning ichki arxitekturasi to‘liq ochiq emas; darsdagi
+mexanizmlar ochiq manbalar (maqolalar, AWS muhandislarining chiqishlari,
+hodisa hisobotlari) va ob’ekt omborlarining umumiy tamoyillariga asoslangan.
+Asosiy xulosalar — bitta disk ikkita to‘qqiz beradi; saqlanishni tiklash
+tezligi va mustaqillik belgilaydi; metadata va ma’lumot turlicha masshtablanadi;
+jim xatolarni faqat doimiy tekshiruv topadi — bu raqamlarning bir necha
+barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Andy Warfield (2023), “Building and operating a pretty big storage system
+  called S3”, All Things Distributed
+- Werner Vogels (2021), “Diving Deep on S3 Consistency”, All Things Distributed
+- James Bornholt va boshq. (2021), “Using Lightweight Formal Methods to
+  Validate a Key-Value Storage Node in Amazon S3”, SOSP
+- AWS (2017), “Summary of the Amazon S3 Service Disruption in the Northern
+  Virginia (US-EAST-1) Region”
+- Cheng Huang va boshq. (2012), “Erasure Coding in Windows Azure Storage”,
+  USENIX ATC
+- Irving S. Reed, Gustave Solomon (1960), “Polynomial Codes over Certain
+  Finite Fields”, SIAM Journal
+- James S. Plank (1997), “A Tutorial on Reed-Solomon Coding for
+  Fault-Tolerance in RAID-like Systems”, Software: Practice and Experience
+- Eduardo Pinheiro, Wolf-Dietrich Weber, Luiz André Barroso (2007),
+  “Failure Trends in a Large Disk Drive Population”, FAST
+- Bianca Schroeder, Garth A. Gibson (2007), “Disk Failures in the Real
+  World”, FAST
+- Daniel Ford va boshq. (2010), “Availability in Globally Distributed
+  Storage Systems”, OSDI (korrelyatsiyalangan buzilishlar)
+- Amazon S3 foydalanuvchi qo‘llanmasi: saqlash sinflari, multipart upload,
+  izchillik modeli, shartli yozuvlar, ma’lumot yaxlitligi
+- AWS e’lonlari (2018–2024): prefiks tezligi, Object Lock, Block Public
+  Access, standart shifrlash, Express One Zone, shartli yozuvlar

@@ -64,7 +64,7 @@ kalkulyatorda takrorlash mumkin.
 | 10 | [Google Docs](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/google-docs/) | ✅ Tayyor | 19 000 so‘z | OT va CRDT, Jupiter protokoli, hujjat egasi, siqish |
 | 11 | [Airbnb](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/airbnb/) | ✅ Tayyor | 19 500 so‘z | Tun modeli, ikki marta bron bo‘lmasligi, idempotent to‘lovlar, geo qidiruv |
 | 12 | [Uber ETA](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/uber-eta/) | ✅ Tayyor | 19 000 so‘z | Yo‘l grafi, A* va Contraction Hierarchies, jonli tirbandlik, H3, DeepETA |
-| 13 | Amazon S3 | ⏳ Rejada | | Erasure coding, 11 ta to‘qqizlik ishonchlilik |
+| 13 | [Amazon S3](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/amazon-s3/) | ✅ Tayyor | 18 500 so‘z | 11 ta to‘qqiz, uch nusxa va erasure coding, metadata indeksi, kuchli izchillik, nazorat summalari |
 | 14 | Apache Kafka | ⏳ Rejada | | Commit log, partition, ISR, exactly-once |
 | 15 | Fond birjasi | ⏳ Rejada | | Order book, matching engine, past kechikish |
 | 16 | Bluesky | ⏳ Rejada | | AT Protocol, federatsiya, firehose |
