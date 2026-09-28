@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 11 ta dars tayyor:
+Hozir 12 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -50,9 +50,9 @@ Hozir 11 ta dars tayyor:
 09 — Spotify qanday ishlaydi (20 000 so'z)
 10 — Google Docs qanday ishlaydi (19 000 so'z)
 11 — Airbnb qanday ishlaydi (19 500 so'z)
+12 — Uber ETA'ni qanday hisoblaydi (19 000 so'z)
 
-Yana 6 tasi rejada: Kafka, Amazon S3, Uber ETA, fond birjasi
-va boshqalar.
+Yana 5 tasi rejada: Kafka, Amazon S3, fond birjasi va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -71,8 +71,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-11 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb), 6 tasi rejada. Internetsiz ham o'qish mumkin.
+12 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA), 5 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
@@ -365,6 +365,32 @@ https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/airbnb/
 ```
 
 ---
+### 3.12 — Uber ETA
+
+```
+Ilovani ochasiz: "haydovchi 4 daqiqada keladi".
+
+Eng yaqin haydovchi 500 metrda turibdi. Lekin u daryoning narigi
+tomonida — eng yaqin ko'prik 1.5 km janubda. Unga 10 daqiqa kerak.
+2 km uzoqdagi, lekin shu qirg'oqdagi haydovchi esa 5 daqiqada keladi.
+
+Masofa bo'yicha tanlasangiz — mijoz ikki barobar ko'p kutadi.
+Shuning uchun Uber haydovchini masofa bo'yicha emas, ETA bo'yicha
+tanlaydi. Va buni sekundiga yuz minglab marta, millisekundlarda qiladi.
+
+Yangi dars — Uber ETA'ni qanday hisoblaydi (19 000 so'z):
+Dijkstra, A* va Contraction Hierarchies (nega 1000 barobar tez),
+haydovchilar GPS'idan jonli tirbandlik, nega "yo'q ma'lumot" "bo'sh
+yo'l" degani emas, H3 olti burchaklari, DeepETA — ML nega ETA'ni noldan
+emas, marshrut xatosini bashorat qiladi. Amaliyotda — o'z ETA
+dvigatelingizni yozasiz: uchta qidiruv algoritmi, shovqinli GPS'dan
+tezliklar va xatoni tuzatuvchi model.
+
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/uber-eta/
+```
+
+---
+
 ## 4. SO'ROVNOMA (poll) — engagement uchun
 
 Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
@@ -373,7 +399,7 @@ Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 
 - Apache Kafka (commit log, partition, exactly-once)
 - Amazon S3 (erasure coding, 11 ta to'qqizlik)
-- Uber ETA (graf, geoindeks, real-time ML)
+- Bluesky (federatsiya, AT Protocol)
 - Fond birjasi (matching engine, mikrosekundlar)
 
 ---

@@ -1,0 +1,36 @@
+/* Uber skini — safar ilovasi uslubi (rasmiy brend materiali emas) */
+[data-skin="uber-eta"] {
+  --skin-bg: #ffffff;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f3f3f3;
+  --skin-border: #e2e2e2;
+  --skin-text: #000000;
+  --skin-muted: #5e5e5e;
+  --skin-accent: #000000;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(39, 110, 241, 0.35);
+  --skin-radius: 8px;
+  --skin-font: "Uber Move", -apple-system, "Helvetica Neue", "Segoe UI", Roboto, Arial, ui-sans-serif, sans-serif;
+  --skin-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --ub-blue: #276ef1;
+  --ub-green: #05944f;
+  --ub-map: #eef0f2;
+  --ub-road: #ffffff;
+  --ub-block: #e3e6ea;
+  --ub-park: #d7ecd9;
+  --ub-water: #cfe3f5;
+  --ub-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+[data-skin="uber-eta"] .lesson-prose h2 {
+  letter-spacing: -0.02em;
+}
+
+[data-skin="uber-eta"] .lesson-prose a {
+  text-decoration-thickness: 1px;
+}
+
+body:has([data-skin="uber-eta"]) {
+  background: #ffffff;
+}

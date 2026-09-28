@@ -55,15 +55,15 @@ kalkulyatorda takrorlash mumkin.
 | 01 | [ChatGPT qanday ishlaydi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/chatgpt/) | ✅ Tayyor | 12 200 so‘z | Tokenizatsiya, attention, KV cache, continuous batching, roofline, inference iqtisodi |
 | 02 | [URL qisqartiruvchi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/) | ✅ Tayyor | 11 600 so‘z | Base62, tug‘ilgan kun paradoksi, cache stampede, hot key, Bloom filtri, ochiq redirect |
 | 03 | [Redis: 12 ta stsenariy](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/redis/) | ✅ Tayyor | 11 100 so‘z | Event loop, xotira modeli, TTL va eviction, fork/COW, ZSET, Streams, klaster |
-| 04 | Twitter tasmasi | ⏳ Rejada | | Fan-out on write vs read, mashhur akkauntlar muammosi |
-| 05 | Reddit | ⏳ Rejada | | Ovoz berish, kommentariya daraxti, “hot” reytingi |
-| 06 | Slack | ⏳ Rejada | | WebSocket, presence, kanal tarixi |
-| 07 | WhatsApp | ⏳ Rejada | | E2E shifrlash, yetkazish kafolati, oflayn navbat |
-| 08 | YouTube | ⏳ Rejada | | Transkodlash, CDN, adaptiv bitreyt |
-| 09 | Spotify | ⏳ Rejada | | Audio yetkazish, tavsiya tizimi |
-| 10 | Google Docs | ⏳ Rejada | | OT va CRDT tanlovi |
-| 11 | Airbnb | ⏳ Rejada | | Geo qidiruv, bron, ikki marta band bo‘lmaslik |
-| 12 | Uber ETA | ⏳ Rejada | | Yo‘l grafi, H3 geoindeks, real-time ML |
+| 04 | [Twitter tasmasi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/twitter/) | ✅ Tayyor | 10 200 so‘z | Fan-out on write vs read, mashhur akkauntlar, tasma keshi, reyting |
+| 05 | [Reddit](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/reddit/) | ✅ Tayyor | 14 000 so‘z | Ovoz berish, kommentariya daraxti, “hot” reytingi, moderatsiya |
+| 06 | [Slack](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/slack/) | ✅ Tayyor | 19 500 so‘z | WebSocket shlyuzlari, presence, kanal tarixi, yetkazish tartibi |
+| 07 | [WhatsApp](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/whatsapp/) | ✅ Tayyor | 20 000 so‘z | E2E shifrlash (Signal protokoli), yetkazish kafolati, oflayn navbat |
+| 08 | [YouTube](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/youtube/) | ✅ Tayyor | 19 000 so‘z | Transkodlash, CDN, adaptiv bitreyt, tavsiyalar |
+| 09 | [Spotify](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/spotify/) | ✅ Tayyor | 20 000 so‘z | Audio yetkazish, tinglashlar hisobi, tavsiya tizimi |
+| 10 | [Google Docs](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/google-docs/) | ✅ Tayyor | 19 000 so‘z | OT va CRDT, Jupiter protokoli, hujjat egasi, siqish |
+| 11 | [Airbnb](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/airbnb/) | ✅ Tayyor | 19 500 so‘z | Tun modeli, ikki marta bron bo‘lmasligi, idempotent to‘lovlar, geo qidiruv |
+| 12 | [Uber ETA](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/uber-eta/) | ✅ Tayyor | 19 000 so‘z | Yo‘l grafi, A* va Contraction Hierarchies, jonli tirbandlik, H3, DeepETA |
 | 13 | Amazon S3 | ⏳ Rejada | | Erasure coding, 11 ta to‘qqizlik ishonchlilik |
 | 14 | Apache Kafka | ⏳ Rejada | | Commit log, partition, ISR, exactly-once |
 | 15 | Fond birjasi | ⏳ Rejada | | Order book, matching engine, past kechikish |

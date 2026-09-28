@@ -1,0 +1,2751 @@
+## Bu darsda nima o‘rganasiz
+
+Uber ilovasini ochasiz, manzilni yozasiz — va bir soniyadan kam vaqtda
+ekranda ikki raqam paydo bo‘ladi: “haydovchi **4 daqiqada** keladi” va
+“manzilga **23 daqiqada** yetasiz”. Bu raqamlarni hech kim alohida
+e’tiborga olmaydi. Lekin ular ortida butun bir tizim turadi: shahar yo‘l
+xaritasi graf sifatida, har bir haydovchi telefonidan har bir necha
+soniyada keladigan GPS nuqtalari, ulardan hisoblangan jonli tirbandlik,
+eng qisqa yo‘l algoritmlari va marshrut xatosini tuzatuvchi neyron tarmoq.
+
+ETA (Estimated Time of Arrival — taxminiy yetib kelish vaqti) Uber’da
+faqat mijozga ko‘rsatiladigan raqam emas. U **dispetcherlikning** (qaysi
+haydovchini yuborish), **narxning** (safar narxi oldindan hisoblanadi),
+**Uber Eats** yetkazib berish vaqtining va hatto haydovchilar
+taqsimotining asosi. Shuning uchun ETA — Uber’ning eng ko‘p chaqiriladigan
+modeli: sekundiga yuz minglab so‘rov, har biri millisekundlarda.
+
+Dars uchta savol atrofida quriladi.
+
+**Eng tez yo‘lni qanday topish mumkin — millisekundlarda?** Dijkstra
+algoritmi to‘g‘ri, lekin katta grafda sekin. A*, ikki tomonlama qidiruv
+va Contraction Hierarchies bir necha ming barobar tezlashtiradi — bu
+darsning birinchi yarmi.
+
+**Yo‘lning “og‘irligi”ni qayerdan olamiz?** Tezlik belgisi yolg‘on
+gapiradi: soat 18:00 da 60 km/soat yo‘lda mashinalar 12 km/soat bilan
+yuradi. Haqiqiy tezlik haydovchilarning GPS nuqtalaridan olinadi —
+lekin GPS shovqinli, nuqtalar siyrak va eskiradi.
+
+**Marshrut hisobi to‘g‘ri bo‘lsa ham, nega baribir xato?** Svetoforlar,
+burilishlar, mijozni topish, to‘xtab turish joyi — grafda yo‘q narsalar.
+Bu yerda mashinaviy o‘rganish kiradi: u marshrut ETA’sini **almashtirmaydi**,
+balki uning **xatosini** bashorat qiladi.
+
+Dars WhatsApp va Airbnb darslaridagi “real vaqt” va “hosila ko‘rinish”
+g‘oyalarining davomi, lekin yangi qatlam qo‘shadi: bu yerda javob hech
+qachon aniq emas — faqat **qanchalik yaxshi taxmin** ekani o‘lchanadi.
+
+## 1. Muammo: “7 daqiqa” ortida nima bor
+
+### 1.1 ETA qayerlarda ishlatiladi
+
+| Qayerda | Qaysi ETA | Xato narxi |
+| --- | --- | --- |
+| Ilova ochilganda | Har mahsulot uchun eng yaqin haydovchining kelish vaqti | Mijoz “uzoq” deb ketib qoladi |
+| Narx oldindan | Safar vaqti va masofasi — narx formulasi kiritmasi | Narx noto‘g‘ri: yo mijoz, yo haydovchi zarar ko‘radi |
+| Dispetcherlik | Har nomzod haydovchidan mijozgacha vaqt | Uzoqroq haydovchi yuboriladi, hammaning vaqti ketadi |
+| Safar davomida | Manzilga qolgan vaqt, yo‘lda yangilanadi | Ishonch: “23 daqiqa” 40 ga aylansa |
+| Uber Eats | Taom tayyorlash + kuryer kelishi + yetkazish | Taom sovuydi yoki kuryer restoranda kutadi |
+| Rejalashtirish | Qaysi hududda haydovchi kam, qayerga yo‘naltirish | Bo‘sh yurish va uzoq kutishlar |
+
+Bu jadval ETA’ni oddiy “ko‘rsatiladigan raqam”dan **tizimning valyutasiga**
+aylantiradi. Dispetcherlik haydovchilarni masofa bo‘yicha emas, ETA bo‘yicha
+tanlaydi: daryoning narigi qirg‘og‘idagi 500 metr uzoqlikdagi haydovchi
+ko‘prikdan aylanib 12 daqiqada keladi, 2 km uzoqdagisi esa to‘g‘ri yo‘l
+bilan 4 daqiqada. Narx esa ETA’ga bevosita bog‘liq: safar 25 daqiqa
+deb hisoblansa-yu, 40 daqiqa davom etsa, oldindan aytilgan narx bilan
+kimdir zarar ko‘radi.
+
+### 1.2 Talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Aniqlik | O‘rtacha mutlaq xato (MAE) — daqiqalar; muhimi — tizimli siljish (bias) nolga yaqin |
+| Kechikish | Bitta ETA: p99 bir necha o‘n ms; dispetcherlik bir so‘rovda yuzlab ETA so‘raydi |
+| O‘tkazuvchanlik | Sekundiga yuz minglab so‘rov, cho‘qqida — bir necha barobar ko‘p |
+| Yangilik | Tirbandlik o‘zgarishi ETA’ga 1–2 daqiqa ichida yetib kelishi |
+| Izchillik | Bir ekrandagi ETA va narx bir xil hisobdan kelishi |
+| Mavjudlik | ETA yo‘q — safar yo‘q: dispetcherlik va narx to‘xtaydi |
+
+Oxirgi qator muhim: ETA — **kritik yo‘l**. Airbnb’da qidiruv eskirsa ham
+bronlash ishlardi; Uber’da ETA servisi yiqilsa, yangi safar boshlab
+bo‘lmaydi. Shuning uchun darsning 10-bo‘limida ko‘ramizki, ETA tizimi
+bir necha qavat zaxira bilan quriladi: aniq javob bo‘lmasa — taxminiyroq,
+lekin **har doim** javob.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="~31 M" label="Kuniga safarlar" hint="2024, taxminan" />
+  <Stat value="~100 K/s" label="O'rtacha ETA so'rovlari" hint="Hisoblangan" />
+  <Stat value="~4 s" label="Haydovchi GPS nuqtalari oralig'i" hint="Taxminan" />
+  <Stat value="~0.1 km²" label="H3 9-daraja katagi" hint="H3 hujjatlari" />
+</StatGrid>
+
+<Calc title="ETA so'rovlari: bitta safarga nechta" result="Bitta safarga ~300 ta ETA; o'rtacha ~100 ming so'rov/s, cho'qqida ~300 ming">{`SAFARLAR:
+  Yiliga ~11 mlrd safar (2024, taxminan) -> ~31 M/kun -> ~360 safar/s
+
+BITTA SAFARGA ETA SO'ROVLARI (faraz):
+  Ilova seanslari: ~3 seans bitta safarga (ko'pchilik ochib, yopadi)
+    har seansda: 6 mahsulot x (kelish ETA + safar ETA) = 12
+    ekranda turganda ~5 marta yangilanadi       -> ~60 / seans
+    3 seans                                    -> ~180
+  Dispetcherlik: ~20 nomzod haydovchi x ~2-3 tur -> ~50
+  Safar davomida: 20 daq safar, har 30 s yangilanish,
+    mijoz va haydovchi ilovasi                 -> ~80
+  Jami: ~300 ETA bitta safarga
+
+YUK:
+  31 M x 300 = ~9.3 mlrd ETA/kun -> ~108 000/s o'rtacha
+  Kun ichida cho'qqi ~3x                      -> ~300 000/s
+  Uber Eats (restoranlar ro'yxatidagi ETA'lar) — bundan tashqari`}</Calc>
+
+Hisob darhol bitta xulosani beradi: ETA — **o‘qish yuki** va juda katta
+o‘qish yuki. Safarning o‘zi sekundiga bir necha yuz; ETA esa undan ~300
+barobar ko‘p. Har bir ETA so‘rovi yo‘l grafida qidiruv va ML model
+chaqiruvidan iborat bo‘lsa, ikkalasi ham **millisekund** tartibida bo‘lishi
+kerak — aks holda serverlar soni yuz minglab bo‘lardi.
+
+<Calc title="Jonli tirbandlik uchun GPS oqimi" result="Dunyo bo'yicha sekundiga yuz minglab GPS nuqtasi; bitta shaharda — sekundiga bir-ikki ming">{`Bir vaqtda onlayn haydovchilar (dunyo, cho'qqi): faraz ~1.5 M
+  (haydovchilar va kuryerlar soni ~7-8 M, bir vaqtda ~20%)
+Har biri har ~4 s da nuqta yuboradi   -> ~375 000 nuqta/s
+Bitta nuqta: vaqt, kenglik, uzunlik, tezlik, yo'nalish, aniqlik ~50 bayt
+  -> ~19 MB/s -> ~1.6 TB/kun (siqishsiz)
+
+Bitta katta shahar: ~5 000 onlayn haydovchi -> ~1 250 nuqta/s
+  5 daqiqalik oynada: ~375 000 nuqta
+  shahardagi yo'nalishli yo'l bo'laklari: ~100 000
+  -> o'rtacha ~4 nuqta bir bo'lakka, lekin notekis:
+     katta ko'chalarda yuzlab, kichik ko'chalarda — nol`}</Calc>
+
+Ikkinchi hisob darsning ikkinchi yarmidagi asosiy qiyinchilikni oldindan
+ko‘rsatadi: nuqtalar **ko‘p**, lekin **notekis** tarqalgan. Katta
+ko‘chada tezlikni ishonchli bilamiz, kichik ko‘chada esa oxirgi 5
+daqiqada birorta ham mashina o‘tmagan bo‘lishi mumkin. Tunda — hatto
+katta ko‘chalarda ham. Jonli ma’lumot yetmagan joyda nima qilish —
+7-bo‘limning markaziy savoli.
+
+<Calc title="Yo'l grafi xotirada" result="Butun AQSh yo'l tarmog'i (~24 M tugun) bitta serverning xotirasiga sig'adi: ~1-2 GB">{`Ochiq ma'lumot: AQSh yo'l grafi (DIMACS to'plami)
+  ~24 M tugun (chorrahalar), ~58 M yo'nalishli qirra (yo'l bo'laklari)
+
+Xotira (ixcham massivlar, CSR formati):
+  tugunlar: koordinata 2 x 4 bayt + qirralar boshi 4 bayt = 12 bayt
+    24 M x 12 = ~290 MB
+  qirralar: nishon tugun 4 + vaqt (og'irlik) 4 + uzunlik 4 = 12 bayt
+    58 M x 12 = ~700 MB
+  Jami: ~1 GB (+ tirbandlik profillari, geometriya — alohida)
+
+Bitta shahar (masalan, Toshkent o'lchamida): ~100-200 ming tugun
+  -> bir necha MB: protsessor keshiga deyarli sig'adi`}</Calc>
+
+Uchinchi hisob yaxshi yangilik: yo‘l grafi **kichik**. Ma’lumot hajmi
+muammo emas; muammo — **hisob tezligi**. Grafni bitta serverga yuklab,
+unda sekundiga minglab eng qisqa yo‘l qidiruvi bajarish kerak. Bu
+darsning 5 va 6-bo‘limlaridagi algoritmik qadamlarni oqlaydi: ma’lumotni
+bo‘lish emas, **qidiruvni aqlli qilish**.
+
+<Check q="Nega Uber haydovchini masofa bo'yicha emas, ETA bo'yicha tanlaydi? Masofa hisoblash ancha arzon-ku.">
+Chunki masofa va vaqt o‘rtasidagi bog‘liqlik shaharda juda zaif.
+
+Uch misol: (1) haydovchi 500 metrda, lekin daryoning narigi tomonida —
+eng yaqin ko‘prik 3 km aylanma; (2) haydovchi 300 metrda, lekin
+bir tomonlama ko‘chada teskari yo‘nalishda — kvartal atrofida aylanish
+kerak; (3) haydovchi 1 km da, lekin tirbandlikdagi magistralda — 1 km 8
+daqiqa oladi, 2 km uzoqdagi bo‘sh ko‘chadagi haydovchi esa 4 daqiqada
+keladi.
+
+Masofa bo‘yicha tanlash bu holatlarning har birida noto‘g‘ri haydovchini
+yuboradi. Natija — mijoz uzoq kutadi, haydovchi uzoq yuradi (bo‘sh
+kilometr — pul), va boshqa mijozga yaqin bo‘lgan haydovchi band bo‘ladi.
+
+Arzonlik masalasi esa ikki bosqich bilan hal qilinadi: avval **arzon
+filtr** — masofa yoki geo-katak bo‘yicha eng yaqin ~20–30 nomzod; keyin
+**qimmat hisob** — faqat ular uchun haqiqiy ETA. Bu YouTube va Airbnb
+darslaridagi “arzon filtr ko‘p nomzodda, qimmat model oz nomzodda”
+naqshining yana bir ko‘rinishi.
+</Check>
+
+## 2. Nol nuqta: yo‘l grafi
+
+ETA tizimining eng ichki mexanizmi — **graf**. Uni tushunmasdan qolgan
+hamma narsa (tirbandlik, ML, geo-indeks) “qora quti” bo‘lib qoladi.
+
+### 2.1 Tugun, qirra va yo‘nalish
+
+Shahar xaritasini graf sifatida tasvirlash oddiy ko‘rinadi: chorrahalar —
+**tugunlar**, ular orasidagi yo‘l bo‘laklari — **qirralar**. Lekin
+detallarda bir nechta muhim tanlov bor.
+
+**Qirralar yo‘nalishli.** Ikki tomonlama ko‘cha — ikkita qirra (A→B va
+B→A), bir tomonlamasi — bitta. Ikki yo‘nalishning tezligi ham har xil:
+ertalab shaharga kiruvchi tomon tirband, chiquvchi bo‘sh.
+
+**Og‘irlik — vaqt, masofa emas.** Qirra og‘irligi = uzunlik ÷ tezlik.
+Shu sababli “eng qisqa yo‘l” aslida “eng tez yo‘l”. Masofa ham
+saqlanadi (narx uchun kerak), lekin qidiruv vaqt bo‘yicha.
+
+**Burilishlar ham narxga ega.** Chapga burilish (o‘ng tomonlama
+harakatda) qarama-qarshi oqimni kesib o‘tadi va svetofor kutishini
+qo‘shadi; ba’zi chorrahalarda burilish **taqiqlangan**. Buni
+ifodalashning ikki usuli bor:
+
+```
+1) Tugunga asoslangan graf + burilish jadvali:
+   (kiruvchi qirra, chiquvchi qirra) -> jarima (soniya) yoki taqiq
+   Kichik xotira, lekin qidiruv algoritmi murakkablashadi
+
+2) Qirraga asoslangan graf ("edge-expanded", "line graph"):
+   har bir yo'l bo'lagi — tugun; har bir ruxsat etilgan burilish — qirra
+   Burilish jarimasi — oddiy qirra og'irligi; algoritm o'zgarmaydi
+   Narxi: tugunlar ~2-3 barobar ko'p
+```
+
+Ko‘pchilik ishlab chiqarish dvigatellari ikkinchi usulni yoki uning
+ixcham variantini ishlatadi: algoritmlarni oddiy qoldirish xotiradan
+qimmatroq.
+
+<Calc title="Burilish jarimasining ta'siri" result="Shahar marshrutida burilishlar vaqtning ~15-25% ini tashkil etadi — ularni hisobga olmaslik ETA'ni muntazam kamaytiradi">{`Shahar ichida 6 km lik marshrut, o'rtacha tezlik 30 km/soat
+  Harakat vaqti (qirralar yig'indisi): 6 / 30 x 60 = 12 daqiqa
+
+Marshrutdagi chorrahalar: ~20 ta (har ~300 m)
+  to'g'ri o'tish (yashil chiroqda): ~0-5 s
+  o'ngga burilish: ~5-10 s
+  chapga burilish (qarama-qarshi oqim, alohida chiroq): ~20-40 s
+  svetofor kutishi (o'rtacha, qizil ulushi ~40%): ~15-25 s
+
+Faraz: 4 burilish (2 chap, 2 o'ng) + 10 ta svetofor
+  2 x 30 + 2 x 8 + 10 x 20 = 60 + 16 + 200 = ~276 s = ~4.6 daqiqa
+
+ETA: 12 + 4.6 = ~16.6 daqiqa
+Burilish va svetoforsiz: 12 daqiqa -> ~28% kam (tizimli xato)`}</Calc>
+
+Bu hisob darsning keyingi qismi uchun muhim bir narsani ko‘rsatadi:
+yo‘l grafidagi og‘irliklar **o‘rtacha** qiymatlar va ularning xatosi
+tasodifiy emas, **tizimli**. Svetoforlarni har chorrahada modellashtirish
+mumkin emas (ularning ishlash rejimi ma’lum emas), lekin ularning **o‘rtacha
+ta’sirini** o‘tgan safarlardan o‘rganish mumkin. 5-bo‘limning 10–11-qadamlari
+aynan shu: marshrut hisobi “fizikani” beradi, ML esa qolgan tizimli xatoni.
+
+### 2.2 Xarita qayerdan keladi
+
+Graf o‘zi — xarita ma’lumotidan olingan hosila. Manbalar:
+
+| Manba | Nima beradi | Muammo |
+| --- | --- | --- |
+| OpenStreetMap | Ko‘chalar, yo‘nalish, tezlik chegaralari, burilish taqiqlari | Sifat shaharga qarab juda farq qiladi |
+| Tijorat xaritalari | Tekshirilgan geometriya, manzillar | Qimmat; yangilanish sekin |
+| Haydovchilar GPS izi | Haqiqiy harakat: yangi yo‘llar, yopilgan ko‘chalar | Shovqin; talqin qilish kerak |
+| Foydalanuvchi xabarlari | “Bu yerda o‘tib bo‘lmaydi” | Kam, subyektiv |
+
+Uber dastlab tashqi xarita provayderlariga tayangan, 2015-yildan esa o‘z
+xarita jamoasini qurgan (xarita va marshrutlash kompaniyasi deCarta’ni
+sotib olish shu yilga to‘g‘ri keladi). Sabab ETA bilan bevosita bog‘liq:
+tashqi xaritadagi xato (yopilgan ko‘cha, noto‘g‘ri bir tomonlama belgisi)
+to‘g‘ridan-to‘g‘ri noto‘g‘ri marshrut va noto‘g‘ri narxga aylanadi, va
+uni tuzatish uchun boshqa kompaniyaga murojaat qilish kerak edi.
+
+<Deep title="GPS izlaridan xarita xatolarini topish">
+Har kuni millionlab safar — bu xaritani tekshirishning bepul manbai.
+Agar graf “bu ko‘chada chapga burilish taqiqlangan” desa-yu, izlarda
+kuniga 500 ta haydovchi aynan shu joyda chapga burilsa — xarita
+noto‘g‘ri. Agar grafdagi ko‘chada bir haftadan beri birorta ham iz
+bo‘lmasa, qo‘shni ko‘chalarda esa harakat odatdagidek bo‘lsa — ko‘cha,
+ehtimol, yopilgan (ta’mir).
+
+Bunday tekshiruvlar oddiy statistik qoidalar:
+
+```
+Burilish taqig'i tekshiruvi (har chorraha, har hafta):
+  kutilgan: taqiqlangan burilishlar soni ~ 0 (xato GPS dan bir nechta)
+  kuzatilgan: N ta iz aynan shu burilishni qilgan
+  N > chegara (masalan, 50) va ulushi > 10% -> xarita jamoasiga navbat
+
+Yopilgan yo'l tekshiruvi:
+  bo'lakdagi kunlik izlar: oldingi 4 hafta o'rtachasi 300
+  oxirgi 3 kun: 0, qo'shni bo'laklar odatdagidek
+  -> "ehtimol yopilgan": marshrutlashda og'irlikni vaqtincha oshirish
+```
+
+Muhim nozik jihat — **kim qaror qiladi**. Avtomatik tizim og‘irlikni
+vaqtincha o‘zgartirishi mumkin (xavfsiz, qaytariladigan), lekin xaritaning
+o‘zini o‘zgartirish odam tomonidan tekshiriladi. Sabab: bitta xato
+avtomatik o‘zgarish (masalan, GPS shovqini sabab “yangi yo‘l” qo‘shilishi)
+haydovchilarni hovli yoki piyodalar yo‘lagiga yuborishi mumkin. Bu Airbnb
+darsidagi “avtomatik tizim — ishqalanish, odam — qaror” tamoyilining
+xaritadagi ko‘rinishi.
+</Deep>
+
+### 2.3 Nuqtadan grafgacha: “qayerda turibman?”
+
+Mijoz xaritada nuqta tanlaydi; haydovchi GPS koordinata yuboradi. Graf esa
+faqat tugun va qirralarni biladi. Shuning uchun har qidiruvdan oldin
+**biriktirish** (snapping) kerak: nuqtaga eng yaqin qirrani topish.
+
+Bu oddiy ko‘rinadi, lekin ikkita tuzog‘i bor. Birinchisi — **yo‘nalish**:
+ko‘p qatorli yo‘lning qaysi tomonida turibsiz? Yo‘lning narigi tomonidagi
+mijozga yetish uchun haydovchi keyingi burilishgacha borib, qaytishi
+kerak — bu 2–5 daqiqa farq. Ikkinchisi — **kirish joyi**: katta bino yoki
+aeroportda mijoz turgan joy va mashina to‘xtay oladigan joy har xil.
+
+Eng yaqin qirrani tez topish uchun geo-indeks kerak — bu yerda 5-bo‘limda
+batafsil ko‘radigan H3 kataklari yoki R-daraxt ishlatiladi: nuqta
+atrofidagi bir necha katakdagi qirralar olinadi va ular orasidan eng
+yaqini tanlanadi.
+
+<Calc title="Yo'lning noto'g'ri tomoni qancha turadi" result="Noto'g'ri tomonni tanlash ETA'ni 2-5 daqiqaga buzadi — bu o'rtacha kelish vaqtining yarmi">{`Mijoz: 4 qatorli ko'chaning shimoliy tomonida
+Haydovchi: janubiy tomonda, sharqqa qarab kelmoqda
+
+Agar biriktirish "shimoliy tomon" deb to'g'ri tanlasa:
+  haydovchi keyingi chorrahagacha (~400 m) boradi, U-burilish yoki
+  kvartal atrofida aylanish: +800-1 200 m, svetoforlar bilan +2-4 daqiqa
+
+Agar biriktirish noto'g'ri "janubiy tomon" desa:
+  ETA: 3 daqiqa (ko'rsatildi)
+  haqiqat: 3 + 3 = 6 daqiqa -> xato 100%
+
+O'rtacha kelish ETA si: ~4-6 daqiqa
+  -> tomonni noto'g'ri tanlash — eng katta yagona xato manbalaridan biri`}</Calc>
+
+Bu tuzoq 5-bo‘limning 13-qadamida (“oxirgi 100 metr”) qayta uchraydi:
+ETA’ning katta qismi xatosi uzoq magistraldan emas, safarning **boshi
+va oxiridan** keladi.
+
+<Check q="Nega qirra og'irligi masofa emas, balki vaqt? Masofa ham, tezlik ham grafda bor-ku.">
+Chunki algoritm bitta sonni minimallashtiradi, va biz minimallashtirmoqchi
+bo‘lgan narsa — vaqt.
+
+Agar og‘irlik masofa bo‘lsa, Dijkstra eng qisqa masofali yo‘lni topadi:
+shahar markazi orqali, tor ko‘chalar va ko‘p svetoforlar bilan. Aylanma
+magistral 30% uzunroq, lekin ikki barobar tez bo‘lishi mumkin — masofa
+bo‘yicha qidiruv uni hech qachon tanlamaydi.
+
+Og‘irlik vaqt bo‘lsa, ikkinchi savol paydo bo‘ladi: **qaysi** vaqt?
+Tezlik belgisi bo‘yichami, o‘rtacha tarixiy tezlik bo‘yichami yoki
+hozirgi jonli tezlik bo‘yichami? Bu savolga javob — 5-bo‘limning 7–9-qadamlari:
+og‘irlik doimiy son emas, **vaqtga bog‘liq funksiya** bo‘lib boradi.
+
+Masofa esa yo‘qolmaydi: u topilgan yo‘l bo‘ylab yig‘iladi va narx
+formulasiga boradi. Qidiruv — vaqt bo‘yicha, hisob — ikkalasi bo‘yicha.
+</Check>
+
+## 3. v0: to‘g‘ri chiziq va o‘rtacha tezlik
+
+Eng sodda ishlaydigan ETA grafsiz ham quriladi. Ikki nuqta orasidagi
+to‘g‘ri chiziq masofasini (Yer sharida — haversine formulasi) hisoblaymiz,
+uni yo‘llar egriligi uchun koeffitsientga ko‘paytiramiz va shahar
+o‘rtacha tezligiga bo‘lamiz:
+
+```python
+from math import radians, sin, cos, asin, sqrt
+
+R_KM = 6371.0
+DETOUR = 1.35        # yo'llar to'g'ri chiziqdan ~35% uzun (shahar o'rtachasi)
+AVG_KMH = 25.0       # shahar bo'yicha o'rtacha tezlik
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    p1, p2 = radians(lat1), radians(lat2)
+    dp, dl = p2 - p1, radians(lon2 - lon1)
+    a = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
+    return 2 * R_KM * asin(sqrt(a))
+
+def eta_minutes(a, b):
+    km = haversine_km(*a, *b) * DETOUR
+    return km / AVG_KMH * 60
+
+def nearest_driver(rider, drivers):
+    return min(drivers, key=lambda d: eta_minutes(d.pos, rider))
+```
+
+Bu kod **ishlaydi**. Kichik shaharda, tekis ko‘chalar to‘rida, tirbandliksiz
+paytda uning xatosi o‘rtacha 20–30% atrofida — ilk startap uchun yetarli.
+Bir millisekunddan kam vaqt oladi, xarita va server kerak emas, dispetcherlik
+ham shu funksiya bilan ishlaydi. Uber’ning ilk kunlari haqida ochiq
+ma’lumot kam, lekin ko‘plab taksi ilovalari aynan shunday boshlagan: “eng
+yaqin mashina” va “taxminan N daqiqa”.
+
+Muammo shundaki, bu 20–30% **o‘rtacha**. Taqsimotning dumida xato 200–300%
+ga yetadi — va dispetcherlik aynan shu dumda noto‘g‘ri qaror qiladi.
+
+## 4. Nima sindi
+
+### 4.1 Daryo va ko‘prik
+
+<Calc title="Aylanma koeffitsienti — o'rtacha emas, taqsimot" result="Bitta koeffitsient (1.35) daryo yoki temir yo'l bo'lgan joyda 2-4 barobar xato beradi">{`To'g'ri chiziq masofasi: 800 m
+Shahar bo'yicha o'rtacha aylanma koeffitsienti: 1.35 -> 1.08 km -> 2.6 daq
+
+Holat A — oddiy ko'chalar to'ri:
+  haqiqiy yo'l 1.1 km, ~3 daqiqa        xato ~13%
+Holat B — o'rtada daryo, eng yaqin ko'prik 1.5 km janubda:
+  haqiqiy yo'l 0.8 + 2 x 1.5 = ~3.8 km, ~10 daqiqa   xato ~74% (3.8x kam)
+Holat C — o'rtada temir yo'l, o'tish joyi 700 m da:
+  haqiqiy yo'l ~2.2 km, ~6 daqiqa       xato ~57%
+
+Dispetcherlik oqibati:
+  B dagi "eng yaqin" haydovchi (800 m) — 10 daqiqa
+  2 km uzoqdagi, lekin shu qirg'oqdagi haydovchi — 5 daqiqa
+  v0 birinchisini tanlaydi: mijoz 2 barobar ko'p kutadi`}</Calc>
+
+Koeffitsientni shahar bo‘yicha emas, **hudud juftligi** bo‘yicha o‘rganish
+mumkin (daryoning ikki qirg‘og‘i orasida — 2.5, bir qirg‘oq ichida — 1.3).
+Bu tuzatish, lekin u graf muammosini jadval bilan yashirish: jadval
+kattalashadi va baribir yangi ko‘prik yoki yopilgan ko‘chani bilmaydi.
+To‘g‘ri yechim — haqiqiy yo‘l grafi va unda eng tez yo‘l qidiruvi.
+
+### 4.2 Tezlik belgisi yolg‘on gapiradi
+
+Keyingi qadam tabiiy: 2-bo‘limdagi graf, og‘irlik = uzunlik ÷ tezlik
+chegarasi, va Dijkstra. Marshrut endi to‘g‘ri (ko‘prik orqali), lekin
+vaqt baribir xato.
+
+<Calc title="Soat 18:00 da magistral" result="Tezlik chegarasi bilan hisoblangan ETA cho'qqi soatda 2-3 barobar kam chiqadi">{`Marshrut: 12 km, shundan 8 km magistral (chegara 70 km/soat),
+  4 km shahar ko'chalari (chegara 50 km/soat)
+
+Tezlik chegarasi bo'yicha:
+  8 / 70 x 60 + 4 / 50 x 60 = 6.9 + 4.8 = ~11.7 daqiqa
+
+Haqiqat, soat 11:00 (bo'sh):
+  magistral ~55 km/soat, ko'chalar ~30 km/soat
+  8 / 55 x 60 + 4 / 30 x 60 = 8.7 + 8.0 = ~16.7 daqiqa   (+43%)
+
+Haqiqat, soat 18:00 (tirbandlik):
+  magistral ~18 km/soat, ko'chalar ~15 km/soat
+  8 / 18 x 60 + 4 / 15 x 60 = 26.7 + 16.0 = ~42.7 daqiqa (+265%)`}</Calc>
+
+Ikki xil xato bor. Birinchisi — **muntazam**: hech kim tezlik chegarasida
+yurmaydi, svetoforlar va burilishlar (2.1) vaqt qo‘shadi. Uni tarixiy
+o‘rtacha tezliklar bilan tuzatish mumkin. Ikkinchisi — **vaqtga bog‘liq**:
+bir xil yo‘l soat 11 da va 18 da uch barobar farq qiladi. Bu uchun bitta
+og‘irlik yetmaydi — og‘irlik **kun va soatning funksiyasi** bo‘lishi kerak.
+Uchinchisi esa hali ko‘rinmaydi: bugun soat 18:00 dagi tirbandlik o‘tgan
+seshanbadagidan boshqacha bo‘lishi mumkin (avariya, yomg‘ir, konsert).
+Bu **jonli** ma’lumot talab qiladi.
+
+### 4.3 Dijkstra sekinlashadi
+
+<Calc title="Dijkstra'ning narxi: shahar va shaharlararo" result="Shahar ichida ~10-50 ms — chidasa bo'ladi; aeroport yoki shaharlararo safarda soniyalar — va sekundiga 100 ming so'rovga yuz minglab yadro kerak">{`Dijkstra manbadan boshlab "vaqt doirasi" ichidagi hamma tugunni ko'radi.
+
+Shahar ichida 15 daqiqalik safar:
+  15 daqiqa radiusidagi tugunlar: ~50 000-150 000
+  har tugun: navbat amali (~log n) + qo'shnilar -> ~0.2-0.3 mks
+  -> ~10-50 ms bitta qidiruv
+
+Aeroportgacha 60 daqiqalik safar (katta metropoliya):
+  60 daqiqa radiusidagi tugunlar: ~1-2 M -> ~0.3-0.6 s
+
+YUK: ~100 000 ETA/s, o'rtacha ~30 ms (shahar ichida)
+  -> 100 000 x 0.03 = 3 000 yadro-soniya har soniyada
+  -> ~3 000 yadro faqat eng qisqa yo'lga (va bu o'rtacha, cho'qqida 3x)
+  Uzun safarlar ulushi 5% bo'lsa ham, ular yukning yarmini beradi`}</Calc>
+
+Dijkstra’ning muammosi — u **yo‘nalishni bilmaydi**. Manzil shimolda
+bo‘lsa ham, u janubga, g‘arbga va sharqqa teng tezlikda kengayadi, chunki
+faqat “manbadan qancha uzoq” ni biladi. Aylana ichidagi hamma tugunni
+ko‘rib chiqish — isrof: ularning ko‘pchiligi manzilga olib bormaydi. 5-bo‘lim
+2–4-qadamlari bu isrofni bosqichma-bosqich yo‘q qiladi.
+
+### 4.4 GPS shovqini: haydovchi qayerda?
+
+Jonli tezlik va haydovchi joylashuvi GPS’dan keladi. GPS aniqligi ochiq
+joyda ~5 m, baland binolar orasida (“shahar kanyoni”) signal devorlardan
+qaytib, 30–50 m gacha xato qiladi. Tunnel va ko‘p qavatli yo‘l
+ayrilishlarida — signal umuman yo‘q.
+
+<Calc title="Shovqinli nuqta — noto'g'ri yo'l, noto'g'ri tezlik" result="Bitta noto'g'ri biriktirilgan nuqta bo'lak tezligini 5-10 barobar buzishi mumkin">{`Haydovchi magistralda 60 km/soat bilan ketmoqda.
+Magistral yonida, 25 m narida — parallel xizmat yo'li (tirband, 10 km/soat).
+
+Nuqtalar har 4 s: haqiqiy siljish 60 / 3.6 x 4 = ~67 m
+GPS xatosi: ~30 m (baland binolar yonida)
+
+Oddiy "eng yaqin yo'lga biriktirish":
+  nuqtalarning ~40% i xizmat yo'liga tushadi (u 25 m da, xato 30 m)
+  xizmat yo'li uchun "tezlik": ketma-ket ikki nuqta 67 m / 4 s = 60 km/soat
+  -> tirband xizmat yo'li 60 km/soat deb ko'rsatiladi (haqiqat 10)
+  -> marshrutlash mashinalarni tirband yo'lga yuboradi
+
+Magistral uchun esa nuqtalar "sakraydi": yo'ldan chiqib, qaytib
+  -> bir juft nuqtadan hisoblangan tezlik 0 yoki 150 km/soat`}</Calc>
+
+Bu muammo alohida nuqtaga qarab hal qilinmaydi — nuqtalar **ketma-ketligiga**
+qarash kerak: mashina 4 soniyada 25 metr yon tomonga sakrab, keyin qaytib
+kela olmaydi. Bu 5-bo‘limning 6-qadamidagi map matching g‘oyasi.
+
+### 4.5 Oxirgi yuz metr
+
+Marshrut to‘g‘ri, tezliklar to‘g‘ri — lekin haydovchi baribir kechikdi.
+Nima uchun? U manzilga yetib keldi, lekin mijozni **topa olmadi**:
+bino ichki hovli orqali, kirish boshqa ko‘chadan, to‘xtash taqiqlangan.
+Yoki aeroportda — mashinalar uchun alohida chiqish yo‘li, piyodalar uchun
+boshqa.
+
+<Calc title="Xato qayerdan keladi: safar bo'laklari bo'yicha" result="Kelish ETA sining xatosi asosan oxirgi bir necha yuz metrdan; magistral qismining xatosi nisbatan kichik">{`Kelish ETA si: 5 daqiqa (1.5 km), haqiqat: 7 daqiqa, xato: +2 daq
+
+Xatoni bo'laklarga ajratish (bir haftalik safarlar bo'yicha o'rtacha, faraz):
+  Boshlanish (haydovchi to'xtagan joydan harakatlanish): +0.3 daq
+  Asosiy yo'l (tirbandlik bashorati xatosi):              +0.4 daq
+  Oxirgi 200 m (burilish, kirish, to'xtash joyi):         +0.8 daq
+  Mijozni kutish / topish:                                +0.5 daq
+  -------------------------------------------------------------
+  Jami:                                                   +2.0 daq
+
+Xulosa: tirbandlik modelini ikki barobar yaxshilash xatoni 10% ga
+  kamaytiradi; oxirgi 200 m ni to'g'ri modellashtirish — 40% ga`}</Calc>
+
+Bu raqamlar faraz, lekin tuzilma ishlab chiqarish tizimlarida qayta-qayta
+tasdiqlangan: ETA’ning eng katta xatolari grafning “ichida” emas, grafning
+**chegarasida** — nuqta grafga qanday biriktirilgani va safar qanday
+boshlanib, qanday tugashida. Marshrutlash algoritmi bu haqda hech narsa
+bilmaydi. Buni o‘tgan safarlardan o‘rganish mumkin — ML qatlami (5-bo‘lim
+10–11-qadamlar) shu uchun kerak.
+
+<Check q="v0 dagi aylanma koeffitsienti 1.35 o'rtacha to'g'ri. Nega o'rtacha to'g'ri model dispetcherlikda yomon ishlaydi?">
+Chunki dispetcherlik **o‘rtacha** bilan emas, **taqqoslash** bilan ishlaydi.
+
+ETA mijozga ko‘rsatilganda o‘rtacha xato muhim: ko‘p mijozlar uchun
+“taxminan 5 daqiqa” yetarli. Dispetcherlik esa ikki haydovchini
+solishtiradi: “A 4 daqiqa, B 6 daqiqa — A ni yubor”. Agar xato
+tasodifiy va kichik bo‘lsa, taqqoslash baribir to‘g‘ri. Lekin v0 ning
+xatosi **tizimli va joyga bog‘liq**: daryo narigi tomonidagi haydovchi
+uchun doim kam, bu tomondagisi uchun doim to‘g‘ri. Natijada tanlov
+muntazam ravishda bir xil xato yo‘nalishda buziladi — daryo narigi
+tomonidagi haydovchilar doimiy “yaqin” ko‘rinadi.
+
+Bu ML’dagi umumiy saboq: modelni **qaror** uchun ishlatsangiz, uning
+o‘rtacha xatosi emas, qarorga ta’sir qiladigan joylardagi **nisbiy
+tartibi** muhim. Shuning uchun ETA sifati faqat MAE bilan emas, 14-bo‘limda
+ko‘radigan qator ko‘rsatkichlar bilan o‘lchanadi.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar uch guruhda. **Qidiruv tezligi** (1–5): Dijkstra’dan jonli
+og‘irliklarni ko‘taradigan ierarxik marshrutlashgacha. **Og‘irliklar
+haqiqati** (6–9): GPS nuqtalaridan jonli va tarixiy tezliklar, vaqtga
+bog‘liq marshrut. **Grafdan tashqari** (10–14): ML bilan xatoni tuzatish,
+geo-indeks va dispetcherlik, safarning boshi va oxiri, Uber Eats.
+
+<Step n={1} title="Dijkstra va tarixiy o'rtacha tezliklar" gain="To'g'ri marshrut: ko'priklar, bir tomonlama ko'chalar, taqiqlar hisobga olinadi" cost="Har so'rov ~10-50 ms; og'irliklar hali 'o'rtacha kun'">
+v0 dagi koeffitsient o‘rniga haqiqiy graf va eng tez yo‘l. Og‘irlik —
+bo‘lak uzunligi ÷ **o‘tgan haftalardagi o‘rtacha haqiqiy tezlik** (tezlik
+belgisi emas). Algoritm — klassik Dijkstra (1959) ustuvor navbat bilan:
+
+```python
+import heapq
+
+def dijkstra(adj, s, t):
+    """adj[u] = [(v, soniya), ...]. Qaytaradi: (vaqt, yo'l)."""
+    dist, prev = {s: 0.0}, {}
+    pq = [(0.0, s)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if u == t:
+            break                      # t "o'rnatildi" — javob aniq
+        if d > dist[u]:
+            continue                   # eskirgan navbat yozuvi
+        for v, w in adj[u]:
+            nd = d + w
+            if nd < dist.get(v, float("inf")):
+                dist[v], prev[v] = nd, u
+                heapq.heappush(pq, (nd, v))
+    path, x = [t], t
+    while x != s:
+        x = prev[x]; path.append(x)
+    return dist[t], path[::-1]
+```
+
+Ikkita nozik joy bor. Birinchisi — **to‘xtash sharti**: javob `t` navbatdan
+**chiqarilganda** aniq, unga birinchi marta **yetilganda** emas (birinchi
+topilgan yo‘l eng qisqasi bo‘lmasligi mumkin). Ikkinchisi — **eskirgan
+yozuvlar**: Python’ning `heapq` kalitni kamaytirishni bilmaydi, shuning
+uchun bir tugun navbatda bir necha marta bo‘ladi va eskilarini tashlab
+yuborish kerak.
+
+<Calc title="Tarixiy tezlik qancha yaxshilaydi" result="Tezlik belgisi o'rniga tarixiy o'rtacha: o'rtacha xato ~45% dan ~20% ga; lekin cho'qqi soatlarda baribir katta">{`4.2 dagi marshrut (12 km), tarixiy o'rtacha tezliklar (kun bo'yi):
+  magistral ~40 km/soat, ko'chalar ~24 km/soat
+  8 / 40 x 60 + 4 / 24 x 60 = 12 + 10 = 22 daqiqa
+
+Haqiqat: 11:00 da ~16.7 daq, 18:00 da ~42.7 daq
+  11:00: xato +32% (ko'p ko'rsatadi)
+  18:00: xato -48% (kam ko'rsatadi)
+Tezlik belgisi bo'yicha (11.7 daq): -30% va -73%
+
+O'rtacha kun bo'yi yaxshilanish sezilarli, lekin bitta og'irlik
+  kun ichidagi o'zgarishni ko'rmaydi — 8-qadamgacha kutish kerak`}</Calc>
+</Step>
+
+<Step n={2} title="A*: manzil tomonga qarab qidirish" gain="Qidiruv manzil tomonga cho'ziladi; ko'riladigan tugunlar 2-4 barobar kam" cost="Evristika optimistik bo'lishi shart — aks holda javob noto'g'ri; shahar ichida foyda cheklangan">
+A* (1968) Dijkstra’ga bitta narsa qo‘shadi: navbatdagi tartib `d(u)` bo‘yicha
+emas, `d(u) + h(u)` bo‘yicha, bu yerda `h(u)` — `u` dan manzilgacha
+vaqtning **pastki bahosi**. Yo‘l vaqti uchun eng tabiiy baho: to‘g‘ri chiziq
+masofasi ÷ grafdagi **eng yuqori** tezlik.
+
+```python
+def h(u):  # optimistik: hech qaysi yo'l bundan tez bo'lolmaydi
+    return haversine_km(pos[u], pos[t]) / V_MAX_KMH * 3600
+```
+
+Nega eng yuqori tezlik? Chunki `h` hech qachon haqiqiy qolgan vaqtdan
+katta bo‘lmasligi kerak (“optimistik”, admissible). Agar `h` ni o‘rtacha
+tezlik bilan hisoblasak, u ba’zan haqiqatdan katta bo‘ladi — va A*
+eng tez yo‘lni “o‘tkazib yuborib”, noto‘g‘ri javob qaytaradi. Bu xato
+ko‘pincha testlarda sezilmaydi: javob **deyarli** to‘g‘ri, bir-ikki foiz
+uzunroq yo‘l.
+
+<Calc title="A* ning foydasi evristika sifatiga bog'liq" result="Magistrallar bor shaharda (V_MAX = 110) evristika zaif: tugunlar ~2 barobar kam; landmark'lar (ALT) bilan ~5-10 barobar">{`Shahar ichida safar: to'g'ri chiziq 6 km, haqiqiy vaqt 15 daqiqa (900 s)
+
+Evristika h(s) = 6 km / 110 km/soat = ~196 s
+  -> h haqiqiy vaqtning atigi ~22% ini "biladi"
+  -> qidiruv biroz cho'ziladi, lekin hali ham deyarli doira
+  -> ko'riladigan tugunlar Dijkstra'dan ~1.5-2 barobar kam
+
+Agar shaharda magistral bo'lmasa (V_MAX = 60):
+  h(s) = 6 / 60 x 3600 = 360 s -> ~40% -> ~3 barobar kam
+
+ALT (landmark'lar, Goldberg va Harrelson, 2005):
+  oldindan ~16 "mayoq" tugundan hamma tugungacha vaqt hisoblanadi
+  uchburchak tengsizligi: h(u) = max_L |d(L,t) - d(L,u)|
+  bu baho haqiqiy yo'l vaqtiga ancha yaqin (~70-90%)
+  -> ~5-10 barobar kam tugun; xotira: 16 x tugunlar x 4 bayt`}</Calc>
+
+A* ning shaharda cheklangan foydasi muhim saboq: **evristika qanchalik
+aniq bo‘lsa, qidiruv shunchalik tor**. To‘g‘ri chiziq va eng yuqori tezlik
+juda qo‘pol baho, chunki shaharda haqiqiy tezlik eng yuqoridan 3–4 barobar
+past. Landmark’lar oldindan hisoblangan ma’lumot hisobiga bahoni
+yaxshilaydi — bu 4-qadamdagi katta g‘oyaning kichik ko‘rinishi:
+**oldindan hisoblash evaziga qidiruvni tezlashtirish**.
+</Step>
+
+<Step n={3} title="Ikki tomonlama qidiruv" gain="Ikki kichik doira bitta katta doiradan ~2 barobar kam tugun" cost="To'xtash sharti nozik: birinchi uchrashuv — eng qisqa yo'l emas">
+Qidiruvni bir vaqtda ikki uchdan boshlaymiz: manbadan oldinga (odatdagi
+graf bo‘yicha) va manzildan orqaga (teskari qirralar bo‘yicha). Ikki
+“to‘lqin” o‘rtada uchrashadi.
+
+<Calc title="Nega ikki doira kichik" result="Ikkita r/2 radiusli doira maydoni bitta r radiusli doiraning yarmi; yo'l grafida foyda ~2 barobar">{`Dijkstra vaqt bo'yicha "doira" ichidagi tugunlarni ko'radi; tugunlar
+  zichligi taxminan tekis bo'lsa, ish ~ doira maydoniga proporsional
+
+Bir tomonlama: radius r -> maydon pi x r^2
+Ikki tomonlama: ikki doira, radius r/2 -> 2 x pi x (r/2)^2 = pi x r^2 / 2
+
+15 daqiqalik safar: ~100 000 tugun -> ~50 000 tugun
+A* bilan birga (ikki tomonlama A*): yana ~1.5-2x
+
+Lekin: 60 daqiqalik safar ham baribir ~0.5-1 M tugun
+  -> ikki tomonlama qidiruv "doimiy koeffitsient", tartibni o'zgartirmaydi`}</Calc>
+
+Eng ko‘p uchraydigan xato — to‘xtash sharti. Ikki to‘lqin birinchi marta
+bitta tugunda uchrashganda to‘xtash **noto‘g‘ri**: o‘sha tugun orqali
+o‘tgan yo‘l eng qisqasi bo‘lmasligi mumkin, chunki boshqa, hali
+“o‘rnatilmagan” tugunlar orqali qisqaroq yo‘l bo‘lishi mumkin. To‘g‘ri
+qoida:
+
+```
+mu = eng yaxshi topilgan yo'l (ikki to'lqin kesishgan har bir qirrada yangilanadi)
+To'xtash: oldinga navbat boshi + orqaga navbat boshi >= mu
+```
+
+Ya’ni ikkala navbatning eng kichik elementlari yig‘indisi topilgan eng
+yaxshi yo‘ldan katta bo‘lsa, undan yaxshi yo‘l yo‘q. Amaliyotda (18-bo‘lim)
+bu shartni “birinchi uchrashuvda to‘xtash” bilan almashtirgan yechim
+tasodifiy testlarning bir qismida noto‘g‘ri javob beradi — va testlar buni
+ushlaydi.
+</Step>
+
+<Step n={4} title="Contraction Hierarchies" gain="Qidiruv mikrosekundlar-millisekundlarda; bir necha yuz tugun ko'riladi" cost="Oldindan hisoblash daqiqalar; og'irlik o'zgarsa — qaytadan; xotira ~2 barobar">
+Bu qadam — tartibni o‘zgartiradigan yagona qadam. G‘oya (Geisberger va
+boshq., 2008) inson xaritadan yo‘l topishiga o‘xshaydi: avval kichik
+ko‘chadan katta yo‘lga chiqiladi, keyin magistral, oxirida yana kichik
+ko‘cha. Hech kim shaharlararo yo‘lda har bir hovlini ko‘rib chiqmaydi.
+
+**Oldindan hisoblash.** Tugunlar “muhimlik” bo‘yicha tartiblanadi (hovli
+ichidagi burilish — kam muhim, magistral chorrahasi — muhim). So‘ng
+eng kam muhim tugundan boshlab ular birma-bir **qisqartiriladi**
+(contraction): tugun `v` olib tashlanadi, va agar `u → v → w` yo‘li
+`u` dan `w` gacha eng qisqa yo‘l bo‘lsa, uning o‘rniga **yorliq**
+(shortcut) qirra `u → w` qo‘shiladi, og‘irligi ikki qirra yig‘indisi.
+
+**Qidiruv.** Ikki tomonlama Dijkstra, lekin har ikki tomon faqat
+**yuqoriga** — o‘zidan muhimroq tugunlarga — yuradi. Manbadan yuqoriga,
+manzildan yuqoriga; ular “cho‘qqida” uchrashadi. Chunki har qanday eng
+qisqa yo‘l “yuqoriga — cho‘qqi — pastga” shakliga yorliqlar orqali
+keltiriladi.
+
+<Calc title="CH: oldindan hisoblash va qidiruv" result="Qidiruv ~1 000 barobar tez (ms -> mks); evaziga oldindan hisoblash daqiqalar va xotira ~2x">{`Ochiq tadqiqotlardagi tartib (Yevropa yo'l grafi, ~18 M tugun):
+  Dijkstra (kontinental so'rov):       ~2-5 soniya, ~9 M tugun ko'riladi
+  CH qidiruvi:                          ~0.1-0.3 ms, ~500 tugun ko'riladi
+  CH oldindan hisoblash:                ~5-10 daqiqa (bir yadroda)
+  Yorliqlar: qirralar soni ~2 barobar
+
+Shahar ichida (100-200 ming tugun):
+  Dijkstra: ~10-50 ms;  CH: ~20-100 mks
+
+Bizning yuk (~100 000 ETA/s):
+  Dijkstra: ~3 000 yadro (4.3)
+  CH: 100 000 x 0.1 ms = 10 yadro-soniya har soniyada -> ~10-20 yadro
+  -> marshrutlash xarajati ~200 barobar kamaydi`}</Calc>
+
+<Versus
+  left={{ title: "Dijkstra / A*", points: [
+    "Oldindan hisoblash yo'q",
+    "Og'irlik o'zgarsa — darhol hisobga olinadi",
+    "Shahar ichida ~10-50 ms, uzoqda soniyalar",
+    "Kod ~30 satr, xato qilish qiyin",
+    "Ish hajmi ~ qidiruv doirasi maydoni",
+  ] }}
+  right={{ title: "Contraction Hierarchies", points: [
+    "Oldindan hisoblash daqiqalar",
+    "Og'irlik o'zgarsa — ierarxiya eskiradi",
+    "Har qanday masofada ~0.1-1 ms",
+    "Kod murakkab: tartiblash, yorliqlar, guvohlar qidiruvi",
+    "Ish hajmi ~ ierarxiya balandligi (yuzlab tugun)",
+  ] }}
+/>
+
+CH ning narxi o‘ng ustunning ikkinchi qatorida. Yorliqlar og‘irliklardan
+hisoblangan: agar magistral tirband bo‘lsa, `u → w` yorlig‘i endi eng
+qisqa yo‘l emas, va ierarxiyani qayta qurish kerak — daqiqalar. Jonli
+tirbandlik esa har daqiqada o‘zgaradi. Bu ziddiyat keyingi qadamni
+talab qiladi.
+</Step>
+
+<Step n={5} title="Moslashtiriladigan marshrutlash: tuzilma va og'irlikni ajratish" gain="Jonli tirbandlik soniyalarda qidiruvga yetadi, qidiruv tezligi saqlanadi" cost="Uch bosqichli tizim; qidiruv CH dan ~2-5 barobar sekinroq">
+Yechim — oldindan hisoblashni ikkiga bo‘lish. **Tuzilma** (qaysi tugunlar
+qaysi qismda, qaysi chegaralar) faqat xarita o‘zgarganda hisoblanadi —
+haftasiga bir marta. **Og‘irliklar** (qirralar vaqti) esa alohida,
+tez bosqichda “sozlanadi” (customization). Bu g‘oya ikki mashhur
+variantda uchraydi: CRP (Customizable Route Planning, Delling va boshq.,
+2011) — graf bo‘laklarga (cell) bo‘linadi va har bo‘lak chegaralari
+orasidagi masofalar jadvali saqlanadi; va CCH (Customizable Contraction
+Hierarchies, Dibbelt va boshq., 2014) — tugunlar tartibi og‘irliksiz
+tanlanadi, yorliqlar og‘irligi keyin to‘ldiriladi.
+
+<Calc title="CRP: bir bo'lakni qayta sozlash" result="Bitta bo'lakdagi tirbandlik o'zgarishi millisekundlarda hisobga olinadi; butun shahar — bir soniyadan kam">{`Shahar grafi: ~200 000 tugun, ~1 000 bo'lakka bo'lingan (~200 tugun/bo'lak)
+Har bo'lakda chegara tugunlari: ~20-40
+
+Bo'lakni sozlash: har chegara tugunidan bo'lak ichida Dijkstra
+  30 chegara x ~200 tugun -> ~6 000 amal -> ~0.5-1 ms
+  natija: 30 x 30 = 900 son (chegaralar orasidagi eng qisqa vaqtlar)
+
+Jonli yangilanish har 1 daqiqada:
+  tezligi o'zgargan bo'laklar: ~30% -> ~300 bo'lak x 1 ms = ~0.3 s
+  yuqori darajalar (bo'laklar bo'laklari) — yana ~0.1 s
+  -> butun shahar ~0.5 s da yangi og'irliklar bilan
+
+Qidiruv: manba va manzil bo'laklarida oddiy qidiruv,
+  oraliqda — faqat chegara jadvallari bo'yicha: ~1 ms`}</Calc>
+
+Bu qadamning muhandislik mohiyati — **o‘zgaradigan va o‘zgarmaydigan
+narsani ajratish**. Xarita tuzilmasi sekin o‘zgaradi (haftalar), og‘irliklar
+tez (daqiqalar), so‘rovlar juda tez (millisekundlar). Uch tezlik — uch
+bosqich. Bu Google Docs darsidagi “surat va jurnal” va Spotify’dagi
+“oflayn o‘qitish va onlayn xizmat” bilan bir xil tuzilma. Uber’ning o‘z
+marshrutlash dvigatelining ichki tafsilotlari to‘liq ochiq emas, lekin
+jonli tirbandlik bilan millisekund qidiruvini birlashtiradigan har qanday
+tizim shu uch bosqichli tuzilmaga keladi.
+</Step>
+
+<Step n={6} title="Map matching: nuqtalardan yo'lga" gain="GPS izi yo'l bo'laklari ketma-ketligiga aylanadi; tezliklar to'g'ri bo'lakka yoziladi" cost="Hisob og'ir: har iz uchun Viterbi; kechikish — oxirgi nuqtalar keyinroq aniqlashadi">
+4.4-dagi muammo: har nuqtani alohida “eng yaqin yo‘lga” biriktirish
+noto‘g‘ri. To‘g‘ri yondashuv — izni butunligicha ko‘rib, **eng ehtimolli
+yo‘l bo‘laklari ketma-ketligini** topish. Klassik usul — yashirin Markov
+modeli (HMM, Newson va Krumm, 2009).
+
+<Deep title="Yashirin Markov modeli bilan map matching">
+Model ikki ehtimollikdan iborat.
+
+**Emissiya ehtimoli** — “agar mashina aslida `r` yo‘lda bo‘lsa, GPS bu
+nuqtani ko‘rsatishi qanchalik ehtimol?” GPS xatosi taxminan normal
+taqsimlangan, shuning uchun:
+
+```
+P(nuqta | yo'l r) ~ exp( -0.5 x (masofa(nuqta, r) / sigma)^2 )
+sigma ~ 5-10 m (ochiq joyda), 20-30 m (baland binolar orasida)
+```
+
+**O‘tish ehtimoli** — “mashina `r1` dan `r2` ga 4 soniyada o‘tishi
+qanchalik ehtimol?” Asosiy kuzatuv: haqiqiy harakatda ikki nuqta
+orasidagi **yo‘l bo‘yicha** masofa va **to‘g‘ri chiziq** masofasi deyarli
+teng. Agar `r1` dan `r2` ga yo‘l bo‘yicha 800 m bo‘lsa-yu, nuqtalar
+orasi 60 m bo‘lsa — bu o‘tish deyarli imkonsiz:
+
+```
+d = | yo'l_masofasi(r1 -> r2) - to'g'ri_chiziq(p1, p2) |
+P(r2 | r1) ~ exp( -d / beta ),   beta ~ bir necha metr
+```
+
+Keyin **Viterbi** algoritmi: har nuqta uchun 3–5 ta nomzod yo‘l, va
+dinamik dasturlash bilan eng ehtimolli ketma-ketlik tanlanadi.
+
+```
+nuqtalar: p1   p2   p3   p4   p5
+nomzodlar: M,X  M,X  M,X  M,X  M,X      (M — magistral, X — xizmat yo'li)
+
+p3 xizmat yo'liga 5 m yaqinroq (GPS xatosi), lekin:
+  M -> X -> M o'tishi: yo'l bo'yicha ~400 m (burilish va qaytish),
+  to'g'ri chiziq ~67 m -> ehtimol ~0
+  M -> M -> M: yo'l bo'yicha 67 m -> ehtimol yuqori
+Viterbi: M M M M M  (p3 ham magistralga)
+```
+
+Narxi — ikki narsa. **Hisob**: har o‘tish ehtimoli uchun nomzodlar
+orasida yo‘l masofasi kerak — bu kichik Dijkstra’lar (qisqa masofada,
+arzon, lekin sekundiga yuz minglab nuqtada — sezilarli). **Kechikish**:
+Viterbi keyingi nuqtalarni ko‘rib, oldingi qarorni o‘zgartirishi mumkin,
+shuning uchun oxirgi 1–2 nuqta “aniqlanmagan” bo‘lib turadi. Jonli
+tezlik uchun bu 10–20 soniya kechikish — qabul qilinadi.
+</Deep>
+</Step>
+
+<Step n={7} title="Jonli tezliklar: oqimli hisob" gain="Bugungi avariya, yomg'ir, konsert 1-2 daqiqada ETA ga yetadi" cost="Oqim quvuri, holatli hisob; siyrak bo'laklarda ma'lumot yo'q">
+Map matching natijasi — “haydovchi X, 17:42:08 dan 17:42:31 gacha Y
+bo‘lakni 23 soniyada o‘tdi”. Bunday **o‘tish kuzatuvlari** bo‘lak
+bo‘yicha yig‘iladi va har daqiqada bo‘lakning jonli tezligi hisoblanadi.
+
+<Flow nodes={["Haydovchi ilovasi: GPS har ~4 s", "Kafka: nuqtalar oqimi", "Map matching (Viterbi)", "Bo'lak o'tish vaqtlari", "Oyna: oxirgi 5-10 daq, mediana", "Tezliklar ombori", "Marshrut og'irliklarini sozlash (5-qadam)"]} caption="GPS nuqtasidan marshrut og'irligigacha: ~1-2 daqiqa" />
+
+Uchta muhim tanlov:
+
+**Mediana, o‘rtacha emas.** Bitta haydovchi bo‘lak o‘rtasida to‘xtab,
+yo‘lovchi kutsa, u bo‘lakni 3 daqiqada “o‘tadi” — o‘rtacha qiymatni
+buzadi. Mediana (yoki kesilgan o‘rtacha) bunday chiqib ketishlarga
+chidamli.
+
+**Yo‘lovchi bilan va bo‘sh haydovchi farqi.** Bo‘sh haydovchi ko‘pincha
+sekin yuradi (keyingi buyurtmani kutib) — uning tezligi yo‘l holatini
+kam ko‘rsatadi. Shuning uchun kuzatuvlarga holat belgisi qo‘shiladi va
+ularning og‘irligi har xil.
+
+**Oynaning uzunligi.** Qisqa oyna (2 daqiqa) — tez reaksiya, lekin shovqinli.
+Uzun oyna (15 daqiqa) — barqaror, lekin avariyani kech ko‘radi.
+
+<Calc title="Oyna uzunligi: tezlik va ishonch" result="5 daqiqalik oyna katta ko'chada ~20 kuzatuv beradi — ishonchli; kichik ko'chada 0-1 — tarixga tayanish kerak">{`Katta ko'cha bo'lagi (300 m): soatiga ~1 000 mashina, ulardan
+  Uber haydovchilari ~5% -> ~50/soat -> 5 daqiqada ~4 kuzatuv
+  (magistralda 3-4x ko'p: ~15-20 kuzatuv)
+
+Mediana xatosi (tezliklar tarqoqligi ~30%):
+  n = 4:  ~15-20%     n = 20: ~8%     (xato ~ 1/sqrt(n))
+
+Kichik ko'cha: soatiga ~50 mashina -> Uber ~2-3 -> 5 daqiqada ~0.2
+  -> ko'p oynalarda nol kuzatuv
+
+Oyna 2 daqiqa: magistralda ~6-8 kuzatuv, reaksiya ~1-2 daq
+Oyna 15 daqiqa: ~50 kuzatuv, lekin avariya 7-8 daq kech ko'rinadi`}</Calc>
+
+Hisob ko‘rsatadiki, **bitta** oyna uzunligi hamma bo‘lak uchun to‘g‘ri
+kelmaydi. Katta ko‘chalarda qisqa oyna, kichik ko‘chalarda — tarixiy
+qiymat. Bu ikkisini birlashtirish — keyingi qadam.
+</Step>
+
+<Step n={8} title="Tarixiy profillar va jonli ma'lumot bilan aralashtirish" gain="Har bo'lak, har soat uchun ishonchli og'irlik — hatto jonli kuzatuv bo'lmasa ham" cost="Profillar ombori; aralashtirish koeffitsientini sozlash; bayram va g'ayrioddiy kunlar">
+Har bo‘lak uchun **haftalik profil**: haftaning har 15 daqiqalik oralig‘i
+uchun (7 × 96 = 672 oraliq) o‘tgan haftalardagi mediana tezlik. Seshanba
+08:15 dagi magistral tezligi — o‘tgan 8 ta seshanba 08:15 laridagi qiymatlar
+medianasi.
+
+<Calc title="Profillar xotirasi va siqish" result="Xom profillar dunyo bo'yicha ~30 GB; profil 'shakllari'ni guruhlash bilan ~1 GB dan kam">{`Bitta shahar: ~100 000 yo'nalishli bo'lak
+  x 672 oraliq x 1 bayt (tezlik km/soat, 0-255) = ~67 MB
+
+Dunyo (Uber ishlaydigan hududlar): faraz ~50 M bo'lak
+  50 M x 672 = ~34 GB -> har marshrut serverida saqlash qimmat
+
+Siqish: ko'p bo'laklarning kunlik shakli o'xshash
+  ("ertalab va kechqurun cho'qqi", "tekis", "kechasi tez")
+  -> ~1 000 ta profil shakli, har bo'lakka: shakl ID (2 bayt) + masshtab (1 bayt)
+  50 M x 3 bayt = ~150 MB + shakllar jadvali (1 000 x 672 = 0.7 MB)`}</Calc>
+
+Jonli va tarixiy qiymatni birlashtirishning oddiy va kuchli usuli —
+**psevdo-kuzatuvlar** bilan o‘rtacha. Tarixiy qiymat `k` ta “xayoliy”
+kuzatuv kabi hisoblanadi:
+
+```
+v = (n x v_jonli + k x v_tarixiy) / (n + k)
+```
+
+<Calc title="Aralashtirish: kuzatuvlar soniga qarab" result="Kuzatuv yo'q — tarixiy qiymat; ko'p kuzatuv — jonli qiymat; oraliqda silliq o'tish">{`Bo'lak: tarixiy tezlik (seshanba 18:00) = 30 km/soat
+Bugun avariya: jonli mediana = 12 km/soat, k = 5
+
+n = 0  (kichik ko'cha, hech kim o'tmadi):  v = 30              -> tarix
+n = 2:   (2 x 12 + 5 x 30) / 7   = 24.9 km/soat -> hali ishonchsiz
+n = 5:   (5 x 12 + 5 x 30) / 10  = 21.0 km/soat
+n = 20:  (20 x 12 + 5 x 30) / 25 = 15.6 km/soat -> jonliga yaqin
+
+k ni tanlash: katta k — barqaror, lekin avariyani sekin ko'radi;
+  kichik k — tez, lekin bitta sekin haydovchi butun bo'lakni "tirband" qiladi`}</Calc>
+
+Formula Bayes nuqtai nazaridan tabiiy: tarixiy qiymat — **oldindan
+ishonch** (prior), jonli kuzatuvlar — dalil. Kuzatuvlar qancha ko‘p bo‘lsa,
+prior shuncha kam ta’sir qiladi. Bu Reddit darsidagi “kam ovozli postni
+qanday baholash” (Wilson oralig‘i) g‘oyasining boshqa ko‘rinishi:
+**kam ma’lumotda ishonchli bahoga tortilish**.
+
+Bayram kunlari alohida: 31-dekabr kechasi seshanba bo‘lsa ham, oddiy
+seshanba profili yaramaydi. Bunday kunlar uchun alohida profillar
+(o‘tgan yilgi shu kun) yoki ML modelidagi “bayram” belgisi ishlatiladi.
+</Step>
+
+<Step n={9} title="Vaqtga bog'liq marshrut" gain="Uzun safarlarda: yo'lga chiqqan paytdagi emas, bo'lakka yetib borgan paytdagi tezlik" cost="Qidiruv murakkabroq; jonli ma'lumot uzoq kelajak uchun ishonchsiz">
+40 daqiqalik safar soat 17:00 da boshlanadi. Oxirgi bo‘laklarga mashina
+17:35 da yetadi — tirbandlik o‘sha paytgacha kuchayadi. Hozirgi paytdagi
+tezliklarning “surati” bilan hisoblash uzun safarlarni muntazam kam
+ko‘rsatadi.
+
+**Vaqtga bog‘liq Dijkstra**: har bo‘lakning og‘irligi — unga **kirish
+vaqtining funksiyasi** `w(e, t)`. Qidiruvda tugun masofasi o‘rniga
+“yetib kelish vaqti” saqlanadi, va har qirrada `t + w(e, t)`
+hisoblanadi. Algoritm deyarli o‘zgarmaydi, bitta shart bilan — **FIFO**:
+kechroq kirgan mashina ertaroq chiqmasligi kerak (bo‘lakka 17:00 da
+kirgan 17:05 da chiqsa, 17:01 da kirgan 17:04 da chiqa olmaydi). Real
+tezlik profillari buni odatda qanoatlantiradi; profil sakrashlari silliqlanadi.
+
+<Calc title="Surat va vaqtga bog'liq hisob" result="40 daqiqalik safarda 'surat' ~6 daqiqa kam ko'rsatadi; jonli ma'lumot faqat birinchi ~15 daqiqa uchun foydali">{`Safar: 20 km, 17:00 da boshlanadi
+Profil: tezlik 17:00 da 36 km/soat, 17:30 da 24 km/soat (chiziqli pasayadi)
+
+"Surat" (hamma bo'lak 17:00 dagi tezlik bilan): 20 / 36 x 60 = 33.3 daq
+
+Vaqtga bog'liq (har 5 km da o'sha paytdagi tezlik):
+  0-5 km:   17:00, ~36 km/soat -> 8.3 daq
+  5-10 km:  17:08, ~33 km/soat -> 9.1 daq
+  10-15 km: 17:17, ~29 km/soat -> 10.3 daq
+  15-20 km: 17:28, ~25 km/soat -> 12.0 daq
+  Jami: ~39.7 daq  (surat 6.4 daq kam, -16%)
+
+Jonli ma'lumotning "yaroqlilik muddati":
+  hozirgi avariya 10 daqiqadan keyin hali bo'ladimi? — ehtimol
+  40 daqiqadan keyin? — noaniq -> uzoq bo'laklar uchun tarixiy profil`}</Calc>
+
+Oxirgi qator muhim tamoyil: **jonli ma’lumotning ta’siri ufq bilan
+so‘nadi**. Hozirgi paytdan 5 daqiqa keyin yetib boriladigan bo‘lak uchun
+jonli tezlik deyarli to‘liq ishonchli; 30 daqiqa keyingisi uchun —
+asosan tarixiy profil. Amalda 8-qadamdagi `k` koeffitsienti ufqqa
+qarab oshiriladi.
+</Step>
+
+<Step n={10} title="ML: marshrut xatosini bashorat qilish" gain="Grafda yo'q narsalar — svetoforlar, burilishlar, mijozni topish, shahar odatlari — o'tgan safarlardan o'rganiladi" cost="Belgilar quvuri, qayta o'qitish, o'qitish va xizmat orasidagi nomuvofiqlik xavfi">
+6–9-qadamlardan keyin marshrut ETA’si ancha yaxshi, lekin 4.5-dagi xatolar
+qoladi: ular grafda yo‘q. Ularni qo‘lda modellashtirish imkonsiz —
+har shahar, har aeroport, har savdo markazi o‘zgacha. Lekin **har kuni
+millionlab safarning haqiqiy davomiyligi** ma’lum. Bu — ML uchun ideal
+masala.
+
+Muhim tanlov: model ETA’ni **noldan** bashorat qilmaydi. U **marshrut
+ETA’sining xatosini** (qoldiq, residual) bashorat qiladi:
+
+```
+yakuniy_ETA = marshrut_ETA + model(belgilar)
+nishon (o'qitishda) = haqiqiy_vaqt - marshrut_ETA
+```
+
+| Belgi guruhi | Misollar |
+| --- | --- |
+| Marshrut | Marshrut ETA, masofa, burilishlar soni, magistral ulushi |
+| Vaqt | Soat, hafta kuni, bayram, oy |
+| Joy | Boshlanish va manzil kataklari (H3), shahar, aeroport belgisi |
+| So‘rov turi | Kelish yoki safar ETA, mahsulot (oddiy, katta mashina), yetkazib berish |
+| Jonli holat | Hududdagi joriy tezliklar, talab va taklif nisbati |
+| Tashqi | Ob-havo (yomg‘ir), yirik tadbirlar |
+
+Uber ko‘p yillar davomida bu qoldiqni gradient boosting daraxtlari
+(XGBoost) ansambli bilan bashorat qilgan. Daraxtlar jadval ko‘rinishidagi
+belgilarda kuchli, tez o‘qitiladi va talqin qilish oson.
+
+<Calc title="Qoldiq modelining ta'siri" result="Marshrut ETA sining tizimli xatolari yo'qoladi: o'rtacha xato ~25-35% kamayadi, siljish (bias) nolga yaqinlashadi">{`Kelish ETA lari (pickup), bir shahar, bir hafta (faraz):
+  Marshrut ETA: o'rtacha 5.0 daq; haqiqat o'rtacha 6.1 daq
+  Siljish (bias): -1.1 daq (muntazam kam)
+  MAE: 1.8 daq
+
+Qoldiq modeli (siljishni va joyga bog'liq xatolarni o'rgandi):
+  Siljish: ~0.0 daq
+  MAE: ~1.2 daq (-33%)
+
+Qayerda eng ko'p yaxshilanish:
+  aeroportlar va vokzallar: 3.5 -> 1.6 daq
+  yangi turar-joy massivlari (xaritada kirishlar noto'g'ri): 2.4 -> 1.4
+  magistral safarlar: 1.1 -> 1.0 (marshrut allaqachon yaxshi)`}</Calc>
+
+Nega noldan emas, qoldiq? Uchta sabab. **Fizika bepul keladi**: marshrut
+ETA’si masofa, tezlik va yo‘l tuzilmasini allaqachon hisobga olgan —
+model buni qaytadan o‘rganishi shart emas. **Kam ma’lumotli joylarda
+xavfsiz**: yangi shaharda model hali yomon bo‘lsa, qoldiq kichik, va
+yakuniy ETA marshrut ETA’siga yaqin qoladi. **Zaxira**: model ishlamasa,
+marshrut ETA’si o‘zi ham mantiqli javob (10-bo‘lim).
+</Step>
+
+<Step n={11} title="DeepETA: neyron tarmoq qoldiqni bashorat qiladi" gain="Bitta global model, ko'proq belgilar, yuqori aniqlik; yangi so'rov turlari oson qo'shiladi" cost="Kechikish byudjeti qat'iy: sekundiga yuz minglab so'rov, har biri millisekundlarda">
+Daraxtlar ansambli yillar davomida o‘sdi: ko‘proq shahar, ko‘proq
+belgi, ko‘proq so‘rov turi — va ko‘proq daraxt. Bir nuqtada kattaroq
+ansambl aniqlikni deyarli oshirmay qo‘ydi. 2022-yilda Uber muhandislik
+blogida DeepETA tasvirlandi: xuddi shu vazifa (marshrut ETA’sining
+qoldig‘i), lekin neyron tarmoq bilan.
+
+<Deep title="DeepETA ichida: belgilar — tokenlar">
+Blogdagi tavsifga ko‘ra, jamoa bir nechta arxitekturani solishtirgan
+(oddiy MLP, jadval ma’lumotlari uchun maxsus tarmoqlar, mutaxassislar
+aralashmasi, transformer) va **o‘z-o‘ziga e’tibor** (self-attention)
+asosidagi kodlovchi-dekodlovchi tuzilmani tanlagan. Asosiy g‘oyalar:
+
+**1. Har belgi — token.** ChatGPT darsida so‘zlar token bo‘lgan edi;
+bu yerda har bir belgi (soat, masofa, boshlanish katagi, mahsulot turi)
+alohida vektor. Self-attention belgilar orasidagi o‘zaro ta’sirni
+o‘rganadi: “aeroport” × “soat 7:00” × “yomg‘ir” — bu uchlikni qo‘lda
+yozish shart emas.
+
+**2. Uzluksiz belgilar diskretlanadi.** Masofa yoki soat kabi sonlar
+kvantillar bo‘yicha oraliqlarga bo‘linadi va har oraliq o‘z embeddingiga
+ega bo‘ladi. Bu model uchun chiziqsiz bog‘liqliklarni o‘rganishni
+osonlashtiradi.
+
+**3. Geo belgilar — bir necha o‘lchamdagi to‘r.** Boshlanish va manzil
+koordinatalari bir nechta o‘lchamdagi geo-kataklarga aylanadi (yirik —
+shahar qismi, mayda — ko‘cha), va har katak xeshlanib embedding
+jadvalidan vektor oladi. Mayda katak aniq joyni, yirik katak kam
+ma’lumotli joyda umumlashtirishni beradi.
+
+**4. Chiziqli e’tibor.** Oddiy self-attention tokenlar soniga nisbatan
+kvadratik. Kechikish byudjetini ushlab turish uchun chiziqli (linear)
+transformer varianti ishlatilgan.
+
+**5. Dekodlovchida so‘rov turi bo‘yicha tuzatish.** Kelish ETA’si,
+safar ETA’si, yetkazib berish — xatolar taqsimoti har xil. Dekodlovchi
+har tur uchun alohida siljish va masshtab tuzatishini qo‘llaydi — bitta
+model, lekin har turga moslangan chiqish.
+
+**6. Asimmetrik yo‘qotish funksiyasi.** Huber yo‘qotishi (kichik xatoda
+kvadratik, katta xatoda chiziqli — chiqib ketishlarga chidamli) ning
+asimmetrik varianti: kechikishni bashorat qilmaslik va ertaroq kelishni
+bashorat qilmaslik turlicha jazolanadi. Bu biznes qarori — 16-bo‘limda
+batafsil.
+
+Bu tafsilotlar ETA’dan tashqarida ham qimmatli: **jadval ma’lumotlarida
+transformer** ishlatishning amaliy retsepti — tokenlashtirish, diskretlash,
+xeshlangan embeddinglar va qat’iy kechikish byudjeti.
+</Deep>
+
+<Calc title="Kechikish byudjeti: bitta ETA so'rovi" result="Butun zanjir p99 ~20-30 ms; model qismi bir necha ms bo'lishi shart">{`Bitta ETA (masalan, dispetcherlik nomzodi uchun):
+  Nuqtalarni grafga biriktirish (geo-indeks):     ~0.3 ms
+  Marshrut qidiruvi (5-qadam, sozlangan graf):    ~1-2 ms
+  Belgilarni yig'ish (keshdagi jonli holat):      ~1-3 ms
+  Model (DeepETA, CPU, to'plamda):                ~2-5 ms
+  Tarmoq va seriyalash:                           ~3-5 ms
+  -------------------------------------------------------
+  p50 ~10 ms, p99 ~20-30 ms
+
+Dispetcherlik bitta so'rovda ~20 nomzod so'raydi
+  -> ketma-ket: 20 x 10 = 200 ms (yomon)
+  -> bitta to'plam (batch): marshrut ko'p-ga-ko'p (12-qadam) + model
+     20 qatorli to'plam -> ~10-15 ms`}</Calc>
+</Step>
+
+<Step n={12} title="H3 kataklari va dispetcherlik" gain="Yaqin haydovchilar mikrosekundlarda; talab va taklif kataklarda; ETA'lar to'plamda" cost="Katak o'lchamini tanlash; kataklar chegarasidagi effektlar">
+Dispetcherlikning birinchi savoli: “mijoz atrofida qaysi haydovchilar
+bor?” Buning uchun Uber 2018-yilda ochiq kodga chiqargan **H3** — olti
+burchakli ierarxik geo-indeks ishlatiladi. Yer shari 16 darajada
+olti burchaklarga bo‘linadi (0-daraja — 122 ta katta katak, har
+keyingi daraja taxminan 7 barobar mayda).
+
+Nega olti burchak? Kvadrat to‘rda qo‘shnilar ikki xil: tomon bo‘yicha
+(masofa 1) va burchak bo‘yicha (masofa 1.41). Olti burchakda **hamma 6
+qo‘shni markazdan bir xil masofada** — “atrofdagi halqa” haqiqatan
+doiraga yaqin. Bu harakat, talab va narx kabi hodisalarni modellashtirishda
+buzilishlarni kamaytiradi.
+
+<Calc title="H3 darajalari va yaqin haydovchilar" result="9-darajali katak ~0.1 km²; mijoz atrofida 2 halqa (19 katak) ~2 km² — bir necha o'n haydovchi, mikrosekundlarda">{`H3 darajalari (o'rtacha):
+  7-daraja: ~5.2 km^2  (tomoni ~1.2 km)  — shahar tumani
+  8-daraja: ~0.74 km^2 (tomoni ~460 m)   — mahalla
+  9-daraja: ~0.105 km^2 (tomoni ~175 m)  — bir-ikki kvartal
+
+Indeks: katak ID (64-bit son) -> shu katakdagi onlayn haydovchilar
+  har GPS nuqtada: haydovchining katagi o'zgardimi? -> 2 ta xesh amali
+
+Mijoz atrofidagi haydovchilar:
+  k=1 halqa: 7 katak (~0.7 km^2), k=2: 19 katak (~2 km^2)
+  zichlik: shahar markazida ~20 onlayn haydovchi/km^2
+  -> k=2 da ~40 nomzod, 19 ta xesh qidiruvi: ~mikrosekundlar
+  Bo'sh hudud: halqa k=4, k=6 ... gacha kengaytiriladi`}</Calc>
+
+Ikkinchi savol: “qaysi haydovchini qaysi mijozga?” Eng oddiy — ochko‘z
+(greedy): har yangi so‘rovga hozirgi eng yaqin haydovchi. Muammo:
+ikki mijoz bir vaqtda kelsa, birinchisiga ikkinchisi uchun ideal bo‘lgan
+haydovchi ketishi mumkin. Uber o‘z chiqishlarida tasvirlagan yondashuv —
+**to‘plamli moslash**: bir necha soniya ichidagi so‘rovlar yig‘iladi va
+“umumiy kutish vaqti minimal” bo‘ladigan tayinlash global hal qilinadi.
+
+<Calc title="To'plamli moslash: ETA matritsasi" result="30 so'rov x 100 haydovchi = 3 000 ETA; ko'p-ga-ko'p qidiruv ularni ~130 qidiruv narxiga keltiradi">{`2 soniyalik oyna, katta shahar markazi:
+  yangi so'rovlar: ~30, atrofdagi bo'sh haydovchilar: ~100
+
+Kerak: har (so'rov, haydovchi) juftligi uchun kelish ETA si
+  30 x 100 = 3 000 ETA
+
+Oddiy yo'l: 3 000 ta alohida qidiruv x ~1 ms = 3 s — oynadan uzun!
+Ko'p-ga-ko'p (CH asosidagi "chelaklar" usuli):
+  har haydovchidan bitta yuqoriga qidiruv (100 ta),
+  har mijozdan bitta orqaga qidiruv (30 ta), uchrashuvlar jadvali
+  -> ~130 qidiruv narxi: ~100-200 ms
+
+Tayinlash masalasi (Venger algoritmi, 30 x 100):
+  ~30^2 x 100 = ~90 000 amal -> millisekundlar
+
+Greedy bilan solishtirish (simulyatsiyalardagi tartib):
+  o'rtacha kutish ~5-10% kam, eng uzun kutishlar sezilarli kam`}</Calc>
+
+Bu qadam ETA’ning dispetcherlikdagi rolini to‘liq ochadi: ETA — bitta
+raqam emas, **matritsa**, va uni tez hisoblash algoritmik muammo. Xuddi
+shu matritsa Uber Pool (umumiy safar) kabi murakkab mahsulotlarda — kimni
+qaysi tartibda olib ketish — yanada katta bo‘ladi.
+</Step>
+
+<Step n={13} title="Oxirgi yuz metr: olib ketish joylari" gain="Safar boshi va oxiridagi eng katta xato manbai kamayadi; haydovchi va mijoz bir joyga keladi" cost="Har joy uchun ma'lumot; yangi binolarda yana xato">
+4.5-bo‘limdagi hisob: kelish ETA’si xatosining katta qismi oxirgi 200
+metrda. Yechim — mijoz xaritada bosgan nuqtani emas, **haqiqatan to‘xtash
+mumkin bo‘lgan joyni** manzil qilish.
+
+O‘tgan safarlar bu joylarni ko‘rsatadi: katta bino atrofida minglab safar
+qayerda **haqiqatan** boshlangan? Bu nuqtalar klasterlanadi va “tavsiya
+etilgan olib ketish joylari” paydo bo‘ladi: “A kirish, Navoiy ko‘chasi
+tomondan”. Mijozga shu nuqtagacha piyoda yo‘l ko‘rsatiladi, haydovchiga
+esa marshrut to‘g‘ridan-to‘g‘ri shu nuqtaga, ko‘chaning to‘g‘ri tomoniga.
+
+<Calc title="Olib ketish joyini tavsiya qilish" result="Mijoz 1 daqiqa yuradi, haydovchi 3 daqiqa tejaydi — kelish ETA si xatosi ~2 barobar kamayadi">{`Mijoz bosgan nuqta: savdo markazining ichki hovlisi
+  Haydovchi uchun eng yaqin biriktirish: hovliga kirish yo'li
+    (to'xtash taqiqlangan, kirish-chiqish bir tomonlama)
+  Haqiqiy olib ketish odatda: bosh ko'cha, B kirish oldi
+
+Tavsiyasiz:
+  ETA 4 daq (hovli kirishigacha), haqiqat: 4 + 3 (aylanish, qo'ng'iroq,
+  qaytish) = ~7 daq, xato +75%
+
+Tavsiya bilan (B kirish, 80 m piyoda):
+  mijoz piyoda: 80 m / 1.3 m/s = ~1 daq (haydovchi kelguncha ulguradi)
+  haydovchi ETA: 4 daq, haqiqat ~4.5 daq, xato +12%`}</Calc>
+
+Bu qadam texnik jihatdan oddiy (klasterlash), lekin ta’siri 4-qadamdagi
+murakkab algoritmdan kam emas. Bu ETA tizimlarining umumiy saboqi:
+**xatoni qayerdan kelishiga qarab yo‘q qiling**, eng qiziqarli algoritmga
+qarab emas.
+</Step>
+
+<Step n={14} title="Uber Eats: tarkibiy ETA" gain="Yetkazib berish vaqti — bir nechta bashoratning to'g'ri birikmasi; kuryer ovqat tayyor bo'lganda keladi" cost="Restoran tayyorlash vaqti — eng noaniq qism va Uber nazoratida emas">
+Ovqat yetkazib berishda ETA bitta marshrut emas, **zanjir**:
+
+```
+ETA = max( tayyorlash_vaqti, kuryer -> restoran )
+      + restoranda kutish va topshirish
+      + restoran -> mijoz (safar ETA si)
+      + binoga kirish va eshikkacha
+```
+
+Yangi noaniqlik — **tayyorlash vaqti**. Uni hech qaysi graf bermaydi:
+restoran, taom, buyurtma hajmi, soat va hozirgi bandlik (bir vaqtda
+nechta buyurtma) bo‘yicha ML modeli bashorat qiladi. Va bu bashorat
+ikki joyda ishlatiladi: mijozga ko‘rsatiladigan vaqt va **kuryerni qachon
+yuborish**.
+
+<Calc title="Kuryerni qachon yuborish" result="Erta yuborish — kuryer kutadi (pul); kech yuborish — taom sovuydi (sifat); to'g'ri vaqt bashorat aniqligiga bog'liq">{`Buyurtma 19:00 da qabul qilindi
+Tayyorlash vaqti bashorati: 18 daq (taom 19:18 da tayyor)
+Kuryerdan restoranga: 7 daq
+
+Darhol yuborish (19:00): kuryer 19:07 da keladi, 11 daq kutadi
+  kuryer vaqti — Uber uchun xarajat; 11 daq x ~0.25 $/daq = ~2.75 $
+Kechiktirib yuborish (19:11): kuryer 19:18 da, kutish 0
+
+Lekin bashorat xatosi ~5 daq (standart og'ish):
+  taom 19:13 da tayyor bo'lsa -> 5 daq sovuydi
+  19:23 da -> kuryer 5 daq kutadi
+Yuborishni "bashorat - 1 x xato" ga surish (19:06):
+  kuryer 19:13 da; kutish odatda ~0-5 daq, sovish kamdan-kam`}</Calc>
+
+Bu qadam ETA’ni **qaror parametri** sifatida ko‘rsatadi: kuryerni yuborish
+paytini tanlash — bashorat xatosi taqsimotidan kelib chiqadigan
+optimallashtirish. 16-bo‘limdagi asimmetrik xato narxi g‘oyasi shu yerda
+eng aniq ko‘rinadi: taom sovishi va kuryer kutishi turli narxga ega.
+</Step>
+
+<Check q="Nega ML modeli ETA ni noldan emas, marshrut ETA sining xatosini bashorat qiladi? Neyron tarmoq hamma narsani o'zi o'rganishi mumkin-ku.">
+Mumkin, lekin uchta sababga ko‘ra yomonroq.
+
+**Ma’lumot samaradorligi.** Marshrut ETA’si masofa, yo‘l turi, tezlik
+va tirbandlikning “fizikasini” allaqachon hisoblagan. Noldan o‘rgatilgan
+model shu fizikani millionlab misoldan qaytadan o‘rganishi kerak — va
+kam ma’lumotli joylarda (yangi shahar, kam uchraydigan marshrut) buni
+yomon qiladi. Qoldiq modeli esa faqat “marshrut qayerda xato qiladi”
+ni o‘rganadi — bu ancha kichik va oddiy vazifa.
+
+**Tashqi o‘zgarishlarga reaksiya.** Bugun ko‘prik yopildi. Marshrutlash
+buni darhol biladi (jonli og‘irliklar, 7-qadam) va aylanma yo‘lni
+hisoblaydi. Noldan o‘rgatilgan model esa “bu ikki nuqta orasi odatda
+15 daqiqa” degan xotirasiga tayanadi va yopilishni faqat qayta
+o‘qitilgandan keyin biladi.
+
+**Zaxira va xavfsizlik.** Model ishlamasa yoki g‘alati javob bersa,
+marshrut ETA’si yaxshi zaxira. Qoldiq kichik bo‘lgani uchun modelning
+chiqishini cheklash ham oson (“tuzatish ±50% dan oshmasin”).
+
+Umumiy tamoyil: **ma’lum fizikani ML ga qayta o‘rgatmang — ML ga faqat
+noma’lum qismni bering**. Bu gibrid yondashuv ETA’dan tashqarida ham
+keng tarqalgan.
+</Check>
+
+## 6. Marshrutlash: ierarxiya ichida
+
+5-bo‘limda Contraction Hierarchies natijasi berildi. Bu bo‘limda uning
+ichiga kiramiz: tugunlar qanday tartiblanadi, yorliqlar qachon kerak va
+nega qidiruv faqat “yuqoriga” yurib, baribir to‘g‘ri javob topadi.
+
+### 6.1 Qisqartirish: bitta tugunni olib tashlash
+
+Tugun `v` ni qisqartirishda uning har bir kiruvchi qo‘shnisi `u` va har
+bir chiquvchi qo‘shnisi `w` juftligini ko‘ramiz. Agar `u → v → w` yo‘li
+`u` dan `w` ga **yagona eng qisqa** yo‘l bo‘lsa, `v` ni olib tashlaganda
+bu yo‘l yo‘qoladi — shuning uchun yorliq `u → w` qo‘shiladi. Agar `v`
+siz ham shunday yoki qisqaroq yo‘l bo‘lsa (“guvoh yo‘l”, witness path),
+yorliq kerak emas.
+
+```
+Oldin:            u --3--> v --4--> w          u --9--> w  (to'g'ridan)
+v qisqartirildi:  u --7--> w  (yorliq, chunki 7 < 9 va boshqa yo'l yo'q)
+
+Oldin:            u --3--> v --4--> w          u --5--> x --1--> w
+v qisqartirildi:  yorliq yo'q — guvoh yo'l u-x-w = 6 < 7
+```
+
+Guvoh yo‘lni izlash — `u` dan kichik, cheklangan Dijkstra (`v` ni
+chetlab). Cheklov muhim: agar izlashni erta to‘xtatsak, guvoh topilmay,
+ortiqcha yorliq qo‘shiladi — bu xato emas (javob baribir to‘g‘ri),
+faqat graf kattalashadi.
+
+### 6.2 Tartib: kimni birinchi qisqartirish
+
+Tartib sifati hamma narsani belgilaydi. Asosiy evristika — **qirralar
+farqi** (edge difference): tugunni qisqartirish qancha yorliq qo‘shadi,
+minus qancha qirra olib tashlaydi. Kam “zarar” beradigan tugunlar birinchi.
+
+<Calc title="Qirralar farqi: hovli va magistral chorrahasi" result="Hovli ichidagi tugun yorliqsiz ketadi; magistral chorrahasi ko'p yorliq talab qiladi — shuning uchun u ierarxiyaning tepasida qoladi">{`Tugun A: tupik ko'chaning oxiri (1 qo'shni, ikki yo'nalishda)
+  juftliklar (u, w): u = w — yorliq kerak emas
+  qo'shiladi: 0, olinadi: 2 -> farq = -2  -> birinchi qisqartiriladi
+
+Tugun B: ikki ko'cha kesishmasi (4 qo'shni, ikki yo'nalishda)
+  juftliklar: 4 x 3 = 12, ulardan guvohsiz: ~4
+  qo'shiladi: 4, olinadi: 8 -> farq = -4 -> erta qisqartiriladi
+
+Tugun C: magistral almashuv tuguni (8 qo'shni)
+  juftliklar: 8 x 7 = 56, guvohsiz: ~30 (magistral — yagona tez yo'l)
+  qo'shiladi: 30, olinadi: 16 -> farq = +14 -> oxirida qoladi
+
+Natija: ierarxiya "pastda — hovlilar, tepada — magistrallar"
+  (hech kim buni qo'lda aytmadi; bu yo'l tuzilmasidan o'zi chiqadi)`}</Calc>
+
+Qiziq kuzatuv: ierarxiya **yo‘l turlarini bilmasdan** ularni qayta
+kashf qiladi. Magistral tepada, chunki uni olib tashlash ko‘p yorliq
+talab qiladi — ko‘p eng qisqa yo‘llar undan o‘tadi. Bu “muhimlik”ning
+eng aniq ta’rifi: **qancha eng qisqa yo‘l shu tugundan o‘tadi**.
+
+<Deep title="Nega faqat yuqoriga qidirish to'g'ri javob beradi">
+Tasdiq: har qanday `s` dan `t` ga eng qisqa yo‘l, yorliqlar qo‘shilgan
+grafda, **avval yuqoriga, keyin pastga** ko‘tariladigan yo‘lga ega (daraja
+bo‘yicha “tog‘” shakli).
+
+Nega? Eng qisqa yo‘ldagi eng past darajali ichki tugunni olaylik —
+aytaylik `v`, qo‘shnilari `u` va `w`. `v` qisqartirilganda `u` va `w` hali
+grafda edi (ular darajasi yuqoriroq). `u → v → w` eng qisqa yo‘l bo‘lgani
+uchun, yoki yorliq `u → w` qo‘shilgan, yoki teng uzunlikdagi guvoh yo‘l
+bor. Ikkala holda ham `v` ni yo‘ldan olib tashlab, uzunligi o‘zgarmagan
+yo‘l olamiz. Bu jarayonni takrorlasak, yo‘lda “pastki cho‘qqi” qolmaydi —
+ya’ni yo‘l avval ko‘tariladi, bitta eng yuqori nuqtaga yetadi va tushadi.
+
+Qidiruv shuni ishlatadi:
+
+```
+Oldinga qidiruv s dan: faqat daraja(v) > daraja(u) bo'lgan qirralar
+Orqaga qidiruv t dan (teskari qirralar): xuddi shunday, faqat yuqoriga
+Javob: min over v ( d_oldinga(v) + d_orqaga(v) )
+```
+
+Ikki qidiruv ham kichik, chunki “yuqoriga” yo‘llar tez tugaydi — tepada
+tugunlar kam. Shu sababli kontinental grafda ham bir necha yuz tugun
+ko‘riladi.
+
+Yo‘lni tiklash uchun esa yorliqlarni “ochish” kerak: har yorliq qaysi
+ikki qirradan tuzilganini eslab qoladi, va rekursiv ochish haqiqiy
+bo‘laklar ketma-ketligini beradi — bu xaritada chiziladigan va narx uchun
+masofa yig‘iladigan yo‘l.
+</Deep>
+
+### 6.3 Muqobil marshrutlar
+
+Haydovchi ilovasi ko‘pincha bitta emas, 2–3 marshrut ko‘rsatadi: “eng tez”,
+“pullik yo‘lsiz”, “biroz uzoq, lekin barqaror”. Eng tez yo‘lni topish
+oson; **yaxshi muqobil** topish qiyinroq. Oddiy yondashuv (“eng tez
+yo‘lni taqiqlab, qayta qidirish”) deyarli bir xil yo‘lni beradi — bitta
+bo‘lak farq bilan.
+
+Yaxshi muqobil uchta mezonga javob beradi: asosiy yo‘l bilan **kam
+umumiy qism** (masalan, 50% dan kam), vaqti **ko‘p farq qilmaydi**
+(masalan, 20% dan uzun emas), va **mahalliy mantiqiy** — kichik
+aylanmalar yo‘q (“magistraldan chiqib, 200 m yurib, qaytib kirish”
+kabi). Ikki tomonlama qidiruvdagi “uchrashuv nuqtalari” (via-node)
+nomzodlari orasidan shu mezonlarga mos keladiganlar tanlanadi.
+
+<Check q="CH qidiruvi mikrosekundlarda ishlaydi. Nega unda jonli tirbandlik uchun uni to'g'ridan-to'g'ri ishlatib bo'lmaydi?">
+Chunki yorliqlar **og‘irliklardan** qurilgan va og‘irlik o‘zgarsa,
+ular noto‘g‘ri bo‘ladi.
+
+Yorliq `u → w` (og‘irligi 7) “`u` dan `w` ga eng qisqa yo‘l `v` orqali
+va u 7 soniya” degan faktni saqlaydi. Agar `v` atrofida tirbandlik
+boshlansa, haqiqiy vaqt 20 bo‘ladi va, ehtimol, endi boshqa yo‘l eng
+qisqasi. Yorliqni yangilash yetmaydi: **tartib** ham (qaysi tugun
+muhimroq) va **guvoh yo‘llar** ham o‘zgaradi. To‘liq qayta qurish —
+daqiqalar, tirbandlik esa har daqiqada o‘zgaradi.
+
+Bundan chiqish yo‘li 5-qadamda: tugunlar tartibini **og‘irlikka
+bog‘liqmas** qilib (grafning geometrik tuzilmasidan, masalan, bo‘laklarga
+bo‘lish orqali) tanlash va yorliqlar to‘plamini oldindan belgilash.
+Shunda og‘irlik o‘zgarganda faqat **sonlarni** qayta hisoblash kerak —
+tuzilma o‘zgarmaydi. Bu CCH va CRP ning asosiy g‘oyasi: qidiruv biroz
+sekinroq (tartib optimal emas), lekin yangilanish soniyalarda.
+
+Umumiy saboq: **oldindan hisoblangan narsa qaysi ma’lumotga bog‘liq
+ekanini aniq biling**. Agar u tez o‘zgaradigan ma’lumotga bog‘liq bo‘lsa,
+uni sekin va tez qismlarga bo‘ling.
+</Check>
+
+## 7. Tirbandlik: GPS nuqtasidan tezlikkacha
+
+### 7.1 Nimani o‘lchaymiz
+
+GPS nuqtasida “tezlik” maydoni ham bor (telefon o‘zi hisoblaydi). Uni
+to‘g‘ridan-to‘g‘ri ishlatish jozibali, lekin bu **lahzalik** tezlik:
+svetoforda 0, keyin 50. Marshrutlash uchun kerak bo‘lgan narsa boshqa —
+**bo‘lakni o‘tish vaqti**, svetofor kutishini ham o‘z ichiga olgan.
+
+<Calc title="Lahzalik tezlik va o'tish vaqti" result="Lahzalik tezliklar o'rtachasi bo'lak vaqtini ~40% kam ko'rsatadi — svetofor kutishi yo'qoladi">{`Bo'lak: 400 m, oxirida svetofor
+Mashina: 50 km/soat bilan yuradi (29 s), keyin qizil chiroqda 30 s kutadi
+
+O'tish vaqti: 29 + 30 = 59 s -> "bo'lak tezligi" 400 / 59 = 24 km/soat
+
+Lahzalik tezliklar (har 4 s, 15 nuqta):
+  harakatda ~7 nuqta: ~50 km/soat
+  kutishda ~8 nuqta: 0 km/soat
+  o'rtacha: ~23 km/soat — tasodifan yaqin, LEKIN:
+  nuqtalar kamroq bo'lsa (har 15 s): 2 harakatda, 2 kutishda -> 25;
+  yoki 3 harakatda, 1 kutishda -> 37 km/soat (+55%)
+  -> lahzalik tezlik svetoforni "tasodifan" ko'radi yoki ko'rmaydi
+
+O'tish vaqti map matching dan (bo'lakka kirish va chiqish vaqti):
+  kutish har doim hisobga olinadi, nuqtalar siyrak bo'lsa ham`}</Calc>
+
+Shu sababli 5-bo‘lim 6–7-qadamlaridagi quvur nuqtalarni emas, **bo‘lak
+o‘tishlarini** yig‘adi. Map matching bu yerda faqat “qaysi yo‘l” emas,
+“qaysi paytda kirdi va chiqdi” savoliga ham javob beradi (ikki nuqta
+orasidagi vaqt yo‘l uzunligi bo‘yicha taqsimlanadi).
+
+### 7.2 Avariyani aniqlash
+
+Jonli tezlik sekin o‘zgarsa — oddiy tirbandlik. Keskin tushsa — ehtimol
+avariya yoki yo‘l yopilishi. Ularni farqlash muhim: avariya **bo‘lakni
+deyarli yopadi** va marshrutlash undan butunlay qochishi kerak.
+
+<Calc title="Keskin tushishni aniqlash" result="3 ta mustaqil haydovchidan kelgan bir xil signal — 2-3 daqiqada ishonchli aniqlash; bitta haydovchi — shovqin">{`Bo'lak: odatiy tezlik 45 km/soat (shu soat uchun profil)
+Oxirgi 3 daqiqa: 4 ta o'tish, tezliklar 8, 6, 7, 9 km/soat
+
+Oddiy qoida: mediana 7.5 km/soat, profil 45 -> nisbat 0.17
+  chegara: nisbat 0.3 dan kichik VA kamida 3 ta turli haydovchi
+  -> "g'ayrioddiy sekinlashuv" belgisi
+
+Nega "turli haydovchi" sharti:
+  bitta haydovchi to'xtab, yo'lovchi kutsa — 4 ta sekin "o'tish" beradi
+  (bir xil haydovchi, bir xil sabab)
+
+Belgi qo'yilgach:
+  bo'lak og'irligi darhol jonli qiymatga (k ni vaqtincha kamaytirish)
+  qo'shni bo'laklarga ham kutish (tirbandlik orqaga tarqaladi)`}</Calc>
+
+<Deep title="Tirbandlik orqaga tarqaladi: to'lqin modeli">
+Avariya bo‘lagi yopilganda, tirbandlik uning oldidagi bo‘laklarga
+**orqaga** tarqaladi — mashinalar navbati uzayadi. Bu tarqalish tezligi
+transport oqimi nazariyasida (Lighthill–Whitham–Richards modeli, 1955)
+hisoblanadi:
+
+```
+Navbat chegarasining orqaga harakat tezligi:
+  w = (q_kelish - q_ketish) / (k_navbat - k_kelish)
+  q — oqim (mashina/soat), k — zichlik (mashina/km)
+
+Magistral: kelish oqimi 3 000 mash/soat, zichlik 30 mash/km
+  avariyadan keyin o'tkazuvchanlik 1 000 mash/soat, navbat zichligi 150 mash/km
+  w = (3 000 - 1 000) / (150 - 30) = ~17 km/soat
+  -> 10 daqiqada navbat ~2.8 km orqaga cho'ziladi
+```
+
+Bu ETA uchun nimani anglatadi? Haydovchi avariyadan 3 km orqada, hozir
+bemalol ketmoqda. Jonli ma’lumot uning bo‘lagini “bo‘sh” deydi. Lekin 10
+daqiqadan keyin u yerga yetganda, navbat allaqachon uning oldida
+bo‘ladi. 9-qadamdagi vaqtga bog‘liq marshrut buni hisobga olishi uchun
+“kelajakdagi tezlik” kerak — va uni oddiy profil bermaydi.
+
+Ishlab chiqarish tizimlari bunday fizik modellarni kamdan-kam aniq
+hisoblaydi (parametrlar noma’lum), lekin g‘oya ML belgilariga kiradi:
+“N km oldinda g‘ayrioddiy sekinlashuv bor” — model tarixiy o‘xshash
+holatlardan navbat qancha o‘sishini o‘rganadi.
+</Deep>
+
+### 7.3 Kam ma’lumot va tunda
+
+Tun soat 3 da shaharda haydovchilar kam — jonli kuzatuvlar deyarli yo‘q.
+8-qadamdagi aralashtirish avtomatik ravishda tarixiy profilga o‘tadi. Lekin
+tarixiy profil ham tunda kam kuzatuvdan qurilgan — ishonchsiz. Bu yerda
+yana bir qatlam yordam beradi: **ierarxik zaxira**.
+
+```
+Bo'lak, shu 15 daqiqalik oraliq (kuzatuvlar yetarli bo'lsa)
+  -> bo'lak, shu soat (4 ta oraliq birlashtirilgan)
+    -> bo'lak, "tun" guruhi
+      -> yo'l turi + shahar bo'yicha o'rtacha (masalan, "tunda magistral")
+        -> tezlik chegarasi x koeffitsient
+```
+
+Har bosqichda kuzatuvlar soni tekshiriladi. Bu Airbnb darsidagi
+narx tavsiyasi va Reddit’dagi yangi post reytingi bilan bir xil g‘oya:
+kam ma’lumotda umumiyroq guruhga tayanish.
+
+<Callout type="ogoh" title="GPS'ning 'yo'q' degani 'bo'sh' degani emas">
+Bo‘lakdan hech kim o‘tmagan bo‘lsa, ikki xil sabab bo‘lishi mumkin:
+yo‘l bo‘sh (tunda, kichik ko‘cha) yoki yo‘l **yopiq** (ta’mir, avariya,
+tadbir). Jonli ma’lumotga tayanadigan tizim ikkinchi holatni birinchisi
+bilan adashtirsa, haydovchilarni yopiq ko‘chaga yuboradi — va u yerdan
+hech kim o‘tmagani sababli, tizim buni hech qachon bilmaydi. Shuning
+uchun “kuzatuv yo‘q” — alohida signal: agar odatda gavjum bo‘lak
+birdaniga jim qolsa, bu “tez” emas, “shubhali”. 2.2-dagi Deep’da ko‘rilgan
+xarita tekshiruvlari aynan shu signalni ishlatadi.
+</Callout>
+
+<Check q="Nega jonli tezlik uchun bo'lak o'tish vaqti ishlatiladi, telefon GPS'i bergan lahzalik tezlik emas?">
+Chunki marshrut ETA’siga kerak bo‘lgan narsa — bo‘lakni **butunlay**
+o‘tish vaqti, svetofor va chorrahada kutish bilan birga.
+
+Lahzalik tezlik svetoforda 0, ko‘k chiroqda 50 — ularning o‘rtachasi
+qaysi paytlarda nuqta olinganiga bog‘liq, ya’ni tasodifiy. Nuqtalar
+siyrak bo‘lsa (batareya tejash uchun har 15 soniya), kutish paytlari
+“tushib qolishi” mumkin va bo‘lak ancha tez ko‘rinadi (7.1-dagi hisob:
++55%). Bu xato tizimli: kutishni o‘tkazib yuborish ehtimoli har doim
+tezlikni **oshiradi**, kamaytirmaydi.
+
+O‘tish vaqti esa map matching orqali bo‘lakka kirish va chiqish lahzalaridan
+olinadi va kutishni avtomatik o‘z ichiga oladi — nuqtalar qanchalik
+siyrak bo‘lmasin. Nuqtalar siyrak bo‘lganda kirish va chiqish vaqtlari
+interpolyatsiya qilinadi; bu xato **tasodifiy** (ikki tomonga), shuning
+uchun ko‘p kuzatuvda o‘rtachalanib ketadi.
+
+Qoida: **o‘lchov marshrutlash nimani qo‘shayotganiga mos bo‘lsin**.
+Marshrutlash bo‘lak vaqtlarini qo‘shadi — demak, bo‘lak vaqtlarini o‘lchang.
+</Check>
+
+## 8. ML qatlami: ma’lumot, baholash va xizmat
+
+### 8.1 “Haqiqiy vaqt” nima?
+
+ML modeli haqiqiy vaqtdan o‘rganadi. Lekin safarning “haqiqiy” davomiyligi
+qaysi lahzadan qaysi lahzagacha? Bu savol ko‘rinishidan oddiy, lekin
+nishon (label) ta’rifi modelning nimani o‘rganishini to‘liq belgilaydi.
+
+| ETA turi | Boshlanish | Tugash | Tuzoq |
+| --- | --- | --- | --- |
+| Kelish (pickup) | Haydovchi buyurtmani qabul qildi | Haydovchi “yetib keldim” bosdi | Ba’zi haydovchilar “keldim” ni erta bosadi |
+| Safar | Haydovchi “safarni boshlash” bosdi | “Safarni tugatish” bosdi | Tugatish ba’zan yo‘lovchi tushgandan keyin kechikadi |
+| Yetkazib berish | Buyurtma berildi | Kuryer “topshirildi” bosdi | Eshikkacha piyoda qism turlicha |
+
+Birinchi qatordagi tuzoq qiziq: agar haydovchilar “yetib keldim” tugmasini
+100 metr oldin bossa (mijoz tezroq chiqishi uchun), haqiqiy nishonlar
+muntazam **qisqa** bo‘ladi va model ETA’ni kam ko‘rsatishni o‘rganadi.
+Yechim — nishonni tugmadan emas, GPS izidan olish: mashina olib ketish
+joyiga 30 metr yaqinlashib, to‘xtagan lahza.
+
+<Calc title="Nishondagi tizimli siljish" result="Haydovchilarning 20% i tugmani 30 soniya erta bossa, model butun shahar bo'yicha ETA ni ~6 soniya kam ko'rsatishni o'rganadi — kichik, lekin har bir safarda">{`Kelish ETA lari, bir shahar:
+  haydovchilarning 80% i: tugma to'g'ri paytda
+  20% i: o'rtacha 30 s erta
+
+Nishonlarning o'rtacha siljishi: 0.2 x (-30 s) = -6 s
+Model shu siljishni o'rganadi -> ETA muntazam 6 s kam
+
+Ta'siri:
+  mijoz "yetib keldi" xabarini ko'radi, lekin mashina yo'q
+  6 s — kichik; lekin agar ulush 50% va 60 s bo'lsa -> -30 s
+Tuzatish: GPS izidan "haqiqiy kelish" lahzasi (to'xtash + yaqinlik)`}</Calc>
+
+### 8.2 O‘qitish va xizmat bir xil ko‘rishi kerak
+
+<Flow nodes={["Safarlar jurnali (haqiqiy vaqtlar)", "O'sha paytdagi belgilar (tarixiy surat)", "O'qitish to'plami", "Model o'qitish (har kuni/hafta)", "Oflayn baholash va soya rejimi", "Xizmat: belgilar keshi + model", "Onlayn kuzatuv: bashorat va haqiqat"]} caption="ETA modeli hayoti: har bosqichda belgilar bir xil ta'rif bilan hisoblanishi shart" />
+
+Eng xavfli xato — **o‘qitish va xizmat nomuvofiqligi** (training-serving
+skew). Misol: o‘qitishda “hududdagi joriy o‘rtacha tezlik” belgisi kun
+oxirida, to‘liq ma’lumot bilan hisoblangan; xizmatda esa u real vaqtda,
+2 daqiqa kechikish bilan keladi. Model o‘qitishda “kelajakni ko‘rgan”
+belgiga o‘rgangan, xizmatda esa u yo‘q.
+
+<Callout type="xato" title="Kelajakdan sizib kirgan belgi">
+O‘qitish to‘plamidagi har bir belgi **bashorat qilingan lahzada**
+mavjud bo‘lgan ma’lumotdan hisoblanishi kerak. “Safar davomidagi
+o‘rtacha tezlik” — ajoyib belgi, oflayn baholashda MAE ni ikki barobar
+kamaytiradi. Lekin u safar tugaganidan keyingina ma’lum: bashorat
+paytida yo‘q. Bunday sizib kirish (data leakage) oflayn raqamlarni
+chiroyli qiladi va ishlab chiqarishda model yomonlashadi. Himoya —
+belgilar omborida har bir qiymat **vaqt belgisi** bilan saqlanadi va
+o‘qitish to‘plami “o‘sha lahzadagi holat” so‘rovi (point-in-time join)
+bilan yig‘iladi. Uber’ning Michelangelo ML platformasi (2017) va undagi
+belgilar ombori aynan shu muammoni markazlashgan holda hal qilish uchun
+yaratilgan.
+</Callout>
+
+### 8.3 Baholash: bitta raqam yetmaydi
+
+<Calc title="Bir xil MAE, turli model" result="Ikki model bir xil o'rtacha xatoga ega, lekin biri mijozlarni muntazam aldaydi; bias va dum ko'rsatkichlari alohida kuzatiladi">{`5 ta safar, haqiqiy kelish vaqtlari: 4, 5, 6, 7, 8 daq
+
+Model A bashoratlari: 5, 4, 7, 6, 9   xatolar: +1, -1, +1, -1, +1
+  MAE = 1.0, bias = +0.2, eng katta kechikish (kam ko'rsatish) = 1
+
+Model B bashoratlari: 3, 4, 5, 6, 7   xatolar: -1, -1, -1, -1, -1
+  MAE = 1.0, bias = -1.0  (har doim kam ko'rsatadi)
+
+Mijoz tajribasi:
+  A: ba'zan erta, ba'zan kech — tasodifiy
+  B: HAR DOIM "4 daqiqa" deb, 5 daqiqada keladi -> ishonch yo'qoladi
+
+Kuzatiladigan ko'rsatkichlar:
+  MAE (o'rtacha), bias (siljish), p90 |xato| (dum),
+  kam ko'rsatish ulushi (bashorat < haqiqat - 2 daq), MAPE qisqa safarlarda`}</Calc>
+
+Oxirgi qatorda MAPE (foizli xato) — lekin faqat qisqa safarlarda
+ehtiyotkorlik bilan: 1 daqiqalik ETA da 1 daqiqa xato — 100%, 60 daqiqalik
+ETA da — 1.7%. Foizli ko‘rsatkich qisqa safarlarni haddan ortiq
+jazolaydi, mutlaq ko‘rsatkich esa uzun safarlarni. Shuning uchun baholash
+**segmentlar** bo‘yicha: kelish va safar alohida, shahar bo‘yicha, masofa
+guruhlari bo‘yicha, aeroport va oddiy joylar alohida.
+
+<Versus
+  left={{ title: "Daraxtlar ansambli (XGBoost)", points: [
+    "Jadval belgilarida kuchli, tez o'qitiladi",
+    "Talqin qilish oson (belgi muhimligi)",
+    "Kategoriyalar ko'p bo'lsa (kataklar) — qiyin",
+    "Ansambl o'sgan sari foyda kamayadi",
+    "CPU da tez, kechikish barqaror",
+  ] }}
+  right={{ title: "Neyron tarmoq (DeepETA)", points: [
+    "Embedding'lar: millionlab katakni o'rganadi",
+    "Belgilar o'zaro ta'sirini attention o'zi topadi",
+    "Bitta global model — shaharlar ma'lumoti bo'lishiladi",
+    "Kechikishni ushlab turish uchun arxitektura cheklovi",
+    "Talqin qilish qiyinroq, o'qitish qimmatroq",
+  ] }}
+/>
+
+### 8.4 Onlayn tajriba: ETA hamma narsaga ta’sir qiladi
+
+Yangi ETA modelini qanday sinash kerak? Oddiy A/B test: foydalanuvchilarning
+yarmi yangi model, yarmi eski. Lekin ETA oddiy xususiyat emas.
+
+<Deep title="Nega ETA uchun A/B test qiyin: tarmoq ta'siri">
+ETA dispetcherlikka kiradi. Agar A guruhdagi mijozlar uchun yangi model
+ETA’ni aniqroq hisoblasa, dispetcherlik A guruhga yaxshiroq haydovchilarni
+tayinlaydi — va B guruhga qolgan haydovchilar yomonroq bo‘ladi. B guruh
+natijalari eski model tufayli emas, **A guruh tufayli** yomonlashadi.
+Tajriba ikki guruh orasidagi farqni oshirib ko‘rsatadi — bu
+“ifloslanish” (interference), chunki guruhlar umumiy resursni (haydovchilar)
+bo‘lishadi.
+
+Bunday tizimlarda ishlatiladigan usullar:
+
+```
+1. Vaqt bo'yicha almashtirish (switchback):
+   butun shahar 30 daqiqa yangi model, 30 daqiqa eski, tasodifiy tartibda
+   + ifloslanish yo'q (bir vaqtda faqat bitta model)
+   - soatlar orasidagi farqlar shovqin qo'shadi -> ko'p hafta kerak
+
+2. Geografik bo'lish:
+   bir tuman — yangi, boshqasi — eski
+   - tumanlar har xil; chegarada ifloslanish
+
+3. Soya rejimi (shadow):
+   yangi model hisoblaydi, lekin natijasi ishlatilmaydi — faqat yoziladi
+   + xavfsiz: bashorat aniqligini haqiqat bilan solishtirish mumkin
+   - dispetcherlikka ta'sirini ko'rsatmaydi
+```
+
+Amaliy ketma-ketlik: avval **oflayn baholash**, keyin **soya rejimi**
+(bashorat aniqligi — ishlab chiqarish ma’lumotida), keyin **switchback**
+tajriba (biznes ko‘rsatkichlari: kutish, bekor qilishlar, haydovchi
+bo‘sh yurishi). Faqat shundan keyin to‘liq ishga tushirish.
+
+Bu saboq Uber’dan tashqarida ham muhim: ikki tomonlama bozorlarda
+(Airbnb, yetkazib berish, reklama auksionlari) foydalanuvchilarni
+tasodifiy bo‘lish har doim ham mustaqil guruhlar bermaydi.
+</Deep>
+
+<Check q="Oflayn baholashda yangi model MAE ni 15% kamaytirdi. Nega bu hali ishga tushirish uchun yetarli emas?">
+Chunki oflayn MAE uchta narsani ko‘rsatmaydi.
+
+**Sizib kirish va nomuvofiqlik.** Oflayn to‘plamdagi belgilar xizmatdagi
+belgilardan boshqacha hisoblangan bo‘lishi mumkin (8.2). Soya rejimi —
+yangi model ishlab chiqarishdagi haqiqiy belgilar bilan ishlab, bashoratlari
+haqiqat bilan solishtirilganda — buni birinchi bo‘lib ko‘rsatadi.
+
+**Segmentlar.** O‘rtacha 15% yaxshilanish ba’zi segmentlarda yomonlashishni
+yashirishi mumkin: masalan, aeroportlarda 10% yomonroq, lekin ular safarlarning
+atigi 3% i. Aeroport safarlari esa eng qimmat va eng ko‘p shikoyat keladigan
+segment. Baholash segmentlar bo‘yicha bo‘lishi kerak (8.3).
+
+**Qarorlarga ta’sir.** ETA dispetcherlik va narxga kiradi. Aniqroq ETA
+dispetcherlikni boshqa haydovchilarni tanlashga majbur qiladi — va bu
+kutish vaqti, bo‘sh yurish, bekor qilishlarni o‘zgartiradi. Bu ta’sir
+faqat onlayn tajribada (switchback, 8.4 Deep) ko‘rinadi. Ba’zan aniqroq
+model biznes ko‘rsatkichlarini **yomonlashtiradi**: masalan, u uzoq
+ETA’larni to‘g‘riroq (ya’ni uzunroq) ko‘rsatadi va mijozlar ko‘proq
+bekor qiladi — garchi bu halolroq bo‘lsa ham.
+
+Qoida: **model sifati — zarur, lekin yetarli shart emas**. Qaror tizimining
+bir qismi bo‘lgan model qaror natijalari bilan baholanadi.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="ETA tizimi"
+  layers={[
+    { name: "Mijozlar", boxes: ["Mijoz ilovasi", "Haydovchi ilovasi", "Uber Eats"], note: "Haydovchi ilovasi — ham iste'molchi, ham ma'lumot manbai: har ~4 s da GPS." },
+    { name: "Iste'molchi servislar", boxes: ["Dispetcherlik", "Narx (oldindan)", "Ilova ETA ko'rinishi", "Eats: kuryerni yuborish"], note: "ETA'ni to'plamda so'raydi: bitta qarorda o'nlab-yuzlab juftlik." },
+    { name: "ETA servisi", boxes: ["Nuqtalarni biriktirish", "Marshrut ETA", "ML qoldiq (DeepETA)", "Zaxira zinapoyasi"], note: "Yakuniy ETA = marshrut + qoldiq; har qadamda vaqt byudjeti." },
+    { name: "Marshrutlash", boxes: ["Bo'laklarga bo'lingan graf", "Og'irliklarni sozlash", "Ko'p-ga-ko'p matritsa"], note: "Tuzilma haftada bir, og'irliklar har daqiqada, so'rov — millisekundlar." },
+    { name: "Real vaqt quvurlari", boxes: ["GPS oqimi (Kafka)", "Map matching", "Bo'lak tezliklari", "Hodisalarni aniqlash"], note: "GPS nuqtasidan marshrut og'irligigacha ~1-2 daqiqa." },
+    { name: "Oflayn", boxes: ["Tarixiy profillar", "ML o'qitish va belgilar ombori", "Xarita qurish va tekshirish", "H3 statistikasi"], note: "Kunlik va haftalik; natijalar yuqori qatlamlarga 'surat' sifatida yuklanadi." },
+  ]}
+/>
+
+Diagrammada ikki oqim bor. **So‘rov oqimi** yuqoridan pastga: dispetcherlik
+ETA servisidan so‘raydi, u marshrutlashdan va modeldan. **Ma’lumot oqimi**
+pastdan yuqoriga: haydovchi GPS’i → quvurlar → og‘irliklar → marshrut. Bir
+xil haydovchi ilovasi ikkala oqimning ikki uchida: u ETA so‘raydi va shu
+bilan birga ETA uchun ma’lumot beradi. Bu **o‘z-o‘zini ta’minlovchi halqa**:
+qancha ko‘p safar — shuncha aniq tezlik — shuncha yaxshi ETA — shuncha
+samarali dispetcherlik — shuncha ko‘p safar.
+
+<Flow nodes={["Mijoz: manzilni kiritdi", "H3: atrofdagi ~40 haydovchi", "Ko'p-ga-ko'p: 40 kelish ETA si", "DeepETA: 40 qoldiq (to'plamda)", "Eng yaxshi kelish ETA + safar ETA", "Narx: safar ETA va masofadan", "Ekranda: '4 daq · 23 daq · narx'"]} caption="Ilova ochilganda: ~20-40 ms ichida o'nlab ETA" />
+
+<Timeline
+  rows={[
+    { when: "2009-2010", what: "UberCab tashkil topadi, San-Fransiskoda ishga tushadi", why: "Qora limuzinlar; ETA — oddiy taxmin, xarita provayderlari tashqarida." },
+    { when: "2012", what: "UberX — oddiy mashinalar", why: "Haydovchilar soni keskin o'sadi; dispetcherlik sifati biznes muammosiga aylanadi." },
+    { when: "2014-2015", what: "UberPool va Uber Eats", why: "ETA bitta marshrut emas: bir nechta yo'lovchi tartibi va taom tayyorlash vaqti (14-qadam)." },
+    { when: "2015", what: "deCarta sotib olinadi, o'z xarita jamoasi", why: "Xarita va marshrutlash — tashqi xizmat emas, asosiy kompetensiya (2.2)." },
+    { when: "2017", what: "Michelangelo ML platformasi va Uber Movement", why: "ML modellari uchun yagona o'qitish va xizmat; tezlik ma'lumotlari shaharlar bilan bo'lishiladi." },
+    { when: "2018", what: "H3 ochiq kodga chiqariladi", why: "Olti burchakli geo-indeks: dispetcherlik, narx va tahlil uchun umumiy til (12-qadam)." },
+    { when: "2022", what: "DeepETA tasvirlanadi", why: "Daraxtlar ansambli o'rniga transformer: marshrut ETA sining qoldig'i (11-qadam)." },
+  ]}
+/>
+
+Tarixdagi eng muhim burilish — 2015-yil. Undan oldin xarita va marshrut
+tashqi provayderdan olingan “kommunal xizmat” edi. Undan keyin — asosiy
+mahsulotning bir qismi. Sabab 1-bo‘limdagi jadvalda: ETA dispetcherlik,
+narx va Eats’ning kiritmasi. Kompaniyaning asosiy iqtisodiy qarorlari
+boshqa birovning xaritasiga bog‘liq bo‘lishi mumkin emas edi.
+
+## 10. Ishonchlilik: har doim javob bor
+
+### 10.1 Zaxira zinapoyasi
+
+1.2-bo‘limda aytilgandek, ETA yo‘q — safar yo‘q. Shuning uchun ETA
+servisi “yiqilmaydi”, balki **sifat pasayadi**: har pog‘onada kamroq aniq,
+lekin tezroq va ishonchliroq javob.
+
+| Pog‘ona | Nima ishlatiladi | Qachon | Aniqlik |
+| --- | --- | --- | --- |
+| 1 | Marshrut + ML qoldiq | Odatiy holat | Eng yuqori |
+| 2 | Faqat marshrut ETA | Model servisi sekin yoki xato | ~25–35% yomonroq (10-qadam) |
+| 3 | Kataklar matritsasi (H3, tarixiy) | Marshrutlash ishlamaydi | Qo‘pol, lekin mikrosekundlar |
+| 4 | To‘g‘ri chiziq × koeffitsient (v0) | Hamma narsa ishlamaydi | Qo‘pol, lekin har doim bor |
+
+<Calc title="Kataklar matritsasi: marshrutlashsiz zaxira" result="7-darajali H3 kataklari orasidagi tarixiy vaqtlar jadvali shahar uchun ~2 MB — xotirada, har bir so'rovga mikrosekund">{`Katta shahar maydoni: ~1 500 km^2
+H3 7-daraja katak: ~5.2 km^2 -> ~300 katak
+
+Matritsa: 300 x 300 = 90 000 juftlik
+  har juftlik: 24 soat x 1 bayt (daqiqa) -> 24 bayt
+  90 000 x 24 = ~2.2 MB bitta shahar uchun
+
+Aniqlik: katak ichidagi farq (tomoni ~1.2 km) -> +-2-3 daqiqa
+  kelish ETA si uchun qo'pol (kelish ~5 daq)
+  safar ETA si uchun qabul qilinadi (30 daq safarda +-10%)
+
+Qachon yangilanadi: har kecha, oflayn, o'tgan haftalar safarlaridan`}</Calc>
+
+Zinapoyaning har pog‘onasi **alohida sinovdan o‘tkaziladi**. Zaxira yo‘lining
+eng katta xavfi — u yillar davomida ishlatilmaydi va kerak bo‘lganda
+buzilgan bo‘lib chiqadi (jadval yangilanmagan, format o‘zgargan). Himoya:
+har kuni kichik ulush so‘rovlar ataylab pastki pog‘onalar orqali o‘tkaziladi
+va ularning aniqligi kuzatiladi.
+
+<Callout type="maslahat" title="Kechikish byudjeti — zaxiraga o'tish mezoni">
+Pog‘onalar orasidagi o‘tish “xato bo‘lsa” emas, “**vaqt tugasa**”
+qoidasi bilan ishlaydi. Masalan, butun ETA uchun 30 ms byudjet: model
+15 ms da javob bermasa — marshrut ETA’si ishlatiladi; marshrut 10 ms da
+tayyor bo‘lmasa — matritsa. Sekin komponent xatolikdan xavfliroq: xato
+darhol ko‘rinadi, sekinlik esa butun zanjirni kutishga majbur qiladi va
+dispetcherlikning butun oynasini (12-qadam) buzadi.
+</Callout>
+
+### 10.2 Yomg‘irli juma kechqurun
+
+<Timeline
+  rows={[
+    { when: "17:40", what: "Kuchli yomg'ir boshlanadi", why: "Tezliklar 20-30% tushadi; talab esa 1.5-2 barobar oshadi." },
+    { when: "17:42", what: "Jonli quvur sekinlashuvni ko'radi", why: "Katta ko'chalarda n yetarli, og'irliklar yangilanadi (7-8-qadamlar); kichik ko'chalar hali tarixiy." },
+    { when: "17:45", what: "ML modeli 'yomg'ir' belgisini oladi", why: "Tarixiy yomg'irli kunlardan o'rgangan tuzatish qo'shiladi — kichik ko'chalarni ham qamraydi." },
+    { when: "17:50", what: "ETA so'rovlari 2.5x ga o'sadi", why: "Ko'p mijoz ilovani ochadi, taqqoslaydi, qayta ochadi: ETA servisi avtomatik kengayadi." },
+    { when: "18:05", what: "Ko'prikda avariya", why: "Hodisa aniqlanadi (7.2), bo'lak og'irligi keskin oshadi, marshrutlar aylanma yo'lga o'tadi." },
+    { when: "18:10", what: "Kelish ETA'lari 4 dan 9 daqiqaga", why: "Haydovchilar kam, masofalar uzoq. Aniq ETA bekor qilishlarni kamaytiradi: mijoz kutishni biladi." },
+    { when: "19:30", what: "Yomg'ir to'xtaydi", why: "Tezliklar tiklanadi; profil va jonli ma'lumot yana mos keladi." },
+  ]}
+/>
+
+Bu kun tizimning barcha qismlarini birga sinaydi: jonli quvurning
+tezligi, tarixiy va jonli ma’lumotni aralashtirish, ML’dagi tashqi
+belgilar, avariyani aniqlash va servislarning kengayishi. Eng muhim
+kuzatuv — 18:10 qatori: bunday kunda ETA **katta** bo‘ladi, va
+tizimning vazifasi uni kichik ko‘rsatish emas, **to‘g‘ri** ko‘rsatish.
+Kam ko‘rsatilgan ETA mijozni kutishga undaydi va keyin bekor qilishga —
+bu ham mijozni, ham haydovchini yo‘qotadi.
+
+<Deep title="Narx va ETA izchilligi: bitta hisob, bitta javob">
+Mijoz ekranda “23 daqiqa, 45 000 so‘m” ko‘radi. Narx formulasi safar
+vaqti va masofasidan hisoblangan. Agar narx servisi va ekrandagi ETA
+**alohida** hisoblansa (bir necha ms farq bilan, turli servis nusxalarida,
+turli og‘irliklar bilan), ekranda “23 daqiqa” turadi, narx esa 27
+daqiqaga hisoblangan bo‘ladi. Bu kichik farq ham shikoyat va ishonchsizlik
+manbai.
+
+Yechim — **taklif** (quote) ob’ekti:
+
+```
+1. Mijoz manzilni kiritdi -> bitta hisob: marshrut, ETA, masofa, narx
+2. Natija taklif sifatida saqlanadi: quote_id, muddati (masalan, 5 daqiqa)
+3. Ekran ham, buyurtma ham shu quote_id ga ishora qiladi
+4. "Buyurtma berish" bosilganda narx qayta hisoblanmaydi —
+   taklifdagi qiymat ishlatiladi (muddati o'tmagan bo'lsa)
+```
+
+Bu Airbnb darsidagi “kurs bron paytida qotiriladi” g‘oyasining aynan
+o‘zi: **qaror qabul qilingan paytdagi hisob saqlanadi** va keyingi
+qadamlar uni qayta hisoblamaydi. Qayta hisoblash har doim boshqa natija
+beradi — chunki tirbandlik har daqiqada o‘zgaradi.
+
+Ikkinchi nozik jihat: safar davomida ETA yangilanadi (yo‘l holati
+o‘zgaradi), narx esa — yo‘q (oldindan kelishilgan). Ya’ni ETA **ikki
+xil rolda**: narx uchun — qotirilgan kiritma, ekran uchun — tirik
+bashorat. Ularni bir ob’ektda aralashtirmaslik kerak.
+</Deep>
+
+<Check q="Nega ETA servisi uchun 'xato qaytarish' yomon, 'taxminiyroq javob qaytarish' yaxshi? Noaniq ETA foydalanuvchini aldaydi-ku.">
+Chunki ETA’ning asosiy iste’molchisi foydalanuvchi emas, **boshqa
+tizimlar** — va ular javobsiz ishlay olmaydi.
+
+Dispetcherlik ETA’siz haydovchini tanlay olmaydi; narx ETA’siz taklif
+bera olmaydi. Agar ETA servisi xato qaytarsa, bu xatolar zanjir bo‘ylab
+tarqaladi: dispetcherlik to‘xtaydi, narx to‘xtaydi — **hech kim safar
+buyurtma qila olmaydi**. Noaniq ETA bilan esa dispetcherlik biroz yomonroq
+tanlov qiladi, narx biroz noaniqroq bo‘ladi — lekin xizmat ishlaydi.
+
+Foydalanuvchini aldash masalasi alohida hal qilinadi: zaxira pog‘onasidagi
+ETA ekranda **oraliq** sifatida ko‘rsatilishi mumkin (“5–10 daqiqa”) yoki
+qo‘shimcha zaxira bilan (yuqoriroq). Narx uchun esa zaxira rejimida
+xavfsizroq formula (masofaga ko‘proq tayanadigan) ishlatiladi.
+
+Muhimi — zaxira holati **kuzatiladi**: qancha ulush so‘rov qaysi
+pog‘onadan javob oldi. Agar 2-pog‘ona ulushi 1% dan 20% ga sakrasa —
+bu hodisa, navbatchiga signal, garchi foydalanuvchilar hech narsani
+sezmagan bo‘lsa ham.
+</Check>
+
+## 11. Xavfsizlik va maxfiylik
+
+### 11.1 GPS’ni aldash
+
+Haydovchi telefoni — ma’lumot manbai. Va har qanday tashqi ma’lumot
+manbai kabi, u **qasddan buzilishi** mumkin. GPS joylashuvini soxtalashtiruvchi
+ilovalar keng tarqalgan. Nima uchun haydovchi buni qiladi?
+
+| Maqsad | Qanday | ETA tizimiga ta’siri |
+| --- | --- | --- |
+| Aeroport navbatiga erta tushish | O‘zini aeroport hududida ko‘rsatish | Soxta haydovchi “yaqin” — dispetcherlik xato |
+| Uzoq safar qilib narxni oshirish | Aylanma yo‘l, yoki soxta iz | Safar vaqti ma’lumotlari ifloslanadi |
+| Yuqori talab hududiga “kirish” | Joyni surish | Talab va taklif xaritasi buziladi |
+| Tezlik ma’lumotini buzish (nazariy) | Ko‘plab soxta sekin izlar | Bo‘lak “tirband” ko‘rinadi |
+
+<Calc title="Soxta GPS'ni fizika bilan ushlash" result="Oddiy fizik tekshiruvlar soxta izlarning katta qismini ushlaydi: sakrashlar, imkonsiz tezliklar, sensorlar nomuvofiqligi">{`Tekshiruv 1 — tezlik:
+  ketma-ket ikki nuqta: 4 s, masofa 2.3 km -> 2 070 km/soat -> imkonsiz
+
+Tekshiruv 2 — yo'lga mos kelish:
+  izning 95% nuqtalari map matching da HMM ehtimoli juda past
+  (yo'llardan tashqarida "uchib" yuradi)
+
+Tekshiruv 3 — sensorlar izchilligi:
+  GPS "harakat 40 km/soat" deydi, akselerometr esa "telefon qimirlamaydi"
+
+Tekshiruv 4 — tarmoq:
+  GPS aeroportda, IP manzil va uyali minora — shahar markazida
+
+Ball: har tekshiruv 0-1, yig'indi chegaradan oshsa:
+  haydovchi tezlik agregatsiyasidan chiqariladi (7-qadam),
+  dispetcherlikda qo'shimcha tekshiruv, keyin — qo'lda ko'rib chiqish`}</Calc>
+
+Tezlik agregatsiyasi uchun mediana (7-qadam) va “turli haydovchilar” sharti
+(7.2) tabiiy himoya beradi: bitta soxta haydovchi bo‘lak tezligini
+o‘zgartira olmaydi. Buning uchun ko‘plab muvofiqlashtirilgan soxta hisoblar
+kerak — bu firibgarlikka qarshi tizimning (Airbnb darsi, 11-bo‘lim)
+vazifasi.
+
+### 11.2 Joylashuv — eng sezgir ma’lumot
+
+GPS izlari — odamning qayerda yashashi, ishlashi, kim bilan uchrashishi
+haqidagi ma’lumot. Mijozning safarlar tarixi uning uy manzilini, ish joyini
+va odatlarini ochib beradi. 2014-yilda Uber ichki vositasi orqali
+xodimlarning mijozlar joylashuvini ko‘rishi (“God View” deb atalgan) haqidagi
+xabarlar katta janjalga sabab bo‘ldi va keyinchalik kirish nazoratini
+kuchaytirishga olib keldi.
+
+<Deep title="ETA uchun kerak bo'lgan ma'lumot va maxfiylik chegarasi">
+Jonli tirbandlik uchun **kim** o‘tgani emas, **qancha vaqtda** o‘tgani
+kerak. Bu maxfiylik uchun kalit: ma’lumot yo‘lning boshida
+anonimlashtirilishi mumkin.
+
+```
+Xom GPS nuqtasi:      haydovchi_id, safar_id, vaqt, lat, lon, ...
+                      -> faqat map matching bosqichida, qisqa muddat
+
+Bo'lak o'tishi:       bo'lak_id, kirish_vaqti, o'tish_vaqti, holat
+                      -> haydovchi_id yo'q; faqat "turli haydovchi" sanog'i
+                         uchun qisqa muddatli xesh (soatlik tuz bilan)
+
+Agregat tezlik:       bo'lak_id, oraliq, mediana, n
+                      -> hech qanday shaxsiy ma'lumot yo'q
+```
+
+Uch qoida:
+
+**Minimal muddat.** Xom nuqtalar faqat quvur uchun kerak bo‘lgan vaqt
+saqlanadi; tarixiy tahlil uchun agregatlar yetarli.
+
+**Kichik guruhlarni yashirish.** Agar bo‘lakdan bir soatda bitta mashina
+o‘tgan bo‘lsa, “bo‘lak tezligi” aslida bitta odamning harakati. Tashqi
+ma’lumot almashinuvida (masalan, shaharlar bilan ochiq tezlik ma’lumotlari)
+kam kuzatuvli qiymatlar chiqarilmaydi — minimal `n` chegarasi.
+
+**Kirish nazorati va audit.** Xom izlarga kirish — faqat aniq sabab bilan,
+jurnalga yoziladi. Bu texnik emas, tashkiliy himoya — lekin 2014-yilgi
+voqea ko‘rsatganidek, eng muhimi aynan shu.
+</Deep>
+
+<Callout type="ogoh" title="Mijoz manzili — ETA so'rovining bir qismi">
+ETA so‘rovlari jurnallari (qaysi ikki nuqta orasida so‘ralgan) — joylashuv
+ma’lumoti. Tizim diagnostikasi uchun jurnallarni saqlash qulay, lekin
+ular sekin-asta har bir foydalanuvchining harakat xaritasiga aylanadi.
+Jurnallardagi koordinatalarni yaxlitlash (masalan, H3 8-daraja katagigacha,
+~0.7 km²), qisqa saqlash muddati va foydalanuvchi ID sini ajratish —
+diagnostika uchun deyarli hech narsa yo‘qotmaydi, xavfni esa keskin kamaytiradi.
+</Callout>
+
+<Check q="Mediana bitta soxta haydovchidan himoya qiladi. Qanday hujum baribir bo'lak tezligini buzishi mumkin va qanday himoya bor?">
+**Muvofiqlashtirilgan hujum**: ko‘plab soxta hisoblar (yoki ko‘plab
+real haydovchilar kelishib) bitta bo‘lakdan sekin o‘tganini ko‘rsatadi.
+Agar ular kuzatuvlarning yarmidan ko‘pini tashkil etsa, mediana ham
+buziladi. Motiv bo‘lishi mumkin: raqib xizmat yoki haydovchilar guruhi
+ma’lum yo‘lni “tirband” qilib ko‘rsatib, safarlarni boshqa yo‘lga
+yo‘naltirmoqchi.
+
+Himoya qatlamlari:
+
+**Mustaqil manbalar.** Bo‘lak tezligi faqat bitta turdagi kuzatuvga
+tayanmasin: haydovchilar yo‘lovchi bilan va bo‘sh, kuryerlar, tarixiy
+profil. Hujumchi hammasini birdaniga buzishi qiyin.
+
+**Tarixdan keskin og‘ish — alohida tekshiruv.** 8-qadamdagi aralashtirish
+jonli qiymatni ko‘p kuzatuvda to‘liq qabul qiladi. Lekin agar og‘ish
+g‘ayrioddiy katta bo‘lsa va qo‘shni bo‘laklar odatdagidek bo‘lsa (haqiqiy
+avariya qo‘shnilarga tarqaladi — 7.2 Deep), bu shubhali.
+
+**Hisob ishonchi.** Kuzatuvlar haydovchi hisobining yoshi va tarixiga
+qarab og‘irlik oladi: yangi, tekshirilmagan hisoblar kam ta’sir qiladi.
+
+Umumiy saboq: **olomondan olingan ma’lumot — ochiq kirish nuqtasi**. U
+qanchalik ko‘p bo‘lmasin, qarshilik ko‘rsatuvchi foydalanuvchilar uchun
+statistik himoya kerak.
+</Check>
+
+## 12. Iqtisod: bitta daqiqaning narxi
+
+ETA hisoblashning o‘zi arzon. Qimmat narsa — ETA **xatosi**. Bu bo‘limda
+ikkalasini hisoblaymiz va nima uchun Uber ETA aniqligiga katta sarmoya
+kiritishini ko‘ramiz.
+
+<Calc title="Bitta ETA qancha turadi" result="Bitta safarning barcha ETA'lari ~0.001 sentdan kam — hisob xarajati ahamiyatsiz">{`Bitta ETA: marshrut ~1-2 ms + model ~1-3 ms (to'plamda) -> ~3-5 ms CPU
+O'rtacha yuk: ~100 000 ETA/s (1.3)
+  -> 100 000 x 0.004 s = 400 yadro o'rtacha
+  cho'qqi (3x) va zaxira (2x) bilan: ~2 000-2 500 yadro
+
+Narx: ~0.03 $/yadro-soat (bulut, katta hajmda)
+  2 500 x 0.03 x 24 x 365 = ~0.66 M $/yil
+
+Bitta safarga: 0.66 M $ / 11 mlrd safar = ~0.00006 $
+  (+ GPS quvuri, ML o'qitish, xarita — bir necha barobar ko'p, lekin
+  baribir safar narxining mingdan biridan ham kam)`}</Calc>
+
+<Calc title="Aniqlikning qiymati: dispetcherlik samaradorligi" result="Kelish vaqtini atigi 5% qisqartirish yiliga yuz millionlab dollarlik haydovchi vaqtini tejaydi">{`Kuniga ~31 M safar, o'rtacha kelish vaqti (pickup) ~5 daqiqa
+  -> kuniga ~155 M daqiqa haydovchi bo'sh yurishi mijozgacha
+
+Aniqroq ETA -> dispetcherlik yaxshiroq haydovchini tanlaydi (12-qadam)
+  kelish vaqti 5% qisqarsa: 155 M x 0.05 = ~7.8 M daqiqa/kun
+
+Haydovchi vaqtining qiymati (faraz): ~0.25-0.30 $/daqiqa
+  7.8 M x 0.27 = ~2.1 M $/kun -> ~770 M $/yil
+
+Qo'shimcha: kamroq bekor qilishlar (mijoz uzoq kutmaydi),
+  ko'proq safar soatiga -> haydovchi daromadi va taklif o'sadi`}</Calc>
+
+Ikki hisob nisbati — ETA iqtisodining mohiyati: **hisob narxi va aniqlik
+qiymati o‘rtasida uch-to‘rt tartib farq bor**. Model 10 barobar qimmat
+bo‘lib, xatoni 1% kamaytirsa ham, bu foydali. Shuning uchun DeepETA
+kabi og‘irroq model — kechikish byudjetiga sig‘sa — iqtisodiy jihatdan
+aniq qaror.
+
+<Deep title="Oldindan narx: ETA xatosining moliyaviy xavfi">
+Ko‘p bozorlarda mijoz safar narxini **oldindan** ko‘radi va to‘laydi,
+haydovchi esa (ko‘p hollarda) haqiqiy vaqt va masofa bo‘yicha oladi.
+Ular orasidagi farq — platformaning xavfi.
+
+```
+Narx formulasi (soddalashtirilgan):
+  narx = asosiy + a x masofa + b x vaqt,   b = 0.2 $/daqiqa
+
+Bashorat: 25 daqiqa -> vaqt qismi 5.0 $
+Haqiqat: 32 daqiqa  -> haydovchiga vaqt qismi 6.4 $
+Farq: 1.4 $ platforma zarari (bitta safarda)
+
+Agar ETA muntazam 10% kam bo'lsa (bias -10%):
+  o'rtacha safar 20 daq -> 2 daq x 0.2 $ = 0.4 $ har safarda
+  31 M safar/kun x (faraz: 50% oldindan narxli) x 0.4 $ = ~6 M $/kun
+```
+
+Shuning uchun **bias** (8.3) — faqat mijoz tajribasi masalasi emas,
+bevosita moliyaviy ko‘rsatkich. Muntazam kam ko‘rsatuvchi ETA har kuni
+millionlab dollar yo‘qotadi; muntazam ko‘p ko‘rsatuvchi esa narxni
+oshirib, mijozlarni raqobatchilarga yuboradi.
+
+Bu yerdan 16-bo‘limdagi asimmetrik yo‘qotish g‘oyasi kelib chiqadi: xato
+narxi yo‘nalishga bog‘liq bo‘lsa, model ham yo‘nalishga qarab turlicha
+jazolanishi kerak. Va turli iste’molchilar uchun (narx, mijoz ekrani,
+dispetcherlik) “eng yaxshi” bashorat turlicha bo‘lishi mumkin: narx
+uchun — mediana yoki biroz yuqori kvantil, dispetcherlik uchun — o‘rtacha.
+</Deep>
+
+<Callout type="info" title="Haydovchi tomoni ham ETA'dan foydalanadi">
+ETA faqat mijoz uchun emas. Haydovchi ilovasi safarni qabul qilishdan
+oldin “olib ketishgacha 6 daqiqa, safar 25 daqiqa” ni ko‘rsatadi —
+haydovchi shu asosda qaror qiladi. Noto‘g‘ri ETA haydovchini ham aldaydi:
+“qisqa safar” deb qabul qilgan buyurtma bir soatga cho‘zilsa, haydovchi
+keyingi safar uchun kutgan hududdan uzoqlashadi. Ikki tomonlama bozorda
+ETA aniqligi har ikki tomonning ishonchiga ta’sir qiladi.
+</Callout>
+
+## 13. Sig‘im rejalashtirish
+
+### 13.1 Marshrut serverlari: hudud bo‘yicha bo‘lish
+
+Graf kichik (1.3), lekin **dunyo** grafi va unga bog‘liq ma’lumotlar
+(bo‘laklar, profillar, sozlangan og‘irliklar) bitta serverga sig‘ishi
+qiyin, va sig‘sa ham — samarasiz: Toshkentdagi so‘rov uchun Braziliya
+yo‘llari kerak emas. Tabiiy bo‘lish — **hudud** (shahar yoki metropoliya).
+
+<Calc title="Bitta hudud serveri" result="Katta metropoliya uchun ~1-2 GB xotira; so'rovlarning 99%+ bitta hudud ichida — hududlararo safar alohida yo'l">{`Katta metropoliya: ~1 M tugun, ~2.5 M qirra
+  graf (CSR): ~40 MB
+  CRP bo'laklar va chegara jadvallari (bir necha daraja): ~100-200 MB
+  haftalik profillar (siqilgan, 8-qadam): ~10 MB
+  jonli og'irliklar (har daqiqa yangilanadi): ~10 MB
+  H3 indekslar, geometriya (xarita chizish uchun): ~500 MB-1 GB
+  -> ~1-2 GB
+
+Yuk: shahar ulushiga qarab, masalan 5% -> ~5 000 ETA/s o'rtacha,
+  cho'qqida ~15 000/s; bitta server (32 yadro) ~5 000-8 000/s
+  -> 3-4 server + zaxira zonalarda -> ~8 server
+
+Hududlararo safar (aeroport boshqa hududda, shaharlararo): ~0.5-1%
+  -> alohida "katta" graf serverlari (magistrallar va chegaralar)`}</Calc>
+
+### 13.2 GPS quvuri
+
+<Calc title="Map matching quvuri sig'imi" result="~375 ming nuqta/s -> bir necha yuz yadro; Kafka bo'limlari haydovchi bo'yicha, holat izchil">{`Kiruvchi nuqtalar: ~375 000/s (1.3), cho'qqida ~500 000/s
+
+Map matching (Viterbi, 5-bo'lim 6-qadam), bitta nuqta:
+  nomzod yo'llar (geo-indeks): ~20 mks
+  o'tish ehtimollari (3-5 x 3-5 kichik qidiruv): ~100-300 mks
+  -> ~0.3 ms/nuqta
+  500 000 x 0.0003 = 150 yadro, zaxira bilan ~300-400 yadro
+
+Kafka bo'limlash kaliti: haydovchi_id
+  -> bitta haydovchining nuqtalari bitta bo'limda, tartib bilan
+  -> Viterbi holati (oxirgi nuqtalar) bitta ishchida qoladi
+
+Bo'lak agregatsiyasi: kalit — bo'lak_id (qayta bo'limlash)
+  -> ~100 000 bo'lak/shahar, har daqiqa mediana: arzimas`}</Calc>
+
+Ikki xil bo‘limlash kaliti — **haydovchi** va **bo‘lak** — oqimli
+tizimlarning klassik naqshi. Map matching haydovchi izining ketma-ketligini
+talab qiladi (holat — izning oxiri), agregatsiya esa bo‘lak bo‘yicha
+yig‘ishni. Ular orasida qayta bo‘limlash (Kafka mavzusidan boshqa
+mavzuga) turadi. Bu WhatsApp darsidagi “foydalanuvchi bo‘yicha va guruh
+bo‘yicha” ikki xil kalitga o‘xshaydi.
+
+<Deep title="Hudud serverlarida og'irliklar versiyasi">
+Har daqiqada yangi jonli og‘irliklar keladi va har hudud serveri ularni
+sozlaydi (5-qadam). Savol: bir hududning 8 ta serveri **bir vaqtda**
+yangi versiyaga o‘tishi kerakmi?
+
+Agar yo‘q bo‘lsa: bitta mijozning ikki ketma-ket so‘rovi (bir soniya
+farq bilan) turli serverlarga tushib, turli ETA oladi: “6 daqiqa”, keyin
+“8 daqiqa”, keyin yana “6”. Ekranda raqam “sakraydi” — ishonchsiz ko‘rinadi.
+
+Yechimlar:
+
+```
+1. Versiyali og'irliklar:
+   har yangilanish — versiya raqami (masalan, daqiqa belgisi)
+   so'rov "v=17:42" bilan keladi, server shu versiyani ishlatadi
+   serverlar oxirgi 2-3 versiyani saqlaydi
+   -> bir mijozning so'rovlari izchil
+
+2. Yopishqoq marshrutlash:
+   bitta seans so'rovlari bitta serverga (seans ID bo'yicha xesh)
+   -> oddiy, lekin server yiqilsa — sakrash
+
+3. Ekranda silliqlash:
+   ilova yangi ETA ni darhol emas, sekin o'zgartiradi
+   (6 -> 7 -> 8, keskin sakrashsiz), katta farqni esa darhol
+```
+
+Uchinchisi texnik izchillik emas, **idrok** izchilligi — va ko‘pincha
+eng arzon va eng samarali. Birinchisi esa narx va dispetcherlik uchun
+muhim: bitta qarorning barcha ETA’lari (20 nomzod) bitta versiyadan
+bo‘lishi kerak, aks holda taqqoslash noto‘g‘ri.
+</Deep>
+
+<Check q="Nega ETA uchun marshrut serverlari hudud bo'yicha bo'linadi, lekin DeepETA modeli global (bitta model hamma shahar uchun)?">
+Chunki ular turli resursga tayanadi.
+
+**Marshrutlash — ma’lumotga bog‘liq.** Har so‘rov o‘sha hudud grafini,
+og‘irliklarini va indekslarini talab qiladi. Hamma hududni har serverga
+yuklash xotira va yangilanish (har daqiqa hamma hudud og‘irliklari)
+jihatidan isrof. Hudud bo‘yicha bo‘lish so‘rovlarning 99%+ ini bitta
+server ichida hal qiladi.
+
+**Model — parametrga bog‘liq.** DeepETA’ning parametrlari (embeddinglar,
+transformer og‘irliklari) hamma shahar uchun umumiy, va shahar faqat
+kiritma belgisi (hamda geo-katak embeddinglari). Global model kichik
+shaharlarga katta shaharlardan o‘rganilgan umumiy qonuniyatlarni
+o‘tkazadi — yangi shaharda ham darhol ishlaydi. Model hajmi har
+serverga sig‘adi, va u daqiqalarda emas, kunlarda yangilanadi.
+
+Kichik nozik jihat: global modelning **geo embedding** jadvallari katta
+bo‘lishi mumkin (millionlab katak). Ular ham xeshlanadi (11-qadam Deep)
+va hajm cheklangan bo‘ladi.
+
+Umumiy qoida: **tez o‘zgaradigan va joyga bog‘liq ma’lumotni bo‘ling,
+sekin o‘zgaradigan va umumiy bilimni nusxalang.**
+</Check>
+
+## 14. Kuzatuv: haqiqat kech keladi
+
+### 14.1 Metrikalar
+
+| Qatlam | Metrika | Nima uchun |
+| --- | --- | --- |
+| Aniqlik | MAE, bias, p90, kam ko‘rsatish ulushi — shahar, tur, masofa bo‘yicha | Asosiy sifat; segmentlarda yashiringan yomonlashuv |
+| Zaxira | Har pog‘ona ulushi (10.1) | Model yoki marshrutlash muammosining erta belgisi |
+| Kechikish | ETA servisi p50/p99, dispetcherlik to‘plamlari | Byudjet (11-qadam) buzilsa — zaxiraga o‘tish ko‘payadi |
+| Yangilik | GPS nuqtasidan og‘irlikkacha kechikish | Jonli ma’lumot eskirishi — avariyalar kech ko‘rinadi |
+| Qamrov | Jonli kuzatuvli bo‘laklar ulushi | Tunda va kichik shaharlarda tarixga tayanish darajasi |
+| Kiritmalar | Model belgilarining taqsimoti (kun va kechagi bilan) | Belgi quvuri buzilsa — model “ko‘r” bo‘ladi |
+| Biznes | Kutish vaqti, bekor qilishlar, bo‘sh yurish | ETA o‘zgarishining haqiqiy ta’siri |
+
+Jadvaldagi asosiy muammo — **aniqlik metrikalari kech keladi**. Safar ETA’sining
+xatosi faqat safar tugagandan keyin (20–40 daqiqa) ma’lum. Agar model
+bugun soat 14:00 da buzilgan bo‘lsa, aniqlik grafigi buni 14:30 da ko‘rsatadi.
+
+<Calc title="Haqiqat kechikishi va erta signallar" result="Aniqlik metrikasi 30-40 daqiqa kech; kiritmalar va zaxira metrikalari muammoni 1-2 daqiqada ko'rsatadi">{`14:00 — belgilar quvurida xato: "hudud tezligi" belgisi 0 bo'lib qoldi
+Model shu belgiga tayanadi -> ETA lar muntazam 15% kam
+
+Kelish ETA si xatosi (pickup) ma'lum bo'ladi: ~5-8 daqiqadan keyin
+  statistik ahamiyatli signal uchun: ~500 safar -> katta shaharda ~2 daq
+  -> 14:10 atrofida ko'rinadi
+Safar ETA si xatosi: ~25 daqiqadan keyin -> 14:30
+
+Erta signallar:
+  belgi taqsimoti: "hudud tezligi = 0" ulushi 0% dan 100% ga -> 14:01
+  bashorat taqsimoti: o'rtacha ETA 15% tushdi (tirbandlik o'zgarmasa) -> 14:02
+Xulosa: "kiritma va chiqish taqsimoti" monitoringi aniqlikdan
+  ~10-30 daqiqa oldin ogohlantiradi`}</Calc>
+
+### 14.2 Kiritmalar va chiqishlar monitoringi
+
+Erta signallarning ikki turi bor. **Kiritma monitoringi**: har belgi
+uchun taqsimot (o‘rtacha, nollar ulushi, bo‘sh qiymatlar) hozirgi soat
+va o‘tgan haftaning shu soati bilan solishtiriladi. **Chiqish monitoringi**:
+bashorat qilingan ETA’larning taqsimoti — masalan, marshrut ETA’si va
+yakuniy ETA nisbati. Agar model birdaniga katta tuzatishlar bera boshlasa,
+bu ham signal.
+
+<Deep title="Model tuzatishini cheklash — xavfsizlik to'ri">
+Kiritma buzilganda model **ishonch bilan noto‘g‘ri** javob berishi mumkin:
+“hudud tezligi 0” belgisi uni “ekstremal tirbandlik” deb o‘ylashga
+majbur qiladi va 10 daqiqalik safarga +40 daqiqa tuzatish qo‘shadi.
+
+Oddiy himoya — qoldiqni cheklash:
+
+```
+q = model(belgilar)                      # bashorat qilingan qoldiq
+chegara = max(2 daq, 0.5 x marshrut_ETA)  # masalan
+q = min(max(q, -chegara), +chegara)
+yakuniy = marshrut_ETA + q
+```
+
+Qo‘shimcha — **cheklash hisoblagichi**: qancha ulush so‘rovda qoldiq
+chegaraga urildi. Odatda bu 0.1% atrofida (haqiqatan g‘ayrioddiy
+holatlar). Agar 10% ga chiqsa — belgilar buzilgan, avtomatik ravishda 2-pog‘onaga
+(faqat marshrut) o‘tish mumkin.
+
+Bu 10-qadamdagi “nega qoldiq” tanlovining yana bir foydasi: qoldiq
+modelini cheklash tabiiy — “marshrutdan ko‘p farq qilma”. Noldan
+bashorat qiluvchi modelni esa nima bilan cheklash kerakligi aniq emas.
+</Deep>
+
+<Callout type="xato" title="Shahar bo'yicha o'rtacha — muammoni yashiradi">
+Global dashboard: “ETA MAE: 1.3 daqiqa, barqaror”. Ayni paytda bitta
+shaharda (umumiy safarlarning 0.5% i) yangi xarita yangilanishi ko‘prikni
+yopiq deb belgilagan va hamma ETA 8 daqiqa ko‘p. Global o‘rtacha buni
+sezmaydi: 0.5% × 8 = 0.04 daqiqa. Monitoring **segmentlar** bo‘yicha
+bo‘lishi kerak — har shahar, har mahsulot, har ETA turi — va ogohlantirish
+har segmentning **o‘z** odatiy qiymatidan og‘ishiga qarab. Aks holda
+kichik bozorlar “o‘rtacha”da yo‘qoladi.
+</Callout>
+
+<Check q="Aniqlik metrikasi safar tugagandan keyin keladi. Model yangilanishini qanday qilib xavfsiz chiqarish mumkin?">
+Bosqichma-bosqich va har bosqichda **erta** signallar bilan.
+
+**Soya rejimi**: yangi model har so‘rovda hisoblaydi, natijasi yoziladi,
+lekin ishlatilmaydi. Bir necha kun davomida uning bashoratlari haqiqat
+bilan solishtiriladi — segmentlar bo‘yicha (8.3). Bu bosqichda xavf nol.
+
+**Kichik ulush va erta signallar**: model so‘rovlarning 1% ida ishlatiladi.
+Aniqlikni kutmasdan, darhol ko‘rinadigan narsalar kuzatiladi: kechikish,
+qoldiq taqsimoti, cheklash hisoblagichi (14.2 Deep), zaxira ulushi. Ular
+muammoni daqiqalarda ko‘rsatadi.
+
+**Aniqlik va biznes ko‘rsatkichlari**: bir necha soat yoki kun ichida
+MAE va bias (kelish ETA’si birinchi, chunki tez keladi), keyin switchback
+tajribasida (8.4) kutish va bekor qilishlar.
+
+**Tez qaytarish**: har bosqichda bitta tugma bilan eski modelga qaytish.
+Model versiyasi har bir ETA javobiga yoziladi — shunda keyinroq aniqlangan
+muammo qaysi versiyadan kelgani ma’lum.
+
+Qoida: **natija kech keladigan tizimda, sabab erta ko‘rinadigan
+signallarni kuzating**. Aniqlikni kutish — muammoni 30 daqiqa yoki bir
+kun kech ko‘rish.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Haydovchini masofa bo'yicha tanlash", pro: "Arzon, grafsiz, tushunarli", con: "Daryo, bir tomonlama ko'cha, tirbandlik — muntazam noto'g'ri tanlov (1.3 Check, 4.1)" },
+    { choice: "Og'irlik = tezlik chegarasi", pro: "Xaritada tayyor, ma'lumot yig'ish shart emas", con: "Cho'qqi soatda ETA 2-3 barobar kam (4.2)" },
+    { choice: "Har GPS nuqtasini alohida eng yaqin yo'lga biriktirish", pro: "Oddiy va tez", con: "Parallel yo'llar aralashadi, bo'lak tezliklari 5-10 barobar buziladi (4.4)" },
+    { choice: "Evristikani o'rtacha tezlik bilan hisoblash (A*)", pro: "Qidiruv tezroq tugaydi", con: "Evristika optimistik emas — javob ba'zan eng tez yo'l emas, testlarda sezilmaydi (2-qadam)" },
+    { choice: "ML modeli ETA ni noldan bashorat qiladi", pro: "Bitta model, 'hamma narsani o'zi o'rganadi'", con: "Yopilgan ko'prikni bilmaydi, kam ma'lumotli joylarda yomon, zaxirasi yo'q (14-qadam Check)" },
+  ]}
+/>
+
+**Birinchi qator** — v0 ning merosi va eng uzoq yashaydigan antinaqsh,
+chunki u **o‘rtacha** to‘g‘ri. Muammo o‘rtachada emas, qarorda: dispetcherlik
+taqqoslaydi, va taqqoslash tizimli xatolarga sezgir (4-bo‘lim Check).
+Bu antinaqshning chuqur sababi — **arzon proksi o‘lchovni** (masofa)
+haqiqiy maqsad (vaqt) o‘rniga optimallashtirish.
+
+**Ikkinchi qator** — ma’lumot yig‘ishdan qochish. Tezlik belgisi tayyor
+turibdi, haqiqiy tezlik esa GPS quvuri, map matching va agregatsiyani
+talab qiladi. Lekin ETA tizimining butun qiymati aynan shu quvurda:
+algoritm hamma uchun bir xil (Dijkstra ochiq), ma’lumot esa — faqat sizda.
+
+**Uchinchi qator** qiziq, chunki xato faqat ma’lumotda ko‘rinadi, kodda
+emas. Biriktirish funksiyasi to‘g‘ri ishlaydi — nuqtaga eng yaqin yo‘lni
+topadi. Lekin savol noto‘g‘ri qo‘yilgan: “bu nuqta qaysi yo‘lga eng yaqin”
+emas, “bu **iz** qaysi yo‘ldan o‘tgan”. Ketma-ketlikka qarash (HMM) —
+alohida nuqtalarga qarashdan farqli savol.
+
+**To‘rtinchi qator** — eng nozik va eng xavfli, chunki natija **deyarli**
+to‘g‘ri. Optimistik bo‘lmagan evristika bilan A* 98% hollarda eng tez
+yo‘lni topadi, 2% da 3–5% uzunroq yo‘lni. Hech bir aniq test buni
+ushlamaydi; faqat tasodifiy juftliklarda Dijkstra bilan solishtirish
+(amaliyotdagi kabi) ko‘rsatadi.
+
+**Beshinchi qator** — “ML hamma narsani hal qiladi” tuzog‘i. 14-qadamdagi
+Check uning uch zaif tomonini ko‘rsatdi. Gibrid yondashuv kamroq
+“chiroyli”, lekin fizikani (graf, jonli og‘irliklar) va o‘rganishni
+(qoldiq) to‘g‘ri ajratadi.
+
+<Deep title="Vaqtga bog'liq og'irliklar va FIFO buzilishi">
+9-qadamda vaqtga bog‘liq Dijkstra FIFO shartini talab qilgan edi: bo‘lakka
+kechroq kirgan kechroq chiqadi. Bu shart buzilsa nima bo‘ladi?
+
+```
+Bo'lak e: w(e, t)
+  17:00 da kirilsa: 10 daqiqa (tirbandlik) -> chiqish 17:10
+  17:02 da kirilsa: 3 daqiqa (tirbandlik tarqaldi) -> chiqish 17:05
+```
+
+Bu yerda **kutish foydali**: 17:00 da kirish o‘rniga 2 daqiqa kutib,
+17:05 da chiqish mumkin. Oddiy vaqtga bog‘liq Dijkstra buni bilmaydi —
+u har tugunga eng erta yetish vaqtini saqlaydi va “kutish” variantini
+ko‘rmaydi, shuning uchun noto‘g‘ri (kechroq) javob beradi.
+
+Haqiqiy yo‘llarda FIFO deyarli har doim bajariladi (bir-birini quvib
+o‘tish cheklangan), lekin **profillar** buni buzishi mumkin: 15 daqiqalik
+oraliqlar orasida keskin sakrash (17:00 — 10 daqiqa, 17:15 — 3 daqiqa)
+yuqoridagi vaziyatni sun’iy yaratadi. Shuning uchun profillar oraliqlar
+chegarasida **chiziqli interpolyatsiya** qilinadi va “o‘tish vaqti
+qiyaligi -1 dan kichik bo‘lmasin” sharti bilan silliqlanadi.
+
+Bu klassik holat: to‘g‘ri algoritm **ma’lumotga qo‘yilgan shartga**
+tayanadi, va shart ma’lumot quvurining bir joyida jim buziladi. Himoya —
+shartni ma’lumot yuklanganda tekshirish (validatsiya), algoritmdan oldin.
+</Deep>
+
+<Callout type="xato" title="Oltinchi antinaqsh: mijozni xursand qilish uchun ETA ni kamaytirish">
+“Kichik ETA ko‘rsatsak, mijoz kutishga rozi bo‘ladi va konversiya oshadi.”
+Qisqa muddatda — ha: ekranda 3 daqiqa ko‘rgan mijoz buyurtma beradi. Lekin
+mashina 7 daqiqada keladi, mijoz hafsalasi pir bo‘ladi, keyingi safar
+ETA’ga ishonmaydi va boshqa ilovani ham ochib solishtiradi. Bundan tashqari,
+kam ko‘rsatilgan safar ETA’si oldindan narxni kamaytiradi va platforma
+har safardan zarar ko‘radi (12-bo‘lim Deep). ETA — va’da. Uni
+marketing vositasiga aylantirish ishonchni yeydi, va ishonch tiklanishi
+buzilishidan ancha sekin.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Contraction Hierarchies (statik)", pro: "Eng tez qidiruv, oddiy qidiruv kodi", con: "Og'irlik o'zgarsa — daqiqalik qayta qurish; jonli tirbandlik yo'q" },
+    { choice: "CRP / CCH (moslashtiriladigan)", pro: "Jonli og'irliklar soniyalarda; qidiruv baribir ms", con: "Uch bosqichli tizim; qidiruv CH dan 2-5x sekinroq" },
+    { choice: "Qisqa jonli oyna (2 daq)", pro: "Avariya tez ko'rinadi", con: "Shovqinli; kam kuzatuvli bo'laklarda sakraydi" },
+    { choice: "Uzun jonli oyna (15 daq)", pro: "Barqaror, ishonchli", con: "Avariya 7-8 daqiqa kech; tirbandlik tarqalgandan keyin ham 'tirband'" },
+    { choice: "Daraxtlar ansambli", pro: "Tez o'qitiladi, talqin qilinadi, arzon xizmat", con: "Kategoriyalar va o'zaro ta'sirlarda cheklangan; o'sgan sari foyda kamayadi" },
+    { choice: "Neyron tarmoq (DeepETA)", pro: "Aniqroq, global model, embedding'lar", con: "Kechikish byudjeti uchun arxitektura cheklovlari; o'qitish qimmat" },
+  ]}
+/>
+
+Jadvaldagi har juftlik bitta o‘qda yotadi: **yangilik va barqarorlik**.
+Statik CH va uzun oyna — barqaror, lekin eskirgan. Moslashtiriladigan
+marshrutlash va qisqa oyna — yangi, lekin murakkab yoki shovqinli.
+Yaxshi tizim bitta nuqtani tanlamaydi: katta ko‘chalarda qisqa oyna,
+kichiklarida uzun (8-qadamdagi aralashtirish buni avtomatik qiladi);
+yaqin kelajak uchun jonli, uzoq kelajak uchun tarixiy (9-qadam).
+
+<Deep title="Asimmetrik yo'qotish: kech kelish va erta kelish bir xil emas">
+Oddiy regressiya o‘rtacha kvadratik xatoni (MSE) yoki o‘rtacha mutlaq
+xatoni (MAE) minimallashtiradi. Ikkalasi ham simmetrik: 2 daqiqa
+kam ko‘rsatish va 2 daqiqa ko‘p ko‘rsatish bir xil jazolanadi.
+
+Lekin 12-bo‘lim va 14-qadam ko‘rsatganidek, xato narxi yo‘nalishga
+bog‘liq. **Huber** yo‘qotishi kichik xatolarda kvadratik (silliq
+o‘qitish), katta xatolarda chiziqli (chiqib ketishlarga chidamli). Uning
+asimmetrik varianti ikki tomonga turli og‘irlik beradi:
+
+```
+xato r = haqiqat - bashorat
+Huber(r) = 0.5 x r^2               agar |r| <= delta
+           delta x (|r| - 0.5 x delta)   aks holda
+
+Asimmetrik: L(r) = w x Huber(r)        agar r > 0 (kam ko'rsatdik, kech keldi)
+                   (1 - w) x Huber(r)  agar r <= 0 (ko'p ko'rsatdik)
+
+w = 0.5 -> simmetrik (o'rtachaga yaqin)
+w = 0.7 -> kam ko'rsatish 2.3 barobar qimmat -> bashorat yuqori kvantilga siljiydi
+```
+
+`w` ni tanlash — biznes qarori: mijoz ekrani uchun biroz yuqoriroq
+(“va’dadan erta kelish” — yoqimli), dispetcherlik uchun simmetrik (taqqoslash
+to‘g‘ri bo‘lsin), narx uchun — moliyaviy xavfga qarab. DeepETA’dagi
+so‘rov turi bo‘yicha dekodlovchi (11-qadam) bitta modelda turli
+iste’molchilar uchun turli moslashuvga yo‘l ochadi.
+
+Bu tanlovning oqibati — **bias ataylab noldan farq qiladi**. 8.3-dagi
+“bias nolga yaqin bo‘lsin” talabi simmetrik holat uchun; asimmetrik
+yo‘qotish bilan kutilgan bias — tanlangan kvantilga mos. Monitoring
+(14.1) shu kutilgan qiymatdan og‘ishni kuzatadi, noldan emas.
+</Deep>
+
+<Callout type="maslahat" title="Qaysi metrikani optimallashtiryapsiz?">
+ETA — bitta raqam, lekin uning to‘rtta iste’molchisi bor: mijoz ekrani
+(ishonch), dispetcherlik (taqqoslash to‘g‘riligi), narx (moliyaviy
+xavf) va Eats (kuryer va taom vaqti). Ularning har biri uchun “eng
+yaxshi” bashorat turlicha. Bitta metrikani (masalan, global MAE)
+optimallashtirish ulardan birini albatta yomonlashtiradi. Intervyuda
+“ETA’ni qanday baholaysiz?” deb so‘ralsa, avval “ETA kim uchun?”
+deb so‘rang — javob bitta raqam emas, iste’molchilar bo‘yicha jadval.
+</Callout>
+
+## 17. Intervyu savollari
+
+<Callout type="info" title="ETA savoliga qanday yondashish">
+“Uber ETA’ni loyihalang” savolida birinchi 5 daqiqa algoritmga emas,
+**ikkita ajratishga** ketsin: (1) marshrutlash va og‘irliklar — fizika;
+ML — qolgan xato; (2) so‘rov yo‘li (millisekundlar, yuz minglab/s) va
+ma’lumot yo‘li (GPS oqimi, daqiqalar). Keyin raqamlar: safarlar, ETA
+so‘rovlari soni, graf hajmi. Shundan keyin algoritm tanlovi tabiiy
+kelib chiqadi: Dijkstra yetmasligi hisobdan ko‘rinadi.
+</Callout>
+
+### 17.1 Algoritmlar
+
+<QA q="Dijkstra algoritmi qanday ishlaydi va nega u yo'l grafida to'g'ri javob beradi?">
+Manbadan boshlab tugunlarni masofa tartibida “o‘rnatadi”: har qadamda
+navbatdagi eng kichik masofali tugun olinadi, uning qo‘shnilari
+yangilanadi. To‘g‘rilik manfiy bo‘lmagan og‘irliklarga tayanadi: agar
+`u` navbatdan eng kichik masofa bilan chiqqan bo‘lsa, unga boshqa yo‘l
+qisqaroq bo‘lishi mumkin emas, chunki har qanday boshqa yo‘l hozir
+navbatdagi kattaroq masofali tugundan o‘tadi va og‘irliklar faqat qo‘shadi.
+Yo‘l grafida og‘irlik — vaqt, u har doim musbat. Murakkablik — ustuvor
+navbat bilan O((V + E) log V). Javob manzil navbatdan chiqqanda aniq,
+unga birinchi yetilganda emas.
+</QA>
+
+<QA q="A* qanday ishlaydi va evristika qanday shartni qanoatlantirishi kerak?">
+Navbat tartibi `d(u) + h(u)` bo‘yicha, bu yerda `h(u)` — `u` dan manzilgacha
+qolgan masofaning bahosi. Qidiruv manzil tomonga cho‘ziladi. Shart —
+evristika optimistik (admissible) bo‘lishi: hech qachon haqiqiy qolgan
+masofadan katta emas. Yo‘l vaqti uchun: to‘g‘ri chiziq masofasi ÷ grafdagi
+eng yuqori tezlik. Agar o‘rtacha tezlik ishlatilsa, baho ba’zan haqiqatdan
+katta bo‘ladi va A* eng tez yo‘lni o‘tkazib yuborishi mumkin. Shaharda
+foyda cheklangan (~2 barobar), chunki eng yuqori tezlik haqiqiydan ancha
+yuqori va baho zaif; landmark’lar (ALT) bahoni ancha yaxshilaydi.
+</QA>
+
+<QA q="Ikki tomonlama Dijkstra'da qachon to'xtash kerak?">
+Ikki to‘lqin birinchi uchrashganda emas. Topilgan eng yaxshi yo‘l `mu`
+ikki qidiruv kesishgan har bir qirrada yangilanadi, va to‘xtash sharti:
+oldinga navbat boshi + orqaga navbat boshi ≥ `mu`. Birinchi uchrashuv
+nuqtasi orqali o‘tgan yo‘l eng qisqasi bo‘lmasligi mumkin — boshqa,
+hali o‘rnatilmagan tugunlar orqali qisqaroq yo‘l bo‘lishi mumkin. Bu xato
+kichik testlarda sezilmaydi, tasodifiy grafdagi taqqoslashda chiqadi.
+Foyda: ikki r/2 radiusli doira bitta r radiusli doiraning yarmi —
+~2 barobar kam tugun.
+</QA>
+
+<QA q="Contraction Hierarchies'ni tushuntiring. Nega u tez?">
+Oldindan hisoblash: tugunlar muhimlik tartibida birma-bir qisqartiriladi
+va eng qisqa yo‘llarni saqlash uchun yorliqlar qo‘shiladi. Natijada
+har qanday eng qisqa yo‘l “yuqoriga — cho‘qqi — pastga” shaklida
+ifodalanadi. Qidiruv — ikki tomonlama, lekin har ikki tomon faqat
+yuqoriga yuradi; tepada tugunlar kam, shuning uchun bir necha yuz tugun
+ko‘riladi. Kontinental grafda Dijkstra soniyalar, CH — 0.1–1 ms.
+Narxi: oldindan hisoblash daqiqalar, qirralar ~2 barobar, va og‘irliklar
+o‘zgarsa ierarxiya eskiradi.
+</QA>
+
+<QA q="Jonli tirbandlikni tez qidiruv bilan qanday birlashtirasiz?">
+Oldindan hisoblashni ikkiga bo‘laman: og‘irlikka bog‘liqmas **tuzilma**
+(grafni bo‘laklarga bo‘lish, tugunlar tartibi — xarita o‘zgarganda) va
+tez **sozlash** (og‘irliklardan bo‘lak chegaralari orasidagi masofalarni
+hisoblash — har daqiqada, soniyalarda). Bu CRP va CCH g‘oyasi. Jonli
+tezliklar faqat o‘zgargan bo‘laklarni qayta sozlaydi. Qidiruv CH dan
+biroz sekin, lekin millisekundlarda qoladi. Uch tezlik — xarita
+(haftalar), og‘irliklar (daqiqalar), so‘rovlar (millisekundlar) — uch
+bosqich.
+</QA>
+
+<QA q="Map matching nima va nega har nuqtani eng yaqin yo'lga biriktirish yetmaydi?">
+GPS nuqtalari ketma-ketligini yo‘l bo‘laklari ketma-ketligiga aylantirish.
+Nuqtalarni alohida biriktirsak, parallel yo‘llar (magistral va xizmat
+yo‘li) aralashadi, nuqta “sakraydi” va tezliklar buziladi. To‘g‘ri
+yondashuv — yashirin Markov modeli: emissiya ehtimoli (nuqta yo‘ldan
+qancha uzoq, GPS xatosi normal taqsimlangan), o‘tish ehtimoli (yo‘l
+bo‘yicha masofa to‘g‘ri chiziq masofasiga qanchalik yaqin). Viterbi
+eng ehtimolli ketma-ketlikni tanlaydi. Narxi — hisob va oxirgi
+nuqtalarning kechikkan aniqlanishi.
+</QA>
+
+<QA q="H3 nima va nega olti burchak?">
+Uber’ning ierarxik geo-indeksi: Yer 16 darajada olti burchakli
+kataklarga bo‘linadi, har daraja taxminan 7 barobar mayda. Katak — 64-bitli
+son, shuning uchun indeks oddiy xesh jadval. Olti burchakning afzalligi —
+hamma 6 qo‘shni markazdan bir xil masofada; kvadrat to‘rda burchak
+qo‘shnilari 1.41 barobar uzoq. Natijada “k halqa” doiraga yaqin, va
+harakat, talab, narx kabi hodisalar yo‘nalishga bog‘liq buzilishsiz
+modellashtiriladi. Ishlatilishi: yaqin haydovchilar, talab va taklif
+xaritasi, narx hududlari, tarixiy ETA matritsasi.
+</QA>
+
+<QA q="Dispetcherlik uchun 30 mijoz va 100 haydovchi orasidagi ETA'larni qanday tez hisoblaysiz?">
+3 000 ta alohida qidiruv emas. Ko‘p-ga-ko‘p usul: CH ustida har
+haydovchidan bitta yuqoriga qidiruv, har mijozdan bitta orqaga qidiruv,
+va uchrashuv tugunlarida “chelaklar” — natijada ~130 qidiruv narxi.
+Keyin ML qoldig‘i butun matritsa uchun bitta to‘plamda. Tayinlash —
+Venger algoritmi yoki min-cost flow, umumiy kutishni minimallashtirish.
+Butun oyna bir necha yuz millisekundga sig‘adi, shuning uchun so‘rovlar
+bir necha soniya yig‘iladi.
+</QA>
+
+<QA q="Vaqtga bog'liq marshrut nima va qachon kerak?">
+Qirra og‘irligi — unga kirish vaqtining funksiyasi. Qidiruvda har
+tugunga yetish vaqti saqlanadi va keyingi qirra shu vaqt uchun
+hisoblanadi. Uzun safarlarda muhim: 40 daqiqalik safarning oxirgi
+bo‘laklariga cho‘qqi soatda yetiladi, va hozirgi “surat” ularni kam
+ko‘rsatadi (~15%). Shart — FIFO: kechroq kirgan kechroq chiqadi; aks
+holda oddiy algoritm noto‘g‘ri. Jonli ma’lumot yaqin kelajak uchun,
+tarixiy profil uzoq kelajak uchun — ufq bo‘yicha aralashtiriladi.
+</QA>
+
+### 17.2 Ma’lumot va ML
+
+<QA q="Bo'lak tezligini GPS nuqtalaridan qanday hisoblaysiz?">
+Map matching izni bo‘laklarga ajratadi va har bo‘lak uchun kirish va
+chiqish vaqtini beradi — o‘tish vaqti svetofor kutishini ham o‘z ichiga
+oladi. O‘tishlar bo‘lak bo‘yicha oynada (masalan, 5 daqiqa) yig‘iladi,
+mediana olinadi (to‘xtab turgan haydovchi o‘rtachani buzmasin), “turli
+haydovchilar” soni tekshiriladi. Kam kuzatuvda tarixiy profil bilan
+aralashtiriladi: `(n × jonli + k × tarixiy) / (n + k)`. Lahzalik GPS
+tezligi ishlatilmaydi — u kutishni tasodifan ko‘radi yoki ko‘rmaydi.
+</QA>
+
+<QA q="Kichik ko'chada oxirgi soatda hech kim o'tmagan. Uning og'irligi qanday aniqlanadi?">
+Ierarxik zaxira: bo‘lak va shu 15 daqiqalik oraliq profili; kam
+kuzatuvli bo‘lsa — shu soat; keyin kun qismi; keyin yo‘l turi va shahar
+bo‘yicha o‘rtacha; oxirida tezlik chegarasi × koeffitsient. Muhim nozik
+jihat: gavjum bo‘lak birdaniga jim qolsa — bu “bo‘sh” emas, “ehtimol
+yopiq” signali. Uni alohida tekshirish kerak, aks holda tizim yopiq
+ko‘chaga haydovchi yuboradi va buni hech qachon bilmaydi.
+</QA>
+
+<QA q="Nega ML modeli marshrut ETA'sining qoldig'ini bashorat qiladi?">
+Marshrut ETA’si fizikani (masofa, yo‘l, jonli tezlik) allaqachon
+hisoblagan; model faqat grafda yo‘q narsalarni o‘rganadi: svetoforlar,
+burilishlar, olib ketish joylari, mahalliy odatlar. Bu kam ma’lumot bilan
+yaxshi ishlaydi, tashqi o‘zgarishlarga (yopilgan ko‘prik) marshrut orqali
+darhol reaksiya qiladi, va model ishlamasa marshrut ETA’si tayyor zaxira.
+Qoldiqni cheklash ham oson — kiritma buzilganda model katta xato
+qila olmaydi.
+</QA>
+
+<QA q="ETA modeli uchun qanday belgilar ishlatasiz?">
+Marshrut: marshrut ETA’si, masofa, burilishlar soni, yo‘l turlari
+ulushi. Vaqt: soat, hafta kuni, bayram. Joy: boshlanish va manzil
+kataklari bir necha o‘lchamda (H3 yoki geohash, xeshlangan embedding),
+aeroport belgisi. So‘rov turi: kelish yoki safar, mahsulot, yetkazib
+berish. Jonli holat: hududdagi tezliklar, talab va taklif. Tashqi:
+ob-havo, tadbirlar. Har belgi bashorat lahzasida mavjud bo‘lishi va
+o‘qitishda “o‘sha lahzadagi” qiymat bilan olinishi shart — aks holda
+sizib kirish.
+</QA>
+
+<QA q="DeepETA arxitekturasining asosiy g'oyalari qanday?">
+Har belgi — token; uzluksiz belgilar kvantillar bo‘yicha diskretlanib
+embedding oladi; geo koordinatalar bir necha o‘lchamdagi kataklarga
+aylanib, xeshlangan embedding jadvallaridan vektor oladi. Self-attention
+belgilar orasidagi o‘zaro ta’sirni o‘rganadi; kechikish uchun chiziqli
+attention. Dekodlovchida so‘rov turi bo‘yicha siljish va masshtab
+tuzatishi. Yo‘qotish — asimmetrik Huber: chiqib ketishlarga chidamli
+va xato yo‘nalishiga qarab turlicha jazolaydi. Hammasi marshrut ETA’sining
+qoldig‘i uchun.
+</QA>
+
+<QA q="ETA modelining sifatini qanday o'lchaysiz?">
+Bitta raqam emas. MAE (o‘rtacha), bias (tizimli siljish — mijoz ishonchi
+va narx uchun muhim), p90 mutlaq xato (dum), kam ko‘rsatish ulushi (masalan,
+2 daqiqadan ko‘p kech kelish). Hammasi segmentlar bo‘yicha: kelish va
+safar, shahar, masofa guruhi, aeroport. MAPE ehtiyotkorlik bilan —
+qisqa safarlarni haddan ortiq jazolaydi. Va oxirida — biznes ko‘rsatkichlari
+(kutish, bekor qilishlar, bo‘sh yurish) onlayn tajribada.
+</QA>
+
+<QA q="ETA modeli uchun A/B test nega qiyin va nima qilasiz?">
+ETA dispetcherlikka kiradi, va guruhlar umumiy haydovchilarni bo‘lishadi.
+Yangi model bilan A guruh yaxshiroq haydovchilarni oladi, B guruhga
+qolganlari yomonroq — farq sun’iy oshadi (interference). Yechim — vaqt
+bo‘yicha almashtirish (switchback): butun shahar navbat bilan yangi va
+eski modelda, tasodifiy oraliqlarda. Undan oldin — oflayn baholash va
+soya rejimi. Geografik bo‘lish ham mumkin, lekin tumanlar har xil va
+chegarada ifloslanish bor.
+</QA>
+
+<QA q="Nishon (label) — haqiqiy vaqt — qanday xatolarga ega va ularni qanday tuzatasiz?">
+Haydovchi tugmalari (“yetib keldim”, “safarni tugatish”) inson harakati:
+ba’zilar erta bosadi, ba’zilar kech. Agar erta bosish muntazam bo‘lsa,
+nishonlar qisqa, va model ETA’ni kam ko‘rsatishni o‘rganadi. Tuzatish —
+nishonni GPS izidan olish: mashina olib ketish joyiga yaqinlashib
+to‘xtagan lahza. Shuningdek, g‘ayrioddiy safarlarni (yo‘lda uzoq to‘xtash,
+manzil o‘zgarishi) o‘qitishdan chiqarish yoki alohida belgilash.
+</QA>
+
+### 17.3 Tizim va miqyos
+
+<QA q="ETA tizimining sig'imini baholang.">
+~31 M safar/kun, har safarga ~300 ETA (ilova seanslari, dispetcherlik
+nomzodlari, safar davomidagi yangilanishlar) — ~100 ming ETA/s o‘rtacha,
+cho‘qqida ~300 ming. Har ETA ~3–5 ms CPU (marshrut + model to‘plamda) —
+bir necha ming yadro zaxira bilan. GPS: ~1.5 M onlayn haydovchi × har
+4 s — ~375 ming nuqta/s; map matching ~0.3 ms/nuqta — bir necha yuz
+yadro. Graf: katta metropoliya ~1–2 GB bilan server xotirasiga sig‘adi;
+dunyo — hudud bo‘yicha bo‘linadi.
+</QA>
+
+<QA q="Marshrut serverlarini qanday bo'lasiz va hududlararo safar bilan nima qilasiz?">
+Hudud (metropoliya) bo‘yicha: har hudud graf, og‘irliklar va indekslar
+bilan alohida serverlar guruhida. So‘rovlarning 99%+ bitta hudud ichida.
+Hududlararo safarlar (shaharlararo, aeroport boshqa hududda) — alohida
+“katta” graf serverlari: faqat magistrallar va hudud chegaralari bilan
+qisqartirilgan graf, uchlaridagi qism mahalliy serverlarda. Yangilanish
+mustaqil: har hudud o‘z og‘irliklarini o‘z tezligida oladi.
+</QA>
+
+<QA q="ETA servisi ishlamay qolsa nima bo'ladi?">
+Yiqilmaydi — sifat pasayadi. Zinapoya: marshrut + ML → faqat marshrut →
+H3 kataklari orasidagi tarixiy matritsa (mikrosekundlar, bir necha MB) →
+to‘g‘ri chiziq × koeffitsient. O‘tish mezoni — vaqt byudjeti, xato emas:
+sekin komponent zanjirni kutishga majbur qiladi. Har pog‘ona muntazam
+ravishda kichik ulush trafik bilan sinaladi, aks holda zaxira kerak
+bo‘lganda buzilgan bo‘lib chiqadi. Zaxira ulushi — asosiy monitoring
+signali.
+</QA>
+
+<QA q="Narx va ekrandagi ETA bir xil bo'lishini qanday ta'minlaysiz?">
+Bitta hisob, bitta taklif (quote) ob’ekti: marshrut, ETA, masofa va narx
+bir vaqtda hisoblanib, ID va muddat bilan saqlanadi. Ekran ham, buyurtma
+ham shu ID ga ishora qiladi; buyurtmada narx qayta hisoblanmaydi. Safar
+davomida esa ETA tirik bashorat sifatida yangilanadi, narx esa —
+yo‘q. Serverlar orasidagi og‘irlik versiyalari farqini kamaytirish uchun
+so‘rovga versiya biriktiriladi yoki ekranda silliqlanadi.
+</QA>
+
+<QA q="GPS'ni soxtalashtiradigan haydovchilardan qanday himoyalanasiz?">
+Fizik tekshiruvlar: imkonsiz tezliklar va sakrashlar, map matching
+ehtimoli past iz (yo‘llardan tashqarida), sensorlar nomuvofiqligi
+(GPS harakat deydi, akselerometr — yo‘q), tarmoq ma’lumotlari
+(uyali minora boshqa joyda). Tezlik agregatsiyasida mediana va “turli
+haydovchilar” sharti bitta soxta hisobning ta’sirini yo‘q qiladi.
+Muvofiqlashtirilgan hujumga qarshi — manbalar xilma-xilligi, tarixdan
+keskin og‘ishni tekshirish, hisob ishonchiga qarab og‘irlik.
+</QA>
+
+<QA q="Uber Eats uchun yetkazib berish vaqtini qanday bashorat qilasiz?">
+Tarkibiy: max(tayyorlash vaqti, kuryer restoranga kelishi) + restoranda
+topshirish + restoran → mijoz safar ETA’si + binoga kirish. Yangi qism —
+tayyorlash vaqti: restoran, taom, buyurtma hajmi, soat, joriy bandlik
+bo‘yicha ML. Bashorat xatosi taqsimoti kuryerni yuborish paytini
+belgilaydi: erta — kuryer kutadi (xarajat), kech — taom sovuydi (sifat).
+Yuborishni “bashorat minus bir standart og‘ish” atrofiga qo‘yish
+ikkala xavfni muvozanatlaydi.
+</QA>
+
+<QA q="ETA modelini qanday xavfsiz chiqarasiz, agar aniqlik 30-40 daqiqadan keyin ma'lum bo'lsa?">
+Soya rejimi (hisoblanadi, ishlatilmaydi) → kichik ulush → kengaytirish,
+har bosqichda erta signallar bilan: kechikish, qoldiq taqsimoti, qoldiq
+cheklovga urilish ulushi, belgilar taqsimoti, zaxira ulushi. Kelish
+ETA’si aniqligi tezroq keladi (5–8 daqiqa) — undan birinchi foydalaniladi.
+Model versiyasi har javobga yoziladi, qaytarish — bitta tugma. Segmentlar
+bo‘yicha monitoring: global o‘rtacha kichik shahardagi buzilishni yashiradi.
+</QA>
+
+<QA q="Nega yo'l grafini grafik ma'lumotlar bazasida (masalan, Neo4j) saqlab, so'rov bilan eng qisqa yo'lni olmaysiz?">
+Chunki kerakli tezlik va yuk tartibi boshqa. Grafik bazalar umumiy
+maqsadli: tugun va qirralar ob’ekt sifatida, xossalar bilan, tranzaksiyalar
+bilan. Marshrutlash esa bitta narsani qiladi — sekundiga minglab eng
+qisqa yo‘l — va buning uchun ixcham massivlar (CSR), protsessor keshiga
+mos tartib va oldindan hisoblangan ierarxiya (CH/CRP) kerak. Butun
+metropoliya grafi bir necha o‘n MB — xotirada, jarayon ichida, tarmoqsiz.
+Grafik baza xarita **tahriri** va tahlil uchun foydali bo‘lishi mumkin;
+xizmat qilish uchun esa undan eksport qilingan, maxsus formatdagi graf.
+</QA>
+
+<QA q="Umumiy safarda (bir mashinada bir necha yo'lovchi) ETA qanday murakkablashadi?">
+ETA endi bitta marshrut emas, **tartib** masalasi: yangi yo‘lovchini
+qo‘shganda, uni olish va tushirish nuqtalarini mavjud to‘xtashlar
+ketma-ketligining qayeriga qo‘yish kerak — va har variant boshqa
+yo‘lovchilarning ETA’sini o‘zgartiradi. Cheklovlar: har yo‘lovchiga va’da
+qilingan maksimal kechikish. Har bir nomzod tartib uchun to‘xtashlar
+orasidagi ETA’lar kerak — bu kichik ko‘p-ga-ko‘p matritsa. Mashinalar va
+tartiblar soni tez o‘sadi, shuning uchun evristikalar va qat’iy vaqt
+byudjeti ishlatiladi. Asosiy saboq: dispetcherlik qarori ETA matritsasining
+sifati va tezligi bilan cheklangan.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/uber-eta/` da:
+`eta.py` — oltita funksiya TODO; `city.py` — tayyor sintetik shahar (70 × 70
+chorraha, magistrallar, bir tomonlama ko‘chalar, daryo va uchta ko‘prik),
+GPS o‘tishlari va safarlar generatori; `check.py` — 20 ta tekshiruv, taxminan
+3 soniya. Faqat Python standart kutubxonasi.
+
+<Task title="1-daraja: v0 qancha adashadi">
+3-bo‘limdagi v0 ni (to‘g‘ri chiziq × koeffitsient ÷ o‘rtacha tezlik)
+`city.py` shahrida sinang. 500 ta tasodifiy juftlik uchun uning ETA’sini
+grafdagi haqiqiy eng tez yo‘l vaqti bilan solishtiring (eng tez yo‘lni
+2-darajadan keyin o‘zingizning `dijkstra` bilan oling).
+
+**Tekshiruv mezoni:** (1) nisbiy xatolar taqsimoti — gistogramma; (2) daryoni
+kesib o‘tadigan va o‘tmaydigan juftliklar uchun alohida o‘rtacha xato —
+4.1-dagi hisob bilan solishtiring; (3) “dispetcherlik” tajribasi: har mijoz
+uchun 10 ta tasodifiy haydovchidan v0 bo‘yicha va graf bo‘yicha eng yaqinini
+tanlang — necha foiz hollarda tanlov farq qiladi va o‘rtacha kutish qancha oshadi?
+</Task>
+
+<Task title="2-daraja: ETA dvigateli (asosiy topshiriq)">
+`eta.py` dagi `dijkstra`, `astar`, `bidirectional`, `live_speeds`,
+`fit_residual` va `predict` ni yozing. `python check.py` ularni mustaqil
+orakul, tasodifiy juftliklar, shovqinli GPS o‘tishlari va chiqib ketishli
+safarlar bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 20/20 OK`. Shu jumladan: uchala qidiruv 140
+juftlikda aniq javob va haqiqiy yo‘l beradi; A* va ikki tomonlama qidiruv
+uzun safarlarda Dijkstra’ning 75% idan kam tugun ko‘radi; ikki tomonlama
+qidiruv “birinchi uchrashuv” tuzog‘iga tushmaydi; jonli og‘irliklar ETA
+xatosini kamida 30% kamaytiradi; qoldiq modeli MAE ni kamida 45% kamaytiradi
+va siljish ±3% ichida. Keyin tajriba: A* evristikasida `vmax` ni ikkiga
+bo‘ling va nechta juftlikda javob noto‘g‘ri bo‘lishini sanang — 15-bo‘limdagi
+to‘rtinchi antinaqshni o‘z raqamingiz bilan tasdiqlang.
+</Task>
+
+<Task title="3-daraja: map matching va Contraction Hierarchies">
+Ikki qism. (a) `city.py` grafida haydovchi izlarini simulyatsiya qiling:
+haqiqiy yo‘l bo‘ylab har 4 soniyada nuqta, σ = 15 m GPS shovqini. Oddiy
+“eng yaqin qirra” va HMM + Viterbi (5-bo‘lim 6-qadam Deep) bilan map matching
+yozing. (b) CH ni yozing: qirralar farqi bo‘yicha tartib, guvoh qidiruvi,
+yorliqlar, yuqoriga ikki tomonlama qidiruv.
+
+**Tekshiruv mezoni:** (a) har usul uchun to‘g‘ri biriktirilgan nuqtalar ulushi
+va bo‘lak o‘tish vaqtlari xatosi; σ ni 5 m dan 40 m gacha oshirib, qaysi usul
+qachon ishdan chiqishini ko‘rsating; (b) CH natijalari 1 000 juftlikda
+Dijkstra bilan bir xil; o‘rtacha o‘rnatilgan tugunlar va qidiruv vaqti — 5-bo‘lim 4-qadamdagi
+Calc bilan solishtiring; yorliqlar soni va oldindan hisoblash vaqti.
+</Task>
+
+<Task title="4-daraja: sig'im va xarajat modeli">
+Jadval yoki skript: kirish — kunlik safarlar, bir safarga ETA so‘rovlari
+(seanslar, dispetcherlik nomzodlari, yangilanishlar), bitta ETA’ning CPU
+vaqti (marshrut va model alohida), onlayn haydovchilar va GPS chastotasi,
+map matching narxi, yadro narxi. Chiqish — ETA va GPS quvuri uchun yadrolar,
+yillik xarajat, safarga xarajat.
+
+**Tekshiruv mezoni:** (1) 1.3 va 12-bo‘limdagi hisoblarni takrorlang;
+(2) GPS chastotasini 4 s dan 1 s ga va 15 s ga o‘zgartirib, quvur narxi va
+jonli tezliklar aniqligi (7-qadam Calc) o‘rtasidagi murosani ko‘rsating;
+(3) marshrutlashni CH o‘rniga oddiy Dijkstra bilan qilsak, xarajat necha
+barobar oshishini hisoblang va 12-bo‘limdagi “aniqlik qiymati” bilan
+solishtiring — qaysi optimallashtirish muhimroq?
+</Task>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan o‘n beshta
+varianti bilan sinalgan: Dijkstra’da manzilga birinchi yetilganda qaytish,
+optimistik bo‘lmagan A* evristikasi, ikki tomonlama qidiruvda birinchi
+uchrashuvda to‘xtash va “yig‘indi” o‘rniga “maksimum” sharti, o‘rtacha
+qiymat mediana o‘rniga, eskirgan yoki kelajakdagi kuzatuvlarni qabul
+qilish, haydovchi bo‘yicha emas kuzatuv bo‘yicha mediana, tarix bilan
+aralashtirmaslik, faqat global yoki faqat zona koeffitsienti, noma’lum
+zonada soat darajasini o‘tkazib yuborish va boshqalar. Har biri kamida
+bitta testni yiqitadi. Ulardan ba’zilari (Dijkstra’dagi erta qaytish)
+140 juftlikdan atigi 4 tasida ko‘rinadi — tasodifiy taqqoslashsiz ular
+hech qachon topilmasdi.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| ETA | Taxminiy yetib kelish vaqti: kelish (pickup) yoki safar (dropoff) |
+| Yo‘l grafi | Tugunlar — chorrahalar, yo‘nalishli qirralar — yo‘l bo‘laklari |
+| Og‘irlik | Qirrani o‘tish vaqti (soniya): uzunlik ÷ tezlik |
+| Burilish jarimasi | Chorrahada burilish yoki kutish uchun qo‘shimcha vaqt |
+| Dijkstra | Manfiy bo‘lmagan og‘irliklarda eng qisqa yo‘l, ustuvor navbat bilan |
+| A* | Dijkstra + manzilgacha optimistik baho bilan tartib |
+| Optimistik evristika | Hech qachon haqiqiy qolgan vaqtdan katta bo‘lmagan baho |
+| ALT | Landmark’lar va uchburchak tengsizligi bilan A* bahosi |
+| Ikki tomonlama qidiruv | Manba va manzildan bir vaqtda; to‘xtash: navbat boshlari yig‘indisi ≥ μ |
+| Contraction Hierarchies | Tugunlarni qisqartirib yorliqlar qo‘shish; qidiruv faqat yuqoriga |
+| Yorliq (shortcut) | Qisqartirilgan tugun o‘rnini bosuvchi qirra |
+| Guvoh yo‘l | Tugunsiz ham shunday qisqa yo‘l — yorliq kerak emasligini ko‘rsatadi |
+| CRP / CCH | Tuzilma va og‘irlikni ajratadigan moslashtiriladigan marshrutlash |
+| Map matching | GPS nuqtalari ketma-ketligini yo‘l bo‘laklari ketma-ketligiga aylantirish |
+| HMM, Viterbi | Yashirin Markov modeli va eng ehtimolli holatlar ketma-ketligi algoritmi |
+| Bo‘lak o‘tish vaqti | Bo‘lakka kirish va chiqish orasidagi vaqt, kutish bilan birga |
+| Tarixiy profil | Bo‘lakning haftaning har 15 daqiqasi uchun odatiy tezligi |
+| Psevdo-kuzatuv (k) | Tarixiy qiymatning jonli kuzatuvlar bilan aralashtirishdagi og‘irligi |
+| Vaqtga bog‘liq marshrut | Og‘irlik qirraga kirish vaqtining funksiyasi |
+| FIFO sharti | Qirraga kechroq kirgan kechroq chiqadi |
+| Qoldiq (residual) | Haqiqiy vaqt − marshrut ETA’si; ML modelining nishoni |
+| DeepETA | Uber’ning qoldiqni bashorat qiluvchi transformer modeli |
+| Asimmetrik Huber | Xato yo‘nalishiga qarab turlicha jazolovchi, chidamli yo‘qotish |
+| H3 | Uber’ning olti burchakli ierarxik geo-indeksi |
+| To‘plamli moslash | So‘rovlar oynada yig‘ilib, haydovchilar global tayinlanadi |
+| Taklif (quote) | Narx va ETA bir marta hisoblanib, ID bilan saqlangan ob’ekt |
+| Switchback tajriba | Butun hudud navbat bilan turli variantlarda — tarmoq ta’sirisiz A/B |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Yillik safarlar | ~11 mlrd (2024) | Uber yillik hisoboti (2024) |
+| Haydovchi va kuryerlar | ~7–8 M | Uber ochiq hisobotlari (2023–2024) |
+| AQSh yo‘l grafi | ~24 M tugun, ~58 M qirra | 9-DIMACS Implementation Challenge (2006) |
+| Yevropa grafida CH | qidiruv ~0.1–0.3 ms | Geisberger va boshq. (2008); Bast va boshq. (2016) sharhi |
+| H3 darajalari | 16 daraja; 9-daraja ~0.105 km² | H3 hujjatlari, katak statistikasi jadvali |
+| H3 ochiq kod | 2018 | Uber muhandislik blogi (2018) |
+| DeepETA | 2022 | Uber muhandislik blogi (2022) |
+| Michelangelo | 2017 | Uber muhandislik blogi (2017) |
+| Map matching HMM | 2009 | Newson va Krumm, ACM SIGSPATIAL (2009) |
+| Tirbandlik to‘lqini | 1955–1956 | Lighthill va Whitham (1955); Richards (1956) |
+| 2-daraja natijalari | 20/20; 15 mutatsiya | `docs/amaliyot/uber-eta/`, referens implementatsiya |
+
+Bir safarga ETA so‘rovlari, sekundiga so‘rovlar, GPS nuqtalari chastotasi va
+hajmi, bo‘laklar soni va kuzatuvlar zichligi, burilish va svetofor vaqtlari,
+xato taqsimotlari, model yaxshilanishlari, kechikish byudjetlari, xarajatlar
+va sig‘im hisoblari — **illyustratsiya uchun taxminiy**. Ular yuqoridagi ochiq
+raqamlardan va algoritmlar bo‘yicha nashr etilgan natijalardan kelib chiqqan,
+tartib jihatidan ishonchli, lekin aniq emas. Darsning asosiy xulosalari —
+graf kichik, qidiruv esa aqlli bo‘lishi kerak; og‘irliklar haqiqati GPS
+quvurida; ML fizikani emas, qolgan xatoni o‘rganadi; hisob arzon, xato
+qimmat — bu raqamlarning bir necha barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Edsger W. Dijkstra (1959), “A Note on Two Problems in Connexion with
+  Graphs”, Numerische Mathematik
+- Peter E. Hart, Nils J. Nilsson, Bertram Raphael (1968), “A Formal Basis
+  for the Heuristic Determination of Minimum Cost Paths”, IEEE Transactions
+  on Systems Science and Cybernetics
+- Andrew V. Goldberg, Chris Harrelson (2005), “Computing the Shortest Path:
+  A* Search Meets Graph Theory”, SODA
+- Robert Geisberger, Peter Sanders, Dominik Schultes, Daniel Delling (2008),
+  “Contraction Hierarchies: Faster and Simpler Hierarchical Routing in Road
+  Networks”, WEA
+- Daniel Delling, Andrew V. Goldberg, Thomas Pajor, Renato F. Werneck (2011),
+  “Customizable Route Planning”, SEA
+- Julian Dibbelt, Ben Strasser, Dorothea Wagner (2014), “Customizable
+  Contraction Hierarchies”, SEA
+- Hannah Bast va boshq. (2016), “Route Planning in Transportation Networks”,
+  Algorithm Engineering (sharh)
+- Paul Newson, John Krumm (2009), “Hidden Markov Map Matching Through Noise
+  and Sparseness”, ACM SIGSPATIAL GIS
+- M. J. Lighthill, G. B. Whitham (1955), “On Kinematic Waves II”; P. I.
+  Richards (1956), “Shock Waves on the Highway”
+- Harold W. Kuhn (1955), “The Hungarian Method for the Assignment Problem”
+- Uber muhandislik blogi (2022), “DeepETA: How Uber Predicts Arrival Times
+  Using Deep Learning”
+- Uber muhandislik blogi (2018), “H3: Uber’s Hexagonal Hierarchical Spatial
+  Index”; H3 hujjatlari (h3geo.org)
+- Uber muhandislik blogi (2017), “Meet Michelangelo: Uber’s Machine Learning
+  Platform”
+- 9th DIMACS Implementation Challenge — Shortest Paths (2006)
+- Uber yillik hisobotlari (2023–2024)
