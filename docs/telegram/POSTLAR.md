@@ -4,7 +4,7 @@ Hammasi nusxa olib joylash uchun tayyor. Telegram markdown belgilarini avtomatik
 o'girmaydi, shuning uchun matnlar **oddiy matn** ko'rinishida yozilgan — qalin qilish
 kerak bo'lgan joylar izohda ko'rsatilgan (matnni belgilab Ctrl+B / Cmd+B).
 
-Havola: `https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/`
+Havola: `https://dinmuhammad.uz/15-case-studiesfo-software-engineers/`
 
 Havolani xabar oxiriga qo'ysangiz, Telegram avtomatik ravishda chiroyli kartochka
 (rasm + sarlavha) chiqaradi — alohida rasm yuklash shart emas.
@@ -57,7 +57,7 @@ va boshqalar.
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
 
 ---
@@ -74,7 +74,7 @@ birlik iqtisodi.
 11 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
 Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb), 6 tasi rejada. Internetsiz ham o'qish mumkin.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
 
 ---
@@ -102,7 +102,7 @@ butun bir texnologiyalar oilasini tug'dirgan.
 "ChatGPT qanday ishlaydi" darsi — tokenizatsiyadan inference iqtisodigacha,
 12 200 so'z, 19 ta hisob-kitob bloki, 25 ta intervyu savoli:
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/chatgpt/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/chatgpt/
 ```
 
 ### 3.2 — URL qisqartiruvchi
@@ -123,7 +123,7 @@ Bularning har biriga javob — hisob-kitob bilan.
 
 11 600 so'z, 19 ta hisob bloki:
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/url-shortener/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/
 ```
 
 ### 3.3 — Redis
@@ -146,7 +146,7 @@ Shuning uchun kichik obyektlarni alohida kalitlarda emas, hash ichida saqlash
 qadar. Kesh, rate limiter, leaderboard, navbat, taqsimlangan lock va yana 7 tasi,
 har birida eng ko'p qilinadigan xato bilan:
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/redis/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/redis/
 ```
 
 ### 3.4 — Twitter tasmasi
@@ -167,7 +167,7 @@ oddiy akkauntlar uchun bittasi, mashhurlar uchun ikkinchisi.
 "Twitter tasmasi qanday ishlaydi" darsi — fan-out on write va on read, gibrid
 yechim, Snowflake ID, tombstone, reyting narxi:
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/twitter/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/twitter/
 ```
 
 ---
@@ -193,7 +193,7 @@ Yangi dars — Reddit qanday ishlaydi (14 000 so'z):
 hot formulasi, Wilson intervali, 500 000 kommentariyali daraxt, ovoz navbati,
 sharding va soxta ovozlarga qarshi himoya. Hammasi hisob-kitob bilan.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/reddit/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/reddit/
 ```
 
 ---
@@ -221,7 +221,7 @@ WebSocket nima turadi (bitta bo'sh ulanish 35 KB), ulanish paytida
 155 MB yuborishning oqibati, qayta ulanish bo'roni va jitter,
 xabar tartibi, ts nega satr. Hammasi hisob-kitob bilan.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/slack/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/slack/
 ```
 
 ---
@@ -252,7 +252,7 @@ Diffie-Hellman qo'lda, X3DH va prekey'lar, Double Ratchet, guruhlarda
 bitta a'zo chiqishi nega million xabar turadi, oflayn telefon uchun
 navbat va Little qonuni, yangi yil kechasi vaqt mintaqalari bo'ylab.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/whatsapp/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/whatsapp/
 ```
 
 ---
@@ -279,7 +279,7 @@ qaror qiladi, provayderlar ichidagi keshlar va kuniga 1 eksabayt trafik,
 uzun dum iqtisodi. Amaliyotda — o'zingizning ABR algoritmingizni
 simulyatorda sinaysiz.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/youtube/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/youtube/
 ```
 
 ---
@@ -307,7 +307,7 @@ fermalari iqtisodi, matritsa faktorizatsiyasi va Discover Weekly.
 Amaliyotda — 540 000 hodisalik oqimdan tinglashlar kitobini yozasiz
 va botlarni ushlaysiz.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/spotify/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/spotify/
 ```
 
 ---
@@ -334,7 +334,7 @@ uni tanlamagan, bitta hujjat — bitta server, emoji nega hujjatni
 buzishi mumkin, 50 000 kishi ochgan hujjat. Amaliyotda — o'z OT'ingizni
 yozasiz va uni tasodifiy testlar bilan sinaysiz.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/google-docs/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/google-docs/
 ```
 
 ---
@@ -361,7 +361,7 @@ qidiruv 200 ms ichida, firibgarlik va ziyofatlarga qarshi tizim.
 Amaliyotda — o'z bron dvigatelingizni yozasiz va uni 8 ta parallel
 jarayon bilan sinaysiz.
 
-https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/airbnb/
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/airbnb/
 ```
 
 ---

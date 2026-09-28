@@ -8,7 +8,7 @@
 Har bir dars bitta mahsulotni noldan hozirgi arxitekturasigacha ochib beradi —
 va har bir qaror hisob-kitob bilan asoslanadi.
 
-[**→ Saytni ochish**](https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/)
+[**→ Saytni ochish**](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/)
 
 ![Next.js](https://img.shields.io/badge/Next.js-15-000?logo=next.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -52,9 +52,9 @@ kalkulyatorda takrorlash mumkin.
 
 | № | Dars | Holat | Hajm | Nimani o‘rgatadi |
 | --- | --- | --- | --- | --- |
-| 01 | [ChatGPT qanday ishlaydi](https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/chatgpt/) | ✅ Tayyor | 12 200 so‘z | Tokenizatsiya, attention, KV cache, continuous batching, roofline, inference iqtisodi |
-| 02 | [URL qisqartiruvchi](https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/url-shortener/) | ✅ Tayyor | 11 600 so‘z | Base62, tug‘ilgan kun paradoksi, cache stampede, hot key, Bloom filtri, ochiq redirect |
-| 03 | [Redis: 12 ta stsenariy](https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/redis/) | ✅ Tayyor | 11 100 so‘z | Event loop, xotira modeli, TTL va eviction, fork/COW, ZSET, Streams, klaster |
+| 01 | [ChatGPT qanday ishlaydi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/chatgpt/) | ✅ Tayyor | 12 200 so‘z | Tokenizatsiya, attention, KV cache, continuous batching, roofline, inference iqtisodi |
+| 02 | [URL qisqartiruvchi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/) | ✅ Tayyor | 11 600 so‘z | Base62, tug‘ilgan kun paradoksi, cache stampede, hot key, Bloom filtri, ochiq redirect |
+| 03 | [Redis: 12 ta stsenariy](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/redis/) | ✅ Tayyor | 11 100 so‘z | Event loop, xotira modeli, TTL va eviction, fork/COW, ZSET, Streams, klaster |
 | 04 | Twitter tasmasi | ⏳ Rejada | | Fan-out on write vs read, mashhur akkauntlar muammosi |
 | 05 | Reddit | ⏳ Rejada | | Ovoz berish, kommentariya daraxti, “hot” reytingi |
 | 06 | Slack | ⏳ Rejada | | WebSocket, presence, kanal tarixi |

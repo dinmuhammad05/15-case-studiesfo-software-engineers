@@ -10,6 +10,7 @@
  * brauzer yangi service worker'ni oladi va eski keshni tozalaydi.
  */
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { readdir, readFile, writeFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
@@ -177,7 +178,7 @@ await writeFile(join(OUT, "sw.js"), sw);
 
 // --- SEO: kontent himoyalangan bo'lsa indekslash taqiqlanadi ---
 const NOINDEX = /noindex:\s*true/.test(await readFile("lib/site.ts", "utf8"));
-const SITE = "https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers";
+const SITE = (await readFile("lib/site.ts", "utf8")).match(/url:\s*"([^"]+)"/)[1].replace(/\/$/, "");
 const pages = files
   .filter((f) => f.endsWith("index.html"))
   .map((f) => `${SITE}/${f.replace(/index\.html$/, "")}`.replace(/([^:])\/\/+/g, "$1/"))
@@ -187,13 +188,27 @@ if (NOINDEX) {
   await writeFile(join(OUT, "robots.txt"), `User-agent: *\nDisallow: /\n`);
   console.log("robots.txt: indekslash TAQIQLANDI (site.ts -> protection.noindex)");
 } else {
+// lastmod — sahifa manbasining oxirgi commit sanasi (git bo'lmasa — bugun)
+const today = new Date().toISOString().slice(0, 10);
+const lastmod = (...paths) => {
+  try {
+    const d = execFileSync("git", ["log", "-1", "--format=%cs", "--", ...paths], { encoding: "utf8" }).trim();
+    return d || today;
+  } catch {
+    return today;
+  }
+};
+const sourceOf = (u) => {
+  const m = u.match(/\/darslar\/([^/]+)\/$/);
+  return m ? [`app/darslar/${m[1]}`] : ["app/page.tsx", "lib/lessons.ts", "lib/site.ts"];
+};
 await writeFile(
   join(OUT, "sitemap.xml"),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
     pages
       .map(
         (u) =>
-          `  <url><loc>${u}</loc><changefreq>weekly</changefreq><priority>${u === SITE + "/" ? "1.0" : "0.8"}</priority></url>`,
+          `  <url><loc>${u}</loc><lastmod>${lastmod(...sourceOf(u))}</lastmod><changefreq>weekly</changefreq><priority>${u === SITE + "/" ? "1.0" : "0.8"}</priority></url>`,
       )
       .join("\n") +
     `\n</urlset>\n`,

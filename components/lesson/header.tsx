@@ -1,4 +1,5 @@
 import { lessonBySlug } from "@/lib/lessons";
+import { JsonLd, lessonJsonLd } from "@/lib/seo";
 
 /** Dars sarlavhasi + meta ma'lumot. Skin ichida ishlatiladi. */
 export function LessonHeader({ slug }: { slug: string }) {
@@ -6,6 +7,7 @@ export function LessonHeader({ slug }: { slug: string }) {
   if (!lesson) return null;
   return (
     <header className="mb-8">
+      <JsonLd data={lessonJsonLd(slug)} />
       <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--skin-muted)]">
         <span className="rounded-full bg-[var(--skin-accent)] px-2.5 py-1 font-[family-name:var(--skin-mono)] font-semibold text-[var(--skin-accent-text)]">
           {String(lesson.order).padStart(2, "0")}

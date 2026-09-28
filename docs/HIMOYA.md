@@ -90,7 +90,7 @@ to‘lov (Payme/Click yoki Stripe), foydalanuvchilar bazasi.
 `lib/site.ts` → `protection` bo‘limida quyidagilar yoqilgan:
 
 ```ts
-noindex: true          // qidiruv tizimlari indekslamaydi
+noindex: false         // darslik bepul — qidiruv tizimlari indekslaydi (sitemap.xml, JSON-LD)
 offlineDownload: false // "darslarni yuklab olish" tugmasi o'chirilgan
 copyGuard: true        // nusxa olish va o'ng tugma cheklangan
 blockPrint: true       // chop etish va PDF ga saqlash to'silgan

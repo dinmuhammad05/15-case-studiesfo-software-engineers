@@ -69,7 +69,7 @@ await shot(
     title: "17 ta case study,<br/>noldan arxitekturagacha",
     subtitle:
       "ChatGPT, Redis, Kafka, S3 va boshqalar — hisob-kitob, intervyu savollari va amaliyot bilan",
-    footer: { left: "o‘zbek tilida", right: "github.com/dinmuhammad05" },
+    footer: { left: "bepul · o‘zbek tilida", right: "dinmuhammad.uz" },
   }),
 );
 
@@ -81,7 +81,7 @@ for (const l of ready) {
       eyebrow: `System Design darsligi · dars ${String(l.order).padStart(2, "0")}`,
       title: l.title,
       subtitle: "Noldan bugungi arxitekturagacha: hisob-kitob, tuzoqlar va intervyu savollari",
-      footer: { left: "o‘zbek tilida", right: "github.com/dinmuhammad05" },
+      footer: { left: "bepul · o‘zbek tilida", right: "dinmuhammad.uz" },
     }),
   );
 }

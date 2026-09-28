@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { site } from "@/lib/site";
 
 /**
@@ -58,7 +58,11 @@ export function ContentGuard() {
  * manba va muallif ko'rinib turadi.
  */
 export function Watermark() {
-  if (!site.protection.watermark) return null;
+  // Faqat brauzerda chiziladi: statik HTML'da (va qidiruv tizimlari ko'radigan
+  // matnda) 60 ta takroriy yozuv bo'lmasin.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!site.protection.watermark || !mounted) return null;
   const text = `${site.author.handle} · ${site.author.telegram}`;
   return (
     <div

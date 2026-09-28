@@ -7,14 +7,14 @@ export const site = {
   shortName: "SD darslik",
   tagline: "Dasturchilar uchun tizim dizayni — o‘zbek tilida",
   description:
-    "ChatGPT, Redis, Kafka, S3 va boshqa tizimlar noldan hozirgi arxitekturasigacha. Har bir dars hisob-kitob, intervyu savollari va amaliyot bilan.",
+    "Bepul o‘zbekcha system design darsligi: ChatGPT, WhatsApp, YouTube, Airbnb va boshqa tizimlar noldan bugungi arxitekturasigacha. Har bir dars hisob-kitob, intervyu savollari va amaliyot bilan.",
   /** GitHub Pages manzili — OG rasm va sitemap uchun mutlaq havolalar shu yerdan olinadi */
-  url: "https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers",
+  url: "https://dinmuhammad.uz/15-case-studiesfo-software-engineers",
   repo: "https://github.com/dinmuhammad05/15-case-studiesfo-software-engineers",
   author: {
     handle: "dinmuhammad05",
     name: "Dinmuhammad",
-    portfolio: "https://dinmuhammad05.github.io/",
+    portfolio: "https://dinmuhammad.uz/",
     github: "https://github.com/dinmuhammad05",
     telegram: "@dinMuhammad05",
     telegramUrl: "https://t.me/dinMuhammad05",
@@ -28,8 +28,8 @@ export const site = {
    * bilan bo'ladi — docs/HIMOYA.md ga qarang.
    */
   protection: {
-    /** Qidiruv tizimlariga indekslashni taqiqlash */
-    noindex: true,
+    /** Qidiruv tizimlariga indekslashni taqiqlash (darslik bepul — indekslanadi) */
+    noindex: false,
     /** "Barcha darslarni yuklab olish" tugmasi (offline nusxa) */
     offlineDownload: false,
     /** Nusxa ko'chirish va o'ng tugmani cheklash */

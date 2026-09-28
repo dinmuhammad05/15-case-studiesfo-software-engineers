@@ -24,14 +24,21 @@ export const metadata: Metadata = {
     "tizim dizayni",
     "o'zbek tilida",
     "intervyu",
-    "ChatGPT",
-    "Redis",
-    "Kafka",
+    "system design o'zbekcha",
+    "tizim dizayni darslik",
+    "backend",
     "arxitektura",
     "dasturlash",
+    "bepul kurs",
+    "ChatGPT",
+    "Redis",
+    "WhatsApp",
+    "YouTube",
+    "Airbnb",
   ],
-  authors: [{ name: site.author.handle, url: site.author.github }],
-  creator: site.author.handle,
+  authors: [{ name: site.author.name, url: site.author.portfolio }],
+  creator: site.author.name,
+  category: "education",
   openGraph: {
     type: "website",
     locale: "uz_UZ",
@@ -55,7 +62,11 @@ export const metadata: Metadata = {
   },
   robots: site.protection.noindex
     ? { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } }
-    : undefined,
+    : {
+        index: true,
+        follow: true,
+        googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+      },
   icons: {
     icon: [
       { url: `${BASE}/icon-192.png`, sizes: "192x192", type: "image/png" },

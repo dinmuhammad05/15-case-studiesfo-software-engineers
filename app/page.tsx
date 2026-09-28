@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd, homeJsonLd } from "@/lib/seo";
 import { lessons, readyLessons } from "@/lib/lessons";
 import { LessonCard } from "@/components/LessonCard";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export default function HomePage() {
   const ready = readyLessons();
@@ -11,6 +15,7 @@ export default function HomePage() {
 
   return (
     <>
+      <JsonLd data={homeJsonLd()} />
       <SiteHeader />
       <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
       <header className="max-w-3xl">

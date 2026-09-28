@@ -5,7 +5,12 @@ import { LessonCard } from "@/components/LessonCard";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
-export const metadata: Metadata = { title: "Kurs rejasi" };
+export const metadata: Metadata = {
+  title: "Kurs rejasi: barcha darslar",
+  description:
+    "Bepul o‘zbekcha system design kursining to‘liq rejasi: har bir dars bitta real tizimni noldan bugungi arxitekturasigacha ochadi.",
+  alternates: { canonical: "/darslar/" },
+};
 
 export default function LessonsPage() {
   const ready = readyLessons();
