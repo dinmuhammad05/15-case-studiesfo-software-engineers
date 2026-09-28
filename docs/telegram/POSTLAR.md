@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 13 ta dars tayyor:
+Hozir 14 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -52,8 +52,9 @@ Hozir 13 ta dars tayyor:
 11 — Airbnb qanday ishlaydi (19 500 so'z)
 12 — Uber ETA'ni qanday hisoblaydi (19 000 so'z)
 13 — Amazon S3 qanday ishlaydi (18 500 so'z)
+14 — Apache Kafka qanday ishlaydi (17 500 so'z)
 
-Yana 4 tasi rejada: Kafka, fond birjasi, Bluesky va boshqalar.
+Yana 3 tasi rejada: fond birjasi, Bluesky va Meta Serverless.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -72,8 +73,9 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-12 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA, Amazon S3), 4 tasi rejada. Internetsiz ham o'qish mumkin.
+14 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA, Amazon S3,
+Kafka), 3 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
@@ -415,6 +417,34 @@ disklarni "o'ldirasiz", baytlarni buzasiz — ma'lumot baribir tiklanadi.
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/amazon-s3/
 ```
 
+### 3.14 — Apache Kafka
+
+```
+LinkedIn'da Kafka kuniga 7 trillion xabarni tashiydi.
+Bu sekundiga taxminan 81 million xabar.
+
+Va bularning hammasi bitta oddiy g'oya ustida: faqat oxiriga
+yoziladigan jurnal. Hech narsa o'rtaga qo'shilmaydi, hech narsa
+o'zgartirilmaydi. O'quvchining butun holati — bitta son.
+
+Qanday qilib bu "oddiy fayl" server o'lganda ham tasdiqlangan
+xabarni yo'qotmaydi? Nega Kafka diskka fsync qilishni kutmaydi-yu,
+baribir ishonchli?
+
+Yangi dars — Apache Kafka qanday ishlaydi (17 500 so'z):
+partition va offset, nega ketma-ket yozish tasodifiydan yuzlab barobar
+tez, replikatsiya va ISR, high watermark — o'quvchi nimani ko'radi,
+yetakchi almashganda qanday qilib jim ma'lumot yo'qotish bo'lgan va
+leader epoch uni qanday tuzatgan, consumer group'lar va lag,
+exactly-once aslida nima, ZooKeeper'siz Kafka (KRaft) va bulutda
+eng katta xarajat nega disk emas, zonalararo trafik.
+Amaliyotda — partition replikatsiyasini o'zingiz yozasiz: simulyator
+brokerlarni yuzlab marta "o'ldiradi", sizning kodingiz esa birorta
+tasdiqlangan xabarni ham yo'qotmasligi kerak.
+
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/kafka/
+```
+
 ---
 
 ## 4. SO'ROVNOMA (poll) — engagement uchun
@@ -423,7 +453,7 @@ Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 
 **Savol:** Keyingi darsni qaysi mavzuda yozay?
 
-- Apache Kafka (commit log, partition, exactly-once)
+- Git va GitHub (ob'ektlar, merge, monorepo)
 - Meta Serverless (XFaaS, sovuq start)
 - Bluesky (federatsiya, AT Protocol)
 - Fond birjasi (matching engine, mikrosekundlar)

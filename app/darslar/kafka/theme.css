@@ -1,0 +1,30 @@
+/* Kafka skini — klaster boshqaruv paneli uslubi (rasmiy brend materiali emas) */
+[data-skin="kafka"] {
+  --skin-bg: #f4f5f7;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f1f2f4;
+  --skin-border: #e3e5e8;
+  --skin-text: #16181d;
+  --skin-muted: #5f6672;
+  --skin-accent: #c8102e;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(200, 16, 46, 0.3);
+  --skin-radius: 10px;
+  --skin-font: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  --skin-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --kf-side: #16181d;
+  --kf-side-2: #22262d;
+  --kf-side-text: #c9ced6;
+  --kf-green: #16a34a;
+  --kf-amber: #d97706;
+  --kf-blue: #2563eb;
+}
+
+[data-skin="kafka"] .lesson-prose h2 {
+  letter-spacing: -0.015em;
+}
+
+body:has([data-skin="kafka"]) {
+  background: #f4f5f7;
+}

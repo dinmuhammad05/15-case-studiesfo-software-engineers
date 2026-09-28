@@ -1,0 +1,2464 @@
+## Bu darsda nima o‘rganasiz
+
+Siz internet-do‘konda buyurtma berdingiz. Shu bitta bosishdan keyin
+o‘nlab tizim harakatga keladi: ombor mahsulotni band qiladi, to‘lov
+tizimi pulni yechadi, SMS xizmati xabar yuboradi, tavsiya tizimi “bu
+mijoz yana nimani oladi” deb o‘ylaydi, tahlil bo‘limi kunlik hisobotni
+yangilaydi, firibgarlik tizimi tekshiradi. Ular bir-biri haqida bilmaydi —
+va bilishi ham shart emas. Hammasi **bitta hodisani** eshitadi:
+“buyurtma № 81 402 yaratildi”.
+
+Bu hodisalar qayerdan eshitiladi? Ko‘p kompaniyalarda — **Apache Kafka**dan.
+Kafka 2010-yil atrofida LinkedIn’da yaratilgan, 2011-yilda ochiq kodga
+chiqarilgan va bugun banklardan tortib taksi xizmatlarigacha minglab
+kompaniyalarning “asab tizimi”ga aylangan. LinkedIn’ning o‘zida 2019-yilda
+Kafka orqali kuniga **7 trilliondan ortiq** xabar o‘tgan.
+
+Kafka’ning siri bitta oddiy g‘oyada: **faqat oxiriga yoziladigan jurnal**
+(log). Bank ko‘chirmasi kabi: yangi yozuvlar pastga qo‘shiladi, eskilari
+o‘zgarmaydi, va har kim o‘zi xohlagan joydan o‘qiy oladi. Dars shu
+g‘oyadan boshlanadi va to‘rtta savolga javob beradi:
+
+**1. Sekundiga millionlab xabarni qanday yozish mumkin?** Diskni “sekin”
+deymiz — lekin ketma-ket yozishda u juda tez. Kafka butun dizaynini shu
+kuzatuvga quradi.
+
+**2. Server o‘lsa, xabar yo‘qolmaydimi?** Replikatsiya, ISR va “high
+watermark” — Kafka’ning eng nozik va eng muhim qismi. Amaliyotda aynan
+shu protokolni o‘zingiz yozasiz.
+
+**3. Yuzlab o‘quvchi bitta oqimni qanday bo‘lishadi?** Consumer group’lar,
+offset’lar va “qayta muvozanatlash” (rebalance).
+
+**4. “Aynan bir marta” (exactly-once) mumkinmi?** Tarmoq xabarni ikki marta
+yetkazishi mumkin. Kafka buni qanday hal qiladi — va qayerda hal qila
+olmaydi.
+
+Har yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan beriladi. Dars oxirida — butun darsning o‘n gaplik
+xulosasi. Oldingi darslardan foydali: Google Docs’dagi “operatsiyalar
+jurnali” va Airbnb’dagi CDC oqimi — ikkalasi ham Kafka kabi jurnal
+g‘oyasiga tayanadi.
+
+## 1. Muammo: hamma hamma bilan gaplashsa
+
+### 1.1 LinkedIn, 2010-yil
+
+Oddiy tilda: har bir tizim boshqa har bir tizimga to‘g‘ridan-to‘g‘ri
+ma’lumot yuborsa, simlar chalkashib ketadi. Bu — “spagetti” integratsiya.
+
+2010-yillar boshida LinkedIn’da xuddi shu holat edi: foydalanuvchi
+faolligi (ko‘rishlar, bosishlar, qidiruvlar), ma’lumotlar bazalaridagi
+o‘zgarishlar, serverlar metrikalari va loglari — har biri o‘z yo‘li bilan
+har bir iste’molchiga (qidiruv indeksi, tavsiyalar, ma’lumotlar ombori,
+monitoring) yetkazilardi. Kafka mualliflaridan biri Jay Kreps 2013-yilgi
+mashhur maqolasida (“The Log”) bu muammoni shunday chizgan:
+
+<Calc title="Ulanishlar soni: hamma bilan hamma yoki markaziy jurnal" result="20 manba va 30 iste'molchi: to'g'ridan-to'g'ri 600 ta integratsiya, markaziy jurnal bilan — 50 ta">{`Manbalar (ma'lumot ishlab chiqaruvchilar): N = 20
+  (ma'lumotlar bazalari, veb-serverlar loglari, ilovalar hodisalari...)
+Iste'molchilar: M = 30
+  (qidiruv, tavsiyalar, ma'lumotlar ombori, monitoring, kesh...)
+
+To'g'ridan-to'g'ri: har manba har iste'molchiga -> N x M = 600 ta yo'l
+  har biri o'z formati, o'z xatolari, o'z qayta urinish mantiqi
+
+Markaziy jurnal: har manba bitta joyga yozadi, har iste'molchi bitta joydan o'qiydi
+  -> N + M = 50 ta yo'l
+
+Yangi iste'molchi qo'shish:
+  to'g'ridan-to'g'ri: 20 ta yangi integratsiya (har manbadan)
+  jurnal bilan: 1 ta — jurnalga ulanish`}</Calc>
+
+Hisobning oxirgi qatori — markaziy jurnalning asosiy qiymati. Yangi tizim
+qo‘shish **arzon** bo‘ladi: u jurnalni boshidan o‘qiydi va o‘zi uchun kerakli
+holatni quradi. Manbalar esa kim o‘qiyotganini umuman bilmaydi.
+
+### 1.2 Talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| O‘tkazuvchanlik | Klaster sekundiga millionlab xabar, GB/s; bitta broker — yuzlab MB/s |
+| Kechikish | Yozuvdan o‘qishgacha — millisekundlar (o‘nlab ms, p99) |
+| Saqlanish | Tasdiqlangan xabar server o‘lsa ham yo‘qolmaydi |
+| Tartib | Bitta kalit bo‘yicha xabarlar yozilgan tartibda o‘qiladi |
+| Qayta o‘qish | Xabarlar o‘qilgandan keyin ham kunlar-haftalar saqlanadi |
+| Ko‘p o‘quvchi | Bitta oqimni yuzlab mustaqil guruh o‘qiydi, bir-biriga xalaqit bermasdan |
+| Masshtab | Brokerlar qo‘shilsa — sig‘im deyarli chiziqli o‘sadi |
+
+Beshinchi qator Kafka’ni klassik **navbat**dan (queue) ajratadi. Oddiy
+navbatda xabar o‘qilgach — o‘chiriladi: “bajarildi, ketdi”. Kafka’da xabar
+o‘qilgach ham qoladi. Bu ikki katta imkoniyat beradi: **bir nechta**
+mustaqil o‘quvchi bitta xabarni o‘qiydi, va xato bo‘lsa, istalgan o‘quvchi
+**orqaga qaytib**, qayta o‘qiy oladi.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="7 T+" label="LinkedIn: kuniga xabarlar" hint="2019" />
+  <Stat value="~81 M/s" label="O'rtacha oqim" hint="Hisoblangan" />
+  <Stat value="7 kun" label="Standart saqlash muddati" hint="Kafka sozlamasi" />
+  <Stat value="1 GB" label="Standart segment hajmi" hint="Kafka sozlamasi" />
+</StatGrid>
+
+<Calc title="LinkedIn miqyosi: sekundiga qancha" result="Kuniga 7 trillion xabar — sekundiga ~81 million; ~1 KB xabarda ~80 GB/s kiruvchi oqim">{`LinkedIn (2019, muhandislik blogi):
+  kuniga 7 000 000 000 000 xabar
+  100+ klaster, 4 000+ broker, 100 000+ topic, ~7 M partition
+
+Sekundiga: 7e12 / 86 400 = ~81 M xabar/s (o'rtacha)
+Xabar hajmi (faraz): ~1 KB -> ~81 GB/s yozish
+Bitta broker (faraz): ~20 MB/s o'rtacha kiruvchi -> ~4 000 broker bilan mos
+
+Har xabarni o'rtacha ~3-5 ta guruh o'qiydi -> o'qish oqimi 3-5 barobar ko'p`}</Calc>
+
+<Calc title="Disk: ketma-ket va tasodifiy yozish" result="Oddiy qattiq disk ketma-ket ~200 MB/s, tasodifiy kichik yozishda ~0.6 MB/s — ~300 barobar farq. Kafka faqat ketma-ket yozadi">{`Qattiq disk (HDD):
+  ketma-ket yozish: ~200 MB/s (bosh joyidan qo'zg'almaydi)
+  tasodifiy 4 KB yozish: ~150 IOPS x 4 KB = ~0.6 MB/s (bosh har safar sakraydi)
+  farq: ~300 barobar
+
+SSD da farq kichikroq (~5-10x), lekin ketma-ket yozish baribir afzal:
+  kam yozish kuchaytirishi, diskning uzoq umri
+
+Kafka jurnali: har yangi xabar faylning OXIRIGA -> faqat ketma-ket
+  o'qish ham odatda ketma-ket: o'quvchi keyingi xabarlarni o'qiydi`}</Calc>
+
+Ikkinchi hisob darsning birinchi texnik saboqi: **disk sekin emas, tasodifiy
+disk sekin**. Kafka dizaynidagi ko‘p qarorlar (faqat oxiriga yozish, xabarlarni
+to‘plab yozish, operatsion tizim keshiga tayanish) aynan disk va tarmoqni
+ketma-ket ishlatish uchun.
+
+<Calc title="Saqlash hajmi: bir hafta" result="Sekundiga 1 GB oqim, 7 kun, 3 nusxa — ~1.8 PB disk">{`Kiruvchi oqim: 1 GB/s (katta kompaniya klasteri, faraz)
+Bir kun: 1 GB x 86 400 = ~86 TB
+7 kun: ~605 TB
+Replikatsiya 3x: ~1.8 PB disk
+
+Siqish (masalan, 3-4x, JSON/matn uchun odatiy): ~450-600 TB
+-> bu 30-60 ta 20 TB diskli broker darajasidagi hajm`}</Calc>
+
+<Check q="Kafka'ni oddiy xabarlar navbatidan (queue) nima ajratadi va bu qanday imkoniyat beradi?">
+Oddiy navbatda xabar **o‘qilganda o‘chiriladi**: navbat “kim bajaradi”
+degan savolga javob beradi, va har xabarni bitta ishchi oladi. Kafka’da
+xabar o‘qilgandan keyin ham **jurnalda qoladi** — saqlash muddati (masalan,
+7 kun) tugaguncha. O‘quvchi faqat “qayergacha o‘qidim” degan raqamni
+(offset) saqlaydi.
+
+Bu uchta imkoniyat beradi. **Ko‘p mustaqil o‘quvchi**: qidiruv, tahlil va
+monitoring bitta hodisalar oqimini har biri o‘z tezligida o‘qiydi — bir-biriga
+xalaqit bermasdan va nusxa ko‘paytirmasdan. **Qayta o‘qish**: o‘quvchi
+kodida xato topilsa, tuzatib, offset’ni orqaga qaytarib, oxirgi 3 kunni
+qaytadan ishlash mumkin. **Yangi tizimni ulash**: yangi xizmat jurnalni
+boshidan o‘qib, o‘z holatini quradi — manbalarni o‘zgartirmasdan.
+
+Narxi — saqlash hajmi (xabarlar kunlab turadi) va “bitta xabarni bitta
+ishchiga ber” kabi navbat semantikasini alohida qurish kerakligi (7-bo‘lim).
+</Check>
+
+## 2. Nol nuqta: jurnal va offset
+
+### 2.1 Faqat oxiriga yoziladigan jurnal
+
+Oddiy tilda: jurnal — bu **bank ko‘chirmasi**. Har yangi operatsiya pastga
+qo‘shiladi va tartib raqami oladi. Eski qatorlar hech qachon o‘zgarmaydi.
+Hisobingizdagi balansni bilish uchun ko‘chirmani boshidan oxirigacha
+o‘qib chiqish kifoya.
+
+```
+offset:   0          1          2          3          4
+        +----------+----------+----------+----------+----------+
+        | buyurtma | to'lov   | buyurtma | bekor    | to'lov   |  <- yangi yozuvlar
+        | #81401   | #81401   | #81402   | #81401   | #81402   |     shu yerga
+        +----------+----------+----------+----------+----------+
+                                  ^                         ^
+                     tahlil shu yerda (offset 2)   qidiruv shu yerda (4)
+```
+
+Uchta tushunchani eslab qoling:
+
+**Yozuv (record)** — kalit, qiymat va vaqt belgisi. Kalit ixtiyoriy, lekin
+muhim (2.3).
+
+**Offset** — yozuvning jurnaldagi tartib raqami: 0, 1, 2, … U hech qachon
+o‘zgarmaydi va takrorlanmaydi.
+
+**O‘quvchining pozitsiyasi** — bitta son: “keyingi o‘qiydiganim — offset 2”.
+O‘quvchining butun holati shu. Uni saqlash, orqaga qaytarish, boshqa
+o‘quvchiga berish — hammasi bitta sonni o‘zgartirish.
+
+### 2.2 Nega jurnal — kuchli abstraksiya
+
+Jurnal g‘oyasi Kafka’dan ancha eski. Ma’lumotlar bazalari ichida u
+**yozuvdan oldingi jurnal** (write-ahead log, WAL) deyiladi: har o‘zgarish
+avval jurnalga yoziladi, keyin jadvallarga. Server qulasa — jurnal qayta
+o‘ynaladi. Replikatsiya — jurnalni boshqa serverga nusxalash.
+
+<Callout type="info" title="Oddiy tilda: jurnal va jadval">
+Jadval — “hozir nima bor” (balans: 500 000 so‘m). Jurnal — “nima bo‘ldi”
+(+1 000 000, −300 000, −200 000). Jurnaldan jadvalni har doim qayta hisoblash
+mumkin; jadvaldan jurnalni — yo‘q. Shuning uchun jurnal — **haqiqat manbai**,
+jadval esa undan hosila. Kafka shu g‘oyani ma’lumotlar bazasi ichidan
+chiqarib, butun kompaniya uchun umumiy xizmatga aylantirdi.
+</Callout>
+
+Bu Airbnb darsidagi CDC oqimi (bazaning o‘zgarishlar jurnali qidiruv
+indeksini yangilaydi) va Google Docs’dagi “operatsiyalar jurnali va suratlar”
+bilan bir xil tuzilma. Kafka ularning **umumlashmasi**: har qanday tizim
+jurnalga yozadi, har qanday tizim undan o‘qib, o‘z ko‘rinishini quradi.
+
+### 2.3 Tartib — faqat bitta jurnal ichida
+
+Jurnal ichida tartib qat’iy: offset 3 har doim offset 2 dan keyin. Lekin
+bitta jurnal bitta serverning diskiga bog‘langan — cheksiz o‘sa olmaydi.
+Kafka jurnalni **bo‘laklarga** (partition) bo‘ladi (5-bo‘lim, 1-qadam), va
+tartib faqat bitta bo‘lak ichida kafolatlanadi.
+
+Qaysi yozuv qaysi bo‘lakka tushishini **kalit** belgilaydi: bir xil kalit —
+har doim bir xil bo‘lak. Shuning uchun “bitta buyurtmaning barcha hodisalari
+tartib bilan” kerak bo‘lsa, kalit — buyurtma raqami.
+
+<Calc title="Kalitdan bo'lakka" result="Bir xil kalit — bir xil bo'lak — bir xil tartib; turli kalitlar orasida tartib yo'q">{`bo'lak = hash(kalit) mod bo'laklar_soni
+
+bo'laklar soni: 6
+  kalit "buyurtma-81401" -> hash ... mod 6 = 4  -> bo'lak 4
+  kalit "buyurtma-81402" -> hash ... mod 6 = 1  -> bo'lak 1
+
+Bo'lak 4: [yaratildi #81401] [to'landi #81401] [bekor #81401]   <- tartib aniq
+Bo'lak 1: [yaratildi #81402] [to'landi #81402]
+
+#81401 va #81402 orasida tartib YO'Q: #81402 ning "to'landi" hodisasi
+  #81401 ning "yaratildi" dan oldin o'qilishi mumkin — va bu normal`}</Calc>
+
+<Check q="Nega o'quvchining butun holati bitta son (offset) bo'lishi muhim?">
+Chunki bu o‘quvchini **arzon, oddiy va tiklanadigan** qiladi.
+
+Arzon: server har o‘quvchi uchun “qaysi xabarlar yuborildi, qaysilari
+tasdiqlandi” degan murakkab holatni saqlamaydi — faqat bitta son. Minglab
+o‘quvchi — minglab son.
+
+Oddiy: o‘quvchi qulasa, qayta ishga tushganda oxirgi saqlangan offset’dan
+davom etadi. Ishni boshqa o‘quvchiga berish — unga offset’ni berish.
+
+Tiklanadigan: xato topilsa, offset’ni orqaga surib, qayta ishlash mumkin.
+Klassik navbatda buning iloji yo‘q — o‘qilgan xabar o‘chirilgan.
+
+Narxi: offset’ni **qachon** saqlash (ishlashdan oldinmi, keyinmi) — muhim
+qaror, va u “kamida bir marta” yoki “ko‘pi bilan bir marta” semantikasini
+belgilaydi (7-bo‘lim).
+</Check>
+
+### 2.4 Beshta so‘z: Kafka lug‘ati oddiy tilda
+
+Darsning qolgan qismida beshta so‘z doim uchraydi. Ularni bitta rasm bilan
+eslab qolish oson — **gazeta arxivi**:
+
+**Topic** — arxivdagi bitta javon: “buyurtmalar”, “to‘lovlar”, “kirishlar”.
+Har mavzu o‘z javonida.
+
+**Partition** — javondagi bitta papka. Javon katta bo‘lsa, u bir nechta
+papkaga bo‘linadi, va har papka — alohida jurnal (2.3). Papka ichida
+varaqlar raqamlangan (offset).
+
+**Broker** — arxiv binosi, ya’ni server. Bitta topic’ning papkalari bir
+nechta binoga tarqatilgan, va har papkaning nusxasi boshqa binolarda ham
+bor (6-bo‘lim).
+
+**Producer** (ishlab chiqaruvchi) — varaq olib kelib, papka oxiriga
+qo‘yadigan kishi. U faqat oxiriga qo‘shadi — o‘rtaga qo‘ya olmaydi, eski
+varaqni o‘zgartira olmaydi.
+
+**Consumer** (o‘quvchi) — papkani o‘qiydigan kishi. U varaqni olib
+ketmaydi — faqat “men 57-varaqqacha o‘qidim” deb belgi qo‘yadi. Shuning
+uchun bitta papkani o‘nta turli bo‘lim bir-biriga xalaqit bermasdan
+o‘qiydi, har biri o‘z belgisi bilan.
+
+Klassik **navbat** (masalan, pochta bo‘limidagi navbat) bilan asosiy farq
+shu oxirgi jumlada. Navbatda xabar kimdir olgach yo‘qoladi: bitta xat —
+bitta oluvchi. Jurnalda xabar belgilangan muddat (masalan, 7 kun) saqlanadi,
+va uni istalgancha o‘quvchi, istalgancha marta o‘qiydi. Kechikib qo‘shilgan
+yangi xizmat ham kechagi xabarlarni boshidan o‘qib chiqa oladi — navbatda
+bu imkonsiz. Farqning narxi va qachon navbat yaxshiroq ekani — 16-bo‘limda.
+
+## 3. v0: bitta fayl va bitta server
+
+Eng sodda “Kafka” — bitta serverda bitta fayl. Yozish — faylning oxiriga
+qo‘shish; o‘qish — berilgan offset’dan boshlab. Offset’dan fayldagi o‘ringa
+tez o‘tish uchun kichik indeks saqlaymiz:
+
+```python
+import os, struct
+
+class Log:
+    def __init__(self, path):
+        self.f = open(path, "a+b")
+        self.positions = []            # offset -> fayldagi bayt o'rni (xotirada)
+        self._rebuild()
+
+    def _rebuild(self):                # qayta ishga tushganda indeksni tiklash
+        self.f.seek(0)
+        pos = 0
+        while (head := self.f.read(4)):
+            self.positions.append(pos)
+            (n,) = struct.unpack(">I", head)
+            self.f.seek(n, 1)
+            pos += 4 + n
+
+    def append(self, value: bytes) -> int:
+        self.f.seek(0, os.SEEK_END)
+        self.positions.append(self.f.tell())
+        self.f.write(struct.pack(">I", len(value)) + value)
+        self.f.flush(); os.fsync(self.f.fileno())      # har yozuvda diskka
+        return len(self.positions) - 1                  # offset
+
+    def read(self, offset: int, max_n: int = 100):
+        out = []
+        for pos in self.positions[offset:offset + max_n]:
+            self.f.seek(pos)
+            (n,) = struct.unpack(">I", self.f.read(4))
+            out.append(self.f.read(n))
+        return out
+```
+
+Har yozuv — 4 baytli uzunlik va qiymat. Offset — yozuvning tartib raqami.
+Qayta ishga tushganda fayl boshidan o‘qilib, indeks tiklanadi. Har
+`append` `fsync` qiladi — “yozildi” degani “diskda” degani.
+
+Bu v0 **ishlaydi**: kichik jamoa uchun hodisalar jurnali, sekundiga yuzlab
+yozuv, bir nechta o‘quvchi. Muammolar yuk, vaqt va nosozliklar bilan chiqadi.
+
+## 4. Nima sindi
+
+v0 kichik yuk bilan ishlaydi. Endi unga 1-bo‘limdagi talablarni —
+sekundiga gigabayt, o‘nlab o‘quvchi guruhlari, serverlar o‘lishi —
+qo‘yamiz va nima birinchi bo‘lib sinishini ko‘ramiz. Har muammo keyingi
+bo‘limdagi bitta yoki bir nechta qadamga olib keladi.
+
+### 4.1 Har yozuvda fsync
+
+Oddiy tilda: fayl “yozildi” deganda, ma’lumot odatda hali **operatsion
+tizim xotirasida** turadi — diskka keyinroq, o‘zi qulay paytda yozadi.
+Elektr o‘chsa, bu xotira yo‘qoladi. `fsync` — “hozir, darhol diskka yoz va
+tugagach xabar ber” degan buyruq. v0 har yozuvdan keyin shuni chaqiradi
+va disk javobini kutadi. Muammo shundaki, bu kutish yozuv kichik yoki katta
+bo‘lishiga deyarli bog‘liq emas — har chaqiruv bir xil qimmat:
+
+<Calc title="fsync narxi: har yozuvda" result="Har yozuvda fsync — sekundiga yuzlab yozuv; 1 000 ta yozuvni to'plab bitta fsync — sekundiga yuz minglab">{`fsync — diskdan "haqiqatan yozildi" tasdig'ini kutish
+  HDD: ~5-10 ms (aylanish va bosh harakati)
+  SSD: ~0.1-1 ms (korporativ SSD da quvvat himoyasi bilan tezroq)
+
+Har yozuvda fsync (HDD):
+  1 / 0.008 s = ~125 yozuv/s  (xabar hajmidan qat'i nazar!)
+
+1 000 ta yozuvni bitta to'plamda, bitta fsync:
+  1 000 x 125 = ~125 000 yozuv/s — faqat to'plash hisobiga 1 000 barobar
+
+Kafka yondashuvi: fsync umuman kutilmaydi — xavfsizlik replikatsiyadan
+  (5-bo'lim, 4-5-qadamlar)`}</Calc>
+
+### 4.2 Bitta disk, bitta fayl — chegara
+
+Hatto fsync muammosi hal bo‘lsa ham, v0 da hamma yozuvlar **bitta faylga**,
+ya’ni bitta diskka va bitta serverga tushadi. Server qanchalik kuchli
+bo‘lmasin, uning diski va tarmoq kartasi chegaralangan. Yozish bilan birga
+o‘qish ham bor: har xabarni bir nechta guruh o‘qiydi, ya’ni chiquvchi oqim
+kiruvchidan bir necha barobar katta. Hisoblaymiz:
+
+<Calc title="Bitta jurnalning chegarasi" result="Bitta fayl bitta diskning ketma-ket tezligi bilan cheklangan (~200 MB/s HDD); 1 GB/s uchun kamida 5-10 ta mustaqil jurnal kerak">{`Kerakli oqim: 1 GB/s (1.3)
+Bitta HDD ketma-ket: ~200 MB/s; bitta NVMe SSD: ~2-3 GB/s
+Lekin bitta server tarmog'i: 25 Gbit/s = ~3 GB/s, va u yozish + o'qish +
+  replikatsiya o'rtasida bo'linadi
+
+O'qish: 5 ta guruh har xabarni o'qisa — 5 GB/s chiqish
+  -> bitta server tarmog'i yetmaydi
+
+Xulosa: jurnal bo'laklarga bo'linishi va bo'laklar ko'p serverga
+  tarqatilishi kerak (5-bo'lim, 1-qadam)`}</Calc>
+
+### 4.3 Server o‘ldi — jurnal ham
+
+v0 da ma’lumot bitta diskda. Disk yoki server o‘lsa, jurnal yo‘qoladi —
+va u bilan birga “kompaniyaning barcha hodisalari”. Hatto disk tirik
+qolsa ham, server qayta ishga tushguncha (daqiqalar-soatlar) hech kim
+yoza ham, o‘qiy ham olmaydi. S3 darsidagi saboq bu yerda ham amal qiladi:
+**bitta nusxa — saqlanish emas**.
+
+### 4.4 Disk to‘ladi
+
+Jurnal faqat o‘sadi. Kuniga 86 TB (1.3) bilan har qanday disk bir necha
+kunda to‘ladi. Eski yozuvlarni o‘chirish kerak — lekin bitta ulkan fayldan
+boshini “kesib tashlash” oson emas (fayl tizimlari fayl boshidan qisqartirishni
+yaxshi bilmaydi). Yechim — jurnalni **segmentlarga** (bir nechta kichikroq
+fayllarga) bo‘lish va eski segmentni butunlay o‘chirish (5-bo‘lim, 2-qadam).
+
+### 4.5 O‘quvchi qulasa — qayerdan davom etadi?
+
+v0 da o‘quvchi offset’ni o‘zi eslab qoladi — masalan, xotirada. Qulasa,
+unutadi. Faylga yozsa — o‘sha serverda; server almashsa, yo‘qoladi.
+O‘quvchilar ko‘p bo‘lsa va ular ishni bo‘lishsa (har biri jurnalning bir
+qismini o‘qisa), “kim qaysi bo‘lakni o‘qiydi va qayergacha o‘qidi” degan
+**umumiy holat** kerak. Bu 5-bo‘limning 8–9-qadamlari.
+
+### 4.6 Tarmoq takrori
+
+Ishlab chiqaruvchi (producer) xabar yubordi, server yozdi, lekin javob
+yo‘lda yo‘qoldi. Ishlab chiqaruvchi qayta yuboradi — jurnalda **ikkita**
+bir xil xabar. Airbnb darsidagi “ikki marta yechish” muammosining aynan
+o‘zi, faqat bu yerda xabarlar oqimida.
+
+<Calc title="Takrorlar qanchalik tez-tez" result="0.01% vaqt tugashi — sekundiga 1 M xabarda har soniyada ~100 ta takror; 'kamdan-kam' katta miqyosda 'doimiy'">{`Oqim: 1 000 000 xabar/s
+Javob yo'qolishi yoki vaqt tugashi: 0.01% (tarmoq, GC pauzasi, broker yuklamasi)
+  -> 100 ta qayta yuborish/s
+
+Ulardan qanchasi haqiqatan yozilgan edi (faqat javob yo'qolgan)?
+  faraz: yarmi -> ~50 takror/s -> kuniga ~4.3 M takror
+
+To'lov hodisalari bo'lsa: kuniga 4 million ikki marta hisoblangan to'lov`}</Calc>
+
+### 4.7 Muammolar ro‘yxati
+
+v0 dan qolgan olti muammo va ularni hal qiladigan qadamlar (5-bo‘lim):
+
+| Muammo | Nima kerak | Qadam |
+| --- | --- | --- |
+| Har yozuvda fsync — sekundiga yuzlab yozuv | To‘plash; saqlanishni nusxalardan olish | 3, 4, 5 |
+| Bitta disk va server — tezlik chegarasi | Jurnalni bo‘laklarga bo‘lib, serverlarga tarqatish | 1 |
+| Server o‘lsa, jurnal yo‘q | Nusxalar va yetakchi almashinuvi | 5, 6, 7 |
+| Disk to‘ladi | Segmentlar, eski segmentni o‘chirish yoki ob’ekt omboriga ko‘chirish | 2, 12, 14 |
+| O‘quvchi pozitsiyasini yo‘qotadi | Offset’larni Kafka ichida saqlash, guruhlar | 8, 9 |
+| Qayta yuborish takror yozadi | Idempotent producer, tranzaksiyalar | 10, 11 |
+
+Oxirgi qadam (13 — KRaft) hech bir yozuvga to‘g‘ridan-to‘g‘ri tegmaydi:
+u “kim yetakchi, kim ISR da” degan ma’lumotni saqlaydigan tizimni
+soddalashtiradi va klasterni millionlab partition’gacha kengaytiradi.
+
+<Check q="Nega v0 ning har yozuvda fsync qilishi ham xavfsiz, ham yomon?">
+**Xavfsiz**, chunki “yozildi” javobi diskdagi haqiqatni aks ettiradi:
+elektr o‘chsa ham, tasdiqlangan yozuv saqlanadi (bitta server doirasida).
+
+**Yomon**, chunki fsync — diskdan tasdiq kutish, va u **yozuv hajmidan
+emas, yozuvlar sonidan** qimmat. Qattiq diskda har fsync ~5–10 ms — ya’ni
+sekundiga ~125 ta yozuv, qanchalik kichik bo‘lmasin. Kafka kutayotgan yuk
+(sekundiga yuz minglab–millionlab) bilan bu 1 000 barobar kam.
+
+Ikki yechim bor, va Kafka ikkalasini birga ishlatadi. Birinchisi —
+**to‘plash** (batching): 1 000 ta yozuvni birga yozish, bitta disk
+operatsiyasi. Ikkinchisi — **saqlanishni diskdan emas, replikatsiyadan
+olish**: xabar bir nechta serverning xotirasiga (operatsion tizim keshiga)
+yetib borsa, hammasi bir vaqtda o‘lishi ehtimoli juda kichik — fsync’ni
+kutish shart emas. Bu S3 darsidagi “saqlanish — mustaqil nusxalardan”
+g‘oyasining boshqa ko‘rinishi.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar uch guruhda. **Tezlik** (1–4): bo‘laklar, segmentlar, to‘plash va
+operatsion tizim keshi. **Ishonchlilik** (5–9): replikatsiya, tasdiqlash
+darajalari, yetakchi almashinuvi, o‘quvchilar guruhlari. **Semantika va
+ekspluatatsiya** (10–14): takrorsiz yozish, tranzaksiyalar, jurnalni siqish,
+ZooKeeper’siz Kafka va arzon uzoq saqlash.
+
+<Step n={1} title="Topic va partition: jurnalni bo'laklarga bo'lish" gain="Yozish va o'qish ko'p server va ko'p diskka tarqaladi; o'quvchilar parallel ishlaydi" cost="Tartib faqat bitta partition ichida; partition sonini keyin o'zgartirish kalit -> partition xaritasini buzadi">
+Oddiy tilda: bitta kassa oldida uzun navbat — sekin. 10 ta kassa ochamiz,
+har mijozni familiyasining birinchi harfiga qarab bitta kassaga
+yuboramiz. Har kassada tartib saqlanadi, kassalar esa parallel ishlaydi.
+
+**Topic** — mantiqiy oqim nomi (“buyurtmalar”, “to‘lovlar”). **Partition** —
+topic’ning bitta jurnali. Topic 12 ta partition’ga bo‘lingan bo‘lsa, bu 12 ta
+mustaqil jurnal, turli serverlarda. Yozuv qaysi partition’ga tushishini
+kalit belgilaydi (2.3); kalitsiz yozuvlar partition’lar bo‘ylab navbat bilan
+yoki to‘plamlar bo‘yicha tarqatiladi.
+
+<Calc title="Nechta partition kerak" result="1 GB/s yozish va har o'quvchi ~20 MB/s ishlasa — ~50 partition; o'quvchilar soni partition'lardan ko'p bo'la olmaydi">{`Talab: yozish 1 GB/s, o'quvchi guruhi har xabarni ishlaydi
+
+Bitta partition'ning amaliy yozish tezligi (faraz): ~10-50 MB/s
+  (bitta disk, bitta yetakchi broker ichidagi oqim, replikatsiya bilan)
+  1 GB/s / 25 MB/s = ~40 partition
+
+O'quvchi tomoni: bitta o'quvchi (ilova kodi) ~20 MB/s ishlaydi
+  1 GB/s / 20 MB/s = 50 ta o'quvchi kerak
+  guruhda bitta partition'ni bitta o'quvchi o'qiydi -> partition >= 50
+
+Tanlov: 60 partition (zaxira bilan) — ikkala chegaradan yuqori`}</Calc>
+
+Muhim cheklov: guruh ichida **bitta partition’ni faqat bitta o‘quvchi**
+o‘qiydi (tartib saqlanishi uchun). Ya’ni 12 partition’li topic’ni 20 ta
+o‘quvchi o‘qisa, 8 tasi bekor turadi. Partition soni — o‘quvchilar
+parallelligining **yuqori chegarasi**.
+</Step>
+
+<Step n={2} title="Segmentlar va siyrak indeks" gain="Eski ma'lumot butun fayllar bilan tez o'chiriladi; offset bo'yicha qidiruv tez va indeks kichik" cost="Juda ko'p kichik segment — ko'p ochiq fayl; indeks siyrak — bir oz ketma-ket o'qish kerak">
+
+Oddiy tilda: qalin kundalikni yillar davomida bitta daftarga yozmaysiz —
+har oy yangi daftar ochasiz. Eski yilni tashlab yuborish kerak bo‘lsa, butun
+daftarlarni olib tashlaysiz, sahifama-sahifa o‘chirmaysiz. Kerakli kunni
+topish uchun esa har daftar boshida kichik mundarija bor: “5-sana — 12-bet,
+10-sana — 31-bet”. Har kun emas, har bir necha kun — mundarija yupqa, lekin
+kerakli joyga yaqin olib boradi.
+
+Partition jurnali bitta fayl emas, **segmentlar** ketma-ketligi: har biri
+~1 GB (standart sozlama). Yangi yozuvlar faqat oxirgi (faol) segmentga
+qo‘shiladi; u to‘lgach, yopiladi va yangisi ochiladi.
+
+```
+partition-0/
+  00000000000000000000.log     <- offset 0 dan boshlanadi (yopiq, 1 GB)
+  00000000000000000000.index   <- siyrak indeks: offset -> fayldagi o'rin
+  00000000000005123456.log     <- fayl nomi = birinchi offset
+  00000000000005123456.index
+  00000000000010240021.log     <- faol segment, yozuvlar shu yerga
+  00000000000010240021.index
+```
+
+**Saqlash muddati** (masalan, 7 kun) segmentlar bo‘yicha amalga oshiriladi:
+eng eski segmentdagi hamma yozuv muddatidan o‘tgan bo‘lsa — butun fayl
+o‘chiriladi. Bu bitta fayl tizimi amali, jurnalni qayta yozish emas.
+
+**Siyrak indeks** har yozuv uchun emas, har ~4 KB ma’lumot uchun bitta
+yozuv saqlaydi: “offset 5 123 700 — fayldagi 409 600-bayt”. Kerakli offset’ni
+topish: fayl nomi bo‘yicha segment (ikkilik qidiruv), indeksda eng yaqin
+kichik yozuv (ikkilik qidiruv), keyin bir necha KB ketma-ket o‘qish.
+
+<Calc title="Siyrak indeks hajmi" result="1 GB segment uchun indeks ~2 MB — butunlay xotirada; to'liq indeks 100 barobar katta bo'lardi">{`Segment: 1 GB, o'rtacha xabar 1 KB -> ~1 M yozuv
+
+To'liq indeks (har yozuv): 1 M x 8 bayt (offset + o'rin) = 8 MB
+Siyrak indeks (har 4 KB): 1 GB / 4 KB = 262 144 yozuv x 8 bayt = ~2 MB
+  (xabarlar 100 bayt bo'lsa: to'liq indeks 80 MB, siyrak baribir ~2 MB)
+
+Qidiruv: segment (~10 ta fayl orasida) + indeksda log2(262 144) = 18 qadam
+  + eng ko'pi bilan 4 KB ketma-ket o'qish -> mikrosekundlar`}</Calc>
+</Step>
+
+<Step n={3} title="To'plash va siqish" gain="Tarmoq so'rovlari va disk amallari yuzlab barobar kam; siqish 3-5x joy va trafik tejaydi" cost="Bir necha millisekund kutish (linger); siqish CPU talab qiladi">
+Oddiy tilda: har bir xatni alohida pochtaga eltish o‘rniga, 100 ta xatni
+bitta qutiga solib, bir marta eltasiz.
+
+Ishlab chiqaruvchi (producer) har xabarni darhol yubormaydi: u bitta
+partition uchun xabarlarni **to‘plam**ga (record batch) yig‘adi va to‘plam
+to‘lganda yoki kichik kutish vaqti (`linger.ms`) o‘tganda yuboradi. To‘plam
+butunligicha siqiladi (gzip, snappy, lz4, zstd), butunligicha diskka
+yoziladi, butunligicha o‘quvchiga yuboriladi. Broker to‘plamni ochmaydi
+ham — siqilgan holda saqlaydi.
+
+<Calc title="To'plashning ta'siri" result="1 000 xabarlik to'plam: so'rovlar soni 1 000 barobar kam, siqish bilan trafik 3-4 barobar kam; narxi — 5-10 ms kechikish">{`Oqim: 100 000 xabar/s, xabar 500 bayt (JSON)
+
+To'plamsiz: 100 000 so'rov/s, har biri sarlavha (~60 bayt) + 500 bayt
+  tarmoq: ~56 MB/s, broker: 100 000 so'rov/s ishlaydi
+
+To'plam 1 000 xabar (yoki 10 ms):
+  100 so'rov/s, har biri ~500 KB
+  siqish (JSON uchun zstd ~4x): ~125 KB -> tarmoq ~12.5 MB/s
+  broker: 100 so'rov/s — 1 000 barobar kam ish
+
+Narxi: xabar to'plam to'lguncha yoki linger tugaguncha kutadi: +5-10 ms`}</Calc>
+
+To‘plash Kafka tezligining eng katta manbalaridan biri, va u ChatGPT
+darsidagi “batching” bilan bir xil g‘oya: **qat’iy xarajatni (so‘rov,
+disk amali, GPU chaqiruvi) ko‘p birlik orasida bo‘lish**. Narx — kechikish:
+millisekundlar, odatda sezilmaydi.
+</Step>
+
+<Step n={4} title="Operatsion tizim keshi va nol-nusxa uzatish" gain="O'qish ko'pincha diskka umuman tegmaydi; ma'lumot diskdan tarmoqqa dastur xotirasi orqali o'tmaydi" cost="Kafka keshini boshqarmaydi — operatsion tizimga tayanadi; eski ma'lumotni o'quvchi keshni 'sovutadi'">
+
+Oddiy tilda: kutubxonachi eng ko‘p so‘raladigan kitoblarni stoli yonida
+ushlaydi — omborga borish shart emas. Kafka o‘zi alohida “stol” qurmaydi:
+operatsion tizim allaqachon shunday qiladi — yaqinda yozilgan va o‘qilgan
+fayl qismlarini bo‘sh xotirada saqlaydi. Kitobni o‘quvchiga berishda esa
+kutubxonachi uni qo‘lda ko‘chirib yozmaydi — to‘g‘ridan-to‘g‘ri uzatadi.
+
+Kafka yozuvlarni o‘z xotirasida keshlamaydi — bu ishni **operatsion
+tizimning sahifa keshi** (page cache) qiladi. Yangi yozilgan ma’lumot bir
+muddat xotirada turadi; o‘quvchilar odatda eng yangi xabarlarni o‘qiydi —
+ya’ni ular xotiradan o‘qiydi, diskdan emas.
+
+Ikkinchi hiyla — **nol-nusxa** (zero-copy). Oddiy yondashuvda fayldan
+tarmoqqa yuborish: disk → yadro keshi → dastur xotirasi → yadro tarmoq
+buferi → tarmoq kartasi (4 ta nusxa). Linux’ning `sendfile` chaqiruvi
+ma’lumotni yadro keshidan to‘g‘ridan-to‘g‘ri tarmoqqa uzatadi — dastur
+xotirasiga umuman kirmaydi. Bu faqat broker to‘plamlarni **o‘zgartirmasdan**
+yuborgani uchun mumkin (3-qadam: siqilgan to‘plam o‘zgarmaydi).
+
+<Calc title="Nol-nusxa: CPU va xotira tejash" result="5 GB/s o'qish oqimida nol-nusxa har soniyada ~10 GB xotira nusxalashni yo'q qiladi">{`O'qish oqimi: 5 GB/s (5 ta guruh x 1 GB/s)
+
+Oddiy yo'l: 4 ta nusxa, shundan 2 tasi yadro <-> dastur (CPU bilan)
+  2 x 5 GB/s = 10 GB/s xotira nusxalash + tizim chaqiruvlari
+
+sendfile: yadro keshidan tarmoqqa (DMA bilan) — dastur nusxasi yo'q
+  -> ~10 GB/s xotira o'tkazuvchanligi va bir necha yadro bo'shaydi
+
+Shart: o'quvchi xabarni aynan diskdagi formatda qabul qiladi
+  (TLS shifrlash yoqilsa, nol-nusxa ishlamaydi — broker shifrlashi kerak)`}</Calc>
+
+Muhim nozik jihat: “Kafka fsync qilmaydi” degani “Kafka ishonchsiz” degani
+emas. Yozuv xotirada, lekin **bir nechta** serverning xotirasida (5-qadam).
+Hammasi bir vaqtda elektrsiz qolishi — butun ma’lumotlar markazi o‘chishi
+darajasidagi hodisa, va unga qarshi nusxalar turli binolarda (rack/AZ) bo‘ladi.
+</Step>
+
+<Step n={5} title="Replikatsiya: yetakchi, izdoshlar va ISR" gain="Broker o'lsa, boshqasi yetakchi bo'ladi — tasdiqlangan xabarlar yo'qolmaydi" cost="Trafik va disk 3 barobar; yozish tasdig'i sekinroq (izdoshlarni kutish)">
+Oddiy tilda: sinfda o‘qituvchi (yetakchi) doskaga yozadi, ikki a’lochi
+(izdoshlar) daftarga ko‘chiradi. O‘qituvchi kasal bo‘lsa, a’lochilardan biri
+darsni davom ettiradi — va u doskada nima yozilganini aniq biladi.
+
+Har partition’ning bir nechta nusxasi (odatda 3) turli brokerlarda.
+Ulardan biri — **yetakchi** (leader): barcha yozish va (odatda) o‘qish unga
+boradi. Qolganlari — **izdoshlar** (follower): ular yetakchidan xuddi
+o‘quvchi kabi “offset X dan keyingilarni ber” deb so‘raydi (pull) va o‘z
+jurnaliga qo‘shadi.
+
+**ISR** (in-sync replicas) — yetakchiga **yetib olgan** nusxalar ro‘yxati.
+Izdosh ma’lum vaqt (masalan, 30 soniya) davomida yetib olmasa, ISR dan
+chiqariladi; yetib olsa — qaytariladi.
+
+**High watermark** (HW) — ISR dagi **hamma** nusxalarda bor bo‘lgan eng
+katta offset. HW gacha bo‘lgan yozuvlar — **tasdiqlangan** (committed):
+ular yetakchi o‘lsa ham yo‘qolmaydi, chunki yangi yetakchi ISR dan tanlanadi
+va unda ular bor. O‘quvchilar faqat HW gacha o‘qiydi.
+
+```
+Yetakchi (broker 1):  [0][1][2][3][4][5][6]        LEO = 7
+Izdosh (broker 2):    [0][1][2][3][4][5]           LEO = 6
+Izdosh (broker 3):    [0][1][2][3][4]              LEO = 5
+                                     ^
+                         HW = 5 (hammada bor: 0..4)
+O'quvchilar 0..4 ni ko'radi; 5 va 6 — hali tasdiqlanmagan
+```
+
+<Calc title="Replikatsiya narxi" result="RF=3 da 1 GB/s kiruvchi oqim klaster ichida 2 GB/s qo'shimcha trafik va 3 barobar disk beradi">{`Kiruvchi oqim: 1 GB/s, replication factor = 3
+  yetakchilar diskiga: 1 GB/s
+  izdoshlarga tarmoq orqali: 2 x 1 GB/s = 2 GB/s
+  izdoshlar diskiga: 2 GB/s
+  -> disk yozish jami 3 GB/s, klaster ichki tarmog'i 2 GB/s
+
+Agar nusxalar turli AZ larda (bino xavfidan himoya):
+  2 GB/s zonalararo trafik — bulutda bu pullik (12-bo'lim)`}</Calc>
+</Step>
+
+<Step n={6} title="acks va min.insync.replicas: ishonchlilikni sozlash" gain="Har topic uchun tezlik va saqlanish murosasini ongli tanlash" cost="Noto'g'ri sozlama jim ma'lumot yo'qotadi; qat'iy sozlama — ISR kichrayganda yozish to'xtaydi">
+
+Oddiy tilda: pochtaga xat topshirdingiz. “Qabul qilindi” degan javobni
+qachon olishni xohlaysiz: xat qo‘lingizdan chiqishi bilan (tez, lekin
+yo‘qolishi mumkin), bitta bo‘lim uni ro‘yxatga olganda, yoki uchta
+bo‘limning hammasi nusxasini saqlaganda (sekinroq, lekin xat deyarli
+yo‘qolmaydi)? Kafka’da bu tanlov har ishlab chiqaruvchi uchun sozlanadi.
+
+Ishlab chiqaruvchi yozuv “qabul qilindi” deb qachon hisoblanishini tanlaydi:
+
+| Sozlama | Tasdiq qachon | Yo‘qotish xavfi | Kechikish |
+| --- | --- | --- | --- |
+| `acks=0` | Hech qachon — yubordi va unutdi | Yuqori: broker yozmagan bo‘lishi ham mumkin | Eng past |
+| `acks=1` | Yetakchi o‘z jurnaliga yozganda | Yetakchi izdoshlar ko‘chirmasdan o‘lsa — yo‘qoladi | Past |
+| `acks=all` | ISR dagi hamma nusxa olganda (HW o‘tganda) | Faqat hamma ISR bir vaqtda yo‘qolsa | Yuqoriroq |
+
+`acks=all` o‘zi yetarli emas. Agar ISR bitta — faqat yetakchining o‘zi —
+bo‘lib qolsa (izdoshlar orqada), “hamma ISR” = bitta nusxa. Shuning uchun
+**`min.insync.replicas`** (masalan, 2): ISR undan kichik bo‘lsa, `acks=all`
+yozuvlar **rad etiladi** (NotEnoughReplicas). Tizim mavjudlikdan voz kechib,
+saqlanishni himoya qiladi — S3 darsidagi “shubha bo‘lsa, ma’lumotni buzma”
+tamoyili.
+
+<Calc title="acks=1 bilan qancha yo'qotiladi" result="Yetakchi o'lganda, izdoshlar hali olmagan ~oxirgi bir necha ms yozuvlari yo'qoladi — sekundiga 1 M xabarda bu minglab xabar">{`Oqim: 1 000 000 xabar/s bitta topic'da, 50 partition
+Izdoshlar kechikishi: odatda ~5-20 ms orqada
+
+Bitta broker to'satdan o'ladi (yiliga bir necha marta):
+  u yetakchi bo'lgan partition'lar: ~1/3 (3 brokerli guruhda)
+  har birida oxirgi ~10 ms yozuvlari izdoshlarda yo'q:
+  1 000 000 x 0.01 s x (1/3) = ~3 300 xabar
+
+acks=1: ishlab chiqaruvchi ular uchun "OK" olgan — jim yo'qotish
+acks=all + min.insync.replicas=2: "OK" faqat HW dan keyin -> yo'qotish 0`}</Calc>
+
+Kafka 3.0 dan boshlab ishlab chiqaruvchining standart sozlamasi `acks=all`
+(va idempotentlik yoqilgan — 10-qadam). Ya’ni standart holat — xavfsiz;
+tezlik uchun uni ongli ravishda pasaytirish mumkin.
+</Step>
+
+<Step n={7} title="Yetakchi almashinuvi va leader epoch" gain="Yetakchi o'lganda tasdiqlangan ma'lumot saqlanadi, nusxalar bir-biridan ajralib ketmaydi" cost="Nozik protokol; 'toza bo'lmagan' saylovga ruxsat berilsa — ma'lumot yo'qotish">
+Yetakchi o‘lsa, **kontroller** (klaster boshqaruvchisi) ISR dan yangi
+yetakchi tanlaydi. ISR dagi har nusxada barcha tasdiqlangan yozuvlar
+bor — shuning uchun hech narsa yo‘qolmaydi.
+
+Lekin muammo bor: eski yetakchida va ba’zi izdoshlarda **tasdiqlanmagan**
+“dum” (HW dan keyingi yozuvlar) bo‘lishi mumkin — va ular yangi yetakchidagi
+bilan farq qilishi mumkin. Har nusxa yangi yetakchiga ulanishdan oldin o‘z
+dumini **kesishi** (truncate) kerak — lekin qayergacha?
+
+Dastlabki Kafka’da izdosh o‘z HW sigacha kesardi. Bu ikki nozik xatoga
+olib kelgan (ma’lumot yo‘qotish va nusxalar ajralishi), va 0.11 versiyada
+(2017) **leader epoch** qo‘shildi: har yetakchilik davri raqamlanadi, har
+yozuv o‘z davri raqami bilan saqlanadi. Qaytgan nusxa yangi yetakchidan
+“mening oxirgi davrim E edi — sening jurnalingda E davri qayerda tugaydi?”
+deb so‘raydi va aynan shu joygacha kesadi.
+
+<Deep title="Nega HW gacha kesish xavfli: bitta stsenariy">
+Ikki nusxa: A (yetakchi) va B (izdosh), `min.insync.replicas=1` (soddalik
+uchun). HW yetakchida hisoblanadi va izdoshga **keyingi** fetch javobida
+yetkaziladi — ya’ni izdoshning HW si har doim bir qadam orqada.
+
+```
+1. A m1 ni yozadi (offset 0).        A: [m1]  HW_A=0
+2. B fetch qiladi, m1 ni oladi.        B: [m1]  HW_B=0
+3. B yana fetch qiladi (offset 1 dan) -> A biladi: B da 1 ta yozuv bor
+   A: HW_A = 1 -> m1 TASDIQLANDI, ishlab chiqaruvchiga "OK"
+   A javobida HW=1 yuboradi — lekin javob yetib borishidan oldin...
+4. B qayta ishga tushadi (qulash). Uning HW_B hali 0.
+   Eski qoida: "HW gacha kes" -> B: []   (m1 o'chdi!)
+5. A o'ladi. B yagona nusxa -> yetakchi bo'ladi.
+   m1 — tasdiqlangan xabar — YO'QOLDI.
+```
+
+Leader epoch bilan 4-qadam boshqacha: B qayta ishga tushganda kesmaydi,
+balki yetakchidan so‘raydi: “mening oxirgi davrim 0 — sizda 0-davr qayerda
+tugaydi?”. A javob beradi: “offset 1 da” (hali davom etmoqda — ya’ni jurnal
+oxiri). B hech narsa kesmaydi, m1 saqlanadi. A o‘lsa, B yetakchi bo‘ladi va
+m1 u yerda.
+
+Umumiy saboq: **HW — bu yetakchining bilimi**, izdoshlarniki emas. Izdoshning
+HW si doim eskirgan bo‘lishi mumkin, va eskirgan ma’lumotga asoslangan
+o‘chirish — xavfli. To‘g‘ri manba — yetakchi davri va uning jurnali.
+Amaliyotda (18-bo‘lim) aynan shu stsenariy test sifatida bor.
+</Deep>
+
+**Toza bo‘lmagan saylov** (unclean leader election): agar ISR dagi hamma
+nusxa o‘lgan bo‘lsa, ISR dan tashqaridagi (orqada qolgan) nusxani yetakchi
+qilish mumkin — mavjudlik tiklanadi, lekin tasdiqlangan xabarlar yo‘qoladi.
+Kafka 0.11 dan beri bu standart bo‘yicha **o‘chirilgan**: saqlanish mavjudlikdan
+ustun.
+</Step>
+
+<Step n={8} title="Consumer group'lar va offset'larni saqlash" gain="O'quvchilar ishni avtomatik bo'lishadi; o'quvchi qulasa, boshqasi uning joyidan davom etadi" cost="Guruh koordinatori va offset'lar uchun maxsus topic; 'qachon commit qilish' — semantik qaror">
+Oddiy tilda: oshxonada 6 ta oshpaz va 12 ta buyurtma stoli bor. Bosh oshpaz
+har oshpazga 2 tadan stol biriktiradi. Kimdir ketsa, uning stollari
+qolganlarga bo‘linadi. Har oshpaz “qaysi buyurtmagacha tayyorladim” deb
+doskaga yozib boradi.
+
+**Consumer group** — bitta vazifani bajaradigan o‘quvchilar jamoasi
+(masalan, “qidiruv-indekslovchi”, 6 ta nusxa). Guruh ichida topic’ning har
+partition’i **aynan bitta** o‘quvchiga biriktiriladi. Turli guruhlar esa
+bir-biridan mustaqil: har biri butun topic’ni o‘qiydi.
+
+Har o‘quvchi vaqti-vaqti bilan **offset’ini commit qiladi** — “partition 4 da
+offset 81 402 gacha ishladim”. Offset’lar maxsus ichki topic’da
+(`__consumer_offsets`) saqlanadi — ya’ni Kafka o‘z holatini ham o‘zining
+jurnalida saqlaydi. O‘quvchi qulasa, uning partition’ini olgan boshqa o‘quvchi
+oxirgi commit qilingan offset’dan davom etadi.
+
+<Calc title="Guruh ichida bo'lish" result="12 partition, 6 o'quvchi — har biriga 2 ta; 7-o'quvchi qo'shilsa — kimdir 1 ta oladi; 13-o'quvchi bekor turadi">{`Topic: 12 partition. Guruh "indekslovchi":
+
+6 o'quvchi:  har biriga 2 partition  (12 / 6)
+7 o'quvchi:  5 tasiga 2, 2 tasiga 1  (5x2 + 2x1 = 12) — yuk notekis
+12 o'quvchi: har biriga 1
+13 o'quvchi: 12 tasiga 1, bittasi BEKOR (zaxira sifatida foydali)
+
+Boshqa guruh "tahlil" (3 o'quvchi): har biriga 4 partition —
+  u "indekslovchi" guruhidan butunlay mustaqil, o'z offset'lari bilan`}</Calc>
+</Step>
+
+<Step n={9} title="Qayta muvozanatlash: to'xtatuvchidan bosqichmalikkacha" gain="O'quvchi qo'shilsa yoki ketsa, guruh qisqa uzilish bilan qayta bo'linadi" cost="Eski usulda butun guruh to'xtardi; yangi usullar murakkabroq">
+
+Oddiy tilda: oshxonaga yangi oshpaz keldi (8-qadamdagi misol). Eski
+usul — bosh oshpaz “hamma to‘xtasin!” deydi, barcha stollarni qaytarib oladi
+va qaytadan bo‘ladi; shu daqiqalarda hech kim ovqat pishirmaydi. Yangi
+usul — faqat yangi oshpazga beriladigan ikkita stolni ularning egalaridan
+oladi, qolganlar ishlashda davom etadi.
+
+O‘quvchi qo‘shilganda, ketganda yoki qulaganda guruh partition’larni
+**qayta bo‘lishi** kerak (rebalance). Uch avlod bor:
+
+| Avlod | Qanday | Muammo |
+| --- | --- | --- |
+| “Hamma to‘xtaydi” (eager) | Hamma o‘quvchi barcha partition’larini qaytaradi, yangi taqsimot, qayta boshlash | Butun guruh bir necha soniya ishlamaydi — har o‘zgarishda |
+| Bosqichmali (cooperative, 2.4) | Faqat ko‘chadigan partition’lar qaytariladi, qolganlari ishlashda davom etadi | Ikki bosqich; mijoz tomonida murakkab mantiq |
+| Server tomonida (KIP-848, 4.0) | Koordinator broker taqsimotni o‘zi hisoblaydi va har o‘quvchiga faqat o‘zgarishni aytadi | Yangi protokol; mijozlar yangilanishi kerak |
+
+<Calc title="Qayta muvozanatlash narxi: 100 o'quvchili guruh" result="'Hamma to'xtaydi' usulida bitta o'quvchini qayta ishga tushirish butun guruhni ~5-30 soniya to'xtatadi; bosqichmali usulda faqat 1% partition to'xtaydi">{`Guruh: 100 o'quvchi, 1 000 partition, ilova har kuni yangilanadi
+  (har o'quvchi navbat bilan qayta ishga tushadi -> 100 ta rebalance)
+
+Eager: har rebalance da BUTUN guruh to'xtaydi, ~10 s
+  100 x 10 s = ~17 daqiqa to'liq to'xtash har yangilanishda
+  shu vaqtda lag o'sadi: 1 GB/s x 1 000 s = ~1 TB orqada qolish
+
+Cooperative: har rebalance da faqat ko'chayotgan ~10 partition (1%) to'xtaydi
+  qolgan 99% ishlashda davom etadi -> lag deyarli sezilmaydi`}</Calc>
+
+“Statik a’zolik” (static membership) ham yordam beradi: o‘quvchiga doimiy ID
+berilsa, u qisqa qayta ishga tushganda (masalan, 30 soniyadan kam) rebalance
+umuman bo‘lmaydi — koordinator uning qaytishini kutadi.
+</Step>
+
+<Step n={10} title="Idempotent producer: takrorsiz yozish" gain="Tarmoq qayta urinishlari jurnalda takror hosil qilmaydi" cost="Broker har ishlab chiqaruvchi uchun oxirgi tartib raqamlarini saqlaydi">
+
+Oddiy tilda: har jo‘natmaga raqam qo‘yasiz: “Ali, 1-xat”, “Ali, 2-xat”.
+Pochta har jo‘natuvchining oxirgi raqamini eslab qoladi. Yana “Ali, 2-xat”
+kelsa — “buni allaqachon oldim” deb, qayta ro‘yxatga olmaydi, lekin sizga
+“qabul qilindi” deb javob beradi.
+
+4.6-dagi muammo: javob yo‘qolsa, ishlab chiqaruvchi qayta yuboradi va jurnalda
+takror paydo bo‘ladi. Yechim Airbnb darsidagi idempotentlik kalitiga
+o‘xshaydi, lekin arzonroq:
+
+```
+Ishlab chiqaruvchi ishga tushganda brokerdan ID oladi: PID = 7001
+Har partition uchun har to'plamga tartib raqami: seq = 0, 1, 2, ...
+
+Broker har (PID, partition) uchun oxirgi seq ni eslaydi:
+  kelgan seq = oxirgi + 1   -> yoz, oxirgi = seq
+  kelgan seq <= oxirgi      -> TAKROR: yozma, avvalgi natijani qaytar
+  kelgan seq > oxirgi + 1   -> oraliq bor: xato (OutOfOrderSequence)
+```
+
+Tartib raqami kalit o‘rnini bosadi: brokerga har xabar uchun kalit saqlash
+shart emas — faqat har ishlab chiqaruvchining oxirgi raqami. Bu holat
+jurnaldagi to‘plamlar bilan birga saqlanadi, shuning uchun yetakchi
+almashsa, yangi yetakchi uni jurnaldan tiklaydi.
+
+Kafka 0.11 (2017) da qo‘shilgan, 3.0 dan boshlab **standart yoqilgan**.
+Cheklov: kafolat bitta ishlab chiqaruvchi seansi ichida. Ilova qayta ishga
+tushib, yangi PID olsa, eski qayta urinishlarni tanimaydi — buning uchun
+tranzaksion ID kerak (11-qadam).
+</Step>
+
+<Step n={11} title="Tranzaksiyalar va exactly-once" gain="'O'qi — ishla — yoz' zanjiri atomik: natija va offset birga yoziladi yoki hech biri" cost="Tranzaksiya koordinatori, qo'shimcha yozuvlar va kechikish; faqat Kafka ichida ishlaydi">
+
+Oddiy tilda: bank o‘tkazmasi — bir hisobdan yechish va boshqasiga
+qo‘shish. Ikkalasi ham bo‘lishi yoki ikkalasi ham bo‘lmasligi kerak;
+“yechildi, lekin qo‘shilmadi” — eng yomon holat. Kafka tranzaksiyasi xuddi
+shunday: “natijani yozish” va “kirishni o‘qidim deb belgilash” — bitta
+bo‘linmas amal.
+
+Tipik oqim: topic A dan o‘qi, ishla, natijani topic B ga yoz, A dagi
+offset’ni commit qil. Agar o‘quvchi natijani yozgandan keyin, lekin offset’ni
+commit qilishdan oldin qulasa — qayta ishga tushganda xuddi shu xabarni
+yana ishlaydi va B ga **ikkinchi marta** yozadi.
+
+Tranzaksiya bu uch amalni birlashtiradi: B ga yozuvlar **va** A offset’ining
+commit’i — yo hammasi, yo hech biri. Qanday qilib?
+
+```
+1. beginTransaction  (tranzaksion ID: "indekslovchi-3")
+2. B ga yozuvlar      -> jurnalga yoziladi, lekin "tranzaksiyada" belgisi bilan
+3. offset'ni commit   -> __consumer_offsets ga, xuddi shu tranzaksiyada
+4. commitTransaction  -> koordinator har partition'ga "COMMIT" belgisini yozadi
+
+O'quvchi "read_committed" rejimida:
+  faqat COMMIT belgisi kelgan tranzaksiya yozuvlarini ko'radi;
+  ABORT bo'lganlarini tashlab ketadi
+```
+
+Tranzaksion ID ilova qayta ishga tushganda ham bir xil qoladi. Yangi nusxa
+shu ID bilan ro‘yxatdan o‘tganda, koordinator eski nusxaning tugallanmagan
+tranzaksiyasini bekor qiladi va eski nusxani “zombi” deb belgilaydi —
+agar u tirik bo‘lib yozishga urinsa, rad etiladi (fencing — Google Docs
+darsidagi epoch g‘oyasi).
+
+<Calc title="Tranzaksiyalar narxi" result="Har tranzaksiyaga bir necha qo'shimcha so'rov va belgi yozuvi; 100 ms lik tranzaksiyalar bilan o'tkazuvchanlik deyarli o'zgarmaydi, kechikish esa ~100 ms oshadi">{`Har tranzaksiya: koordinatorga ~3 so'rov (boshlash/qo'shish/commit)
+  + har ishtirokchi partition'ga bitta belgi yozuvi (COMMIT/ABORT)
+
+Tranzaksiya har 100 ms da (to'plab):
+  sekundiga 10 ta tranzaksiya x 20 partition = 200 ta belgi yozuvi/s
+  -> ma'lumot oqimi yonida arzimas
+
+Kechikish: read_committed o'quvchi tranzaksiya tugaguncha kutadi
+  -> +~100 ms (tranzaksiya oralig'i) qo'shimcha kechikish
+
+Juda tez-tez tranzaksiya (har xabar): o'tkazuvchanlik 10-100x tushadi`}</Calc>
+</Step>
+
+<Step n={12} title="Log compaction: har kalitning oxirgi qiymati" gain="Jurnal cheksiz saqlanadi, lekin hajmi kalitlar soniga teng — holatni tiklash uchun ideal" cost="Fon siqish jarayoni; o'chirish uchun 'qabr toshi' yozuvlar; oraliq tarix yo'qoladi">
+
+Oddiy tilda: telefon kitobchasida har odamning faqat oxirgi raqami kerak.
+Ali uch marta raqam almashtirgan bo‘lsa, eski ikkitasini saqlashning
+foydasi yo‘q. Log compaction jurnalni vaqti-vaqti bilan shunday
+“tozalaydi”: har kalit uchun eng oxirgi yozuv qoladi, eskilari o‘chadi.
+
+Ba’zi oqimlar hodisalar emas, **holat o‘zgarishlari**: “foydalanuvchi 42
+ning manzili — Toshkent”, keyin “foydalanuvchi 42 ning manzili — Samarqand”.
+Bunday topic’da faqat har kalitning **oxirgi** qiymati muhim.
+
+Siqilgan (compacted) topic’da fon jarayoni eski segmentlarni qayta yozadi
+va har kalit uchun faqat oxirgi yozuvni qoldiradi. Kalitni o‘chirish uchun
+— qiymati bo‘sh yozuv (“qabr toshi”, tombstone), u ham bir muddatdan keyin
+yo‘qoladi.
+
+```
+Siqishdan oldin:   [42:Toshkent] [7:Buxoro] [42:Samarqand] [7:null] [9:Xiva]
+Siqishdan keyin:   [42:Samarqand] [9:Xiva]           (7 o'chirilgan)
+Offset'lar o'zgarmaydi — faqat "teshiklar" paydo bo'ladi
+```
+
+<Calc title="Siqilgan topic hajmi" result="10 million foydalanuvchi profili: yillik 3.6 mlrd yangilanish o'rniga ~10 M yozuv saqlanadi">{`Foydalanuvchilar: 10 M, har biri kuniga ~1 yangilanish
+Yiliga: 10 M x 365 = 3.65 mlrd yozuv x 1 KB = ~3.65 TB (oddiy topic)
+
+Siqilgan topic: har kalit uchun oxirgisi -> ~10 M x 1 KB = ~10 GB
+  + hali siqilmagan "bosh" qism (so'nggi soatlar) — bir necha GB
+
+Yangi xizmat bu topic'ni boshidan o'qib, butun profil jadvalini
+  ~10 GB o'qish bilan quradi — ma'lumotlar bazasiga so'rov yubormasdan`}</Calc>
+
+`__consumer_offsets` ning o‘zi ham siqilgan topic: har (guruh, topic,
+partition) uchun faqat oxirgi offset kerak. Kafka Streams kabi kutubxonalar
+ham o‘z ichki holatini siqilgan topic’larda saqlaydi — ilova qulasa, holat
+shu topic’dan tiklanadi.
+</Step>
+
+<Step n={13} title="KRaft: ZooKeeper'siz Kafka" gain="Metadata ham jurnal: kontroller almashinuvi soniyalarda, millionlab partition" cost="Katta migratsiya; eski klasterlarni ko'chirish">
+
+Oddiy tilda: katta idorada “kim qaysi xonada, kim bo‘lim boshlig‘i”
+degan ro‘yxat alohida binodagi boshqa tashkilotda saqlanardi. Har
+o‘zgarishda o‘sha yerga qo‘ng‘iroq qilish kerak edi. KRaft bu ro‘yxatni
+idoraning o‘ziga ko‘chiradi — va uni ham jurnal sifatida yuritadi.
+
+Uzoq yillar Kafka metadata’ni (qaysi topic, qaysi partition qayerda, kim
+yetakchi, ISR) alohida tizimda — **ZooKeeper**da saqlagan. Bu ikkita muammo
+tug‘dirgan: ikkinchi murakkab tizimni boshqarish, va kontroller almashganda
+yangi kontroller barcha metadata’ni ZooKeeper’dan qayta o‘qishi kerak edi —
+partition’lar ko‘p bo‘lsa, bu daqiqalar.
+
+KRaft (KIP-500) g‘oyasi Kafka’ning o‘z falsafasidan: **metadata ham jurnal**.
+Kontrollerlar guruhi (odatda 3 yoki 5) Raft konsensus protokoli bilan bitta
+metadata jurnalini yuritadi. Har broker bu jurnalni o‘quvchi kabi o‘qiydi va
+o‘z nusxasini yangilab boradi.
+
+<Calc title="Kontroller almashinuvi: ZooKeeper va KRaft" result="200 000 partition'li klasterda ZooKeeper bilan kontroller tiklanishi daqiqalar; KRaft'da yangi kontroller metadata'ni allaqachon xotirada saqlaydi — soniyalar">{`Klaster: 200 000 partition
+
+ZooKeeper bilan: yangi kontroller barcha partition holatini ZooKeeper'dan o'qiydi
+  ~200 000 ta yozuv, har biri ~ms -> ~1-3 daqiqa (tartib jihatidan)
+  shu vaqtda yetakchi saylovlari kechikadi
+
+KRaft: kontroller-kutuvchilar metadata jurnalini doimo o'qib turadi
+  yangi faol kontroller: hamma narsa xotirada, faqat Raft saylovi -> soniyalar
+
+Brokerlar ham: metadata o'zgarishlari jurnal orqali oqim sifatida,
+  "hamma narsani qayta yuklash" o'rniga -> millionlab partition mumkin`}</Calc>
+
+Xronologiya: KRaft 3.3 versiyada (2022) ishlab chiqarish uchun tayyor deb
+e’lon qilindi, 4.0 versiyada (2025) ZooKeeper butunlay olib tashlandi.
+</Step>
+
+<Step n={14} title="Tiered storage: eski segmentlar ob'ekt omborida" gain="Oylar-yillar saqlash arzon; brokerlar disk hajmiga bog'liq emas; yangi broker tez tayyor" cost="Eski ma'lumotni o'qish sekinroq (ob'ekt omboridan); qo'shimcha tizim">
+
+Oddiy tilda: uyda faqat so‘nggi oylarning hujjatlari javonda turadi;
+eski yillarniki — arzon omborda. Kerak bo‘lsa, olib kelinadi (sekinroq),
+lekin uydagi joy va pul tejaladi.
+
+Kafka brokeri diskida saqlangan har GB — uchta nusxa (5-qadam) va tez, qimmat
+disk. Lekin eski ma’lumot kamdan-kam o‘qiladi. **Tiered storage** (KIP-405,
+3.6 da sinov uchun, 3.9 da to‘liq) eski, yopilgan segmentlarni ob’ekt omboriga
+(masalan, S3) ko‘chiradi; broker diskida faqat so‘nggi soatlar qoladi.
+
+<Calc title="30 kunlik saqlash: faqat broker diski va tiered" result="1 GB/s, 30 kun: broker diskida ~7.8 PB (RF=3) yoki ~0.3 PB mahalliy + 2.6 PB ob'ekt omborida — narx bir necha barobar kam">{`Oqim: 1 GB/s, saqlash 30 kun -> 2.6 PB foydali ma'lumot
+
+Faqat broker diski (RF=3): 2.6 x 3 = ~7.8 PB tez disk
+  va har broker qayta tiklanganda terabaytlarni ko'chirish kerak
+
+Tiered: mahalliy — so'nggi 1 kun x 3 = ~0.26 PB
+  ob'ekt omborida: 2.6 PB (ombor o'zi 11 ta to'qqiz beradi — S3 darsi;
+    Kafka nusxasi shart emas)
+
+Narx (taxminan): tez disk + server ~0.05-0.1 $/GB-oy vs ob'ekt ombori ~0.023
+  7.8 PB x 0.07 = ~550 K $/oy  vs  0.26 PB x 0.07 + 2.6 PB x 0.023 = ~78 K $/oy`}</Calc>
+
+Bu qadam darslikdagi ikki darsni bog‘laydi: Kafka — **tez, yaqin, qisqa
+muddatli** jurnal; S3 — **arzon, ishonchli, uzoq muddatli** ombor. Tiered
+storage ularni bitta mantiqiy jurnalga birlashtiradi: o‘quvchi uchun offset
+bir xil, u qayerda saqlanishini bilmaydi.
+</Step>
+
+<Check q="acks=all o'zi yetarli emas — nega min.insync.replicas ham kerak?">
+`acks=all` “**ISR dagi** hamma nusxa olsin” deydi. ISR esa o‘zgaruvchan:
+izdoshlar orqada qolsa (tarmoq, disk sekinligi, GC pauzasi), ular ISR dan
+chiqariladi. Eng yomon holatda ISR faqat yetakchining o‘zidan iborat bo‘ladi —
+va `acks=all` amalda `acks=1` ga aylanadi: yozuv bitta nusxada tasdiqlanadi.
+Shu paytda yetakchi o‘lsa — tasdiqlangan xabarlar yo‘qoladi (va toza saylov
+bilan yetakchi umuman tanlanmaydi, chunki ISR bo‘sh).
+
+`min.insync.replicas=2` bu teshikni yopadi: ISR ikkitadan kichik bo‘lsa,
+`acks=all` yozuvlar **rad etiladi**. Ishlab chiqaruvchi xato oladi va qayta
+urinadi yoki navbatga qo‘yadi. Tizim vaqtincha yozishni to‘xtatadi —
+mavjudlik pasayadi — lekin hech qachon “bitta nusxada” tasdiq bermaydi.
+
+Tipik sozlama: `replication.factor=3`, `min.insync.replicas=2`, `acks=all`.
+Bir broker o‘lsa — yozish davom etadi (ISR=2). Ikkitasi o‘lsa — yozish
+to‘xtaydi, lekin tasdiqlangan ma’lumot saqlangan.
+</Check>
+
+## 6. Replikatsiya: bitta yozuvning hayoti
+
+### 6.1 Qadam-baqadam
+
+5-bo‘limning 5–7-qadamlari natijani berdi. Bu yerda — bitta yozuv
+yetakchiga kelgandan tasdiqlangungacha nima bo‘lishini sekin ko‘ramiz.
+RF=3, `min.insync.replicas=2`, `acks=all`.
+
+<Flow nodes={["Producer: to'plam (PID, seq)", "Yetakchi: jurnalga, LEO = 101", "Izdosh 2 fetch(100): oladi, LEO = 101", "Izdosh 3 fetch(100): oladi, LEO = 101", "Keyingi fetch'lar: yetakchi LEO larni biladi", "HW = min(LEO, ISR) = 101", "Producer'ga 'OK'; o'quvchilar 100 ni ko'radi"]} caption="Tasdiq = HW yozuvdan o'tdi. HW izdoshlarning navbatdagi fetch'i bilan siljiydi" />
+
+Bir muhim detal: yetakchi izdoshning LEO sini uning **keyingi** fetch
+so‘rovidan biladi (“menga offset 101 dan ber” — demak, 0..100 menda bor).
+Shuning uchun HW siljishi uchun odatda **ikki** fetch aylanishi kerak:
+birinchisida izdosh yozuvni oladi, ikkinchisida yetakchi buni bilib, HW ni
+siljitadi. Tasdiq kechikishi — bir necha millisekund.
+
+<Calc title="acks=all kechikishi" result="Bitta AZ ichida p50 ~2-5 ms, zonalararo ~5-15 ms; asosiy qism — izdoshlar fetch aylanishi">{`Producer -> yetakchi (tarmoq):           ~0.5 ms (bitta AZ)
+Yetakchi jurnalga (sahifa keshiga):      ~0.1 ms
+Izdoshlar fetch (uzoq so'rov, kutib turgan edi) — darhol javob oladi
+  yetakchi -> izdosh tarmoq:             ~0.5 ms (bitta AZ) / ~1-2 ms (boshqa AZ)
+  izdosh yozadi, keyingi fetch yuboradi:  ~0.5 ms
+  yetakchi HW ni siljitadi
+Yetakchi -> producer javob:              ~0.5 ms
+
+Jami p50: ~2-5 ms bitta AZ da; ~5-15 ms uch AZ ga tarqalganda
+p99: GC pauzalari, disk, tarmoq navbatlari -> o'nlab ms`}</Calc>
+
+### 6.2 ISR qachon kichrayadi
+
+Izdosh `replica.lag.time.max.ms` (standart 30 soniya) davomida yetakchining
+jurnal oxiriga yetib olmasa, ISR dan chiqariladi. Sabablar: broker qulashi,
+tarmoq uzilishi, disk sekinligi, uzoq GC pauzasi, juda katta yuk.
+
+ISR kichrayishi — yaxshi va yomon xabar birga. **Yaxshi**: bitta sekin
+izdosh butun partition’ni to‘xtatmaydi — HW qolgan ISR bo‘yicha siljiydi.
+**Yomon**: himoya kamayadi. ISR=2 (RF=3 da) — bitta broker yo‘qolishiga
+chidaydi; ISR=1 — `min.insync.replicas=2` bilan yozish to‘xtaydi.
+
+<Calc title="Nega vaqt bo'yicha, xabarlar soni bo'yicha emas" result="Xabarlar soni bo'yicha chegara (masalan, 4 000 xabar orqada) katta oqimda sog'lom izdoshni ham ISR dan chiqaradi">{`Eski qoida (Kafka 0.9 gacha): "4 000 dan ko'p xabar orqada -> ISR dan chiqar"
+
+Sokin topic: 10 xabar/s -> 4 000 xabar = 400 s orqada -> juda yumshoq
+Gavjum topic: 500 000 xabar/s -> 4 000 xabar = 8 ms orqada -> sog'lom izdosh
+  har bir to'plam cho'qqisida ISR dan chiqib-kirib turadi ("ISR flapping")
+
+Yangi qoida: "30 s davomida jurnal oxiriga yetib olmadi" — oqim tezligidan
+  mustaqil; sokin va gavjum topic'lar uchun bir xil ma'noga ega`}</Calc>
+
+### 6.3 Yetakchi o‘lganda nima yo‘qoladi, nima qoladi
+
+| Holat | Tasdiqlangan (HW gacha) | Tasdiqlanmagan dum |
+| --- | --- | --- |
+| Yetakchi o‘ldi, ISR da boshqa nusxa bor | **Saqlanadi** — yangi yetakchida bor | Yangi yetakchida bo‘lsa — qoladi, bo‘lmasa — yo‘qoladi; producer qayta yuboradi |
+| Hamma ISR o‘ldi, toza saylov | Saqlanadi, lekin partition **ishlamaydi** ISR dagi nusxa qaytguncha | — |
+| Hamma ISR o‘ldi, toza bo‘lmagan saylov | **Yo‘qolishi mumkin** — orqada qolgan nusxa yetakchi bo‘ladi | Yo‘qoladi |
+
+Ikkinchi qator nuqtai nazaridan muhim: Kafka standart bo‘yicha **kutadi**.
+Bu bank yoki to‘lov hodisalari uchun to‘g‘ri tanlov. Loglar yoki metrikalar
+uchun (bir necha daqiqalik yo‘qotish kechirimli) toza bo‘lmagan saylovni
+yoqish mavjudlikni oshiradi — lekin bu ongli qaror bo‘lishi kerak.
+
+<Deep title="Ikkinchi KIP-101 stsenariysi: nusxalar ajralishi">
+7-qadamdagi Deep ma’lumot yo‘qotishni ko‘rsatdi. HW gacha kesishning
+ikkinchi xavfi — **ajralish**: ikki nusxada bir xil offset’da turli
+yozuvlar.
+
+```
+Ikki nusxa: A (yetakchi, 0-davr) va B.
+1. A m1 (offset 0) va m2 (offset 1) ni yozadi, B ikkalasini ham oladi.
+   A: HW = 2. B ning HW si hali 1 (yangilanish keyingi fetch'da keladi).
+2. Elektr o'chadi — ikkala server ham qulaydi. B da m2 hali faqat operatsion
+   tizim keshida edi (diskka yozilmagan) — B ning jurnali: [m1].
+3. B birinchi bo'lib ishga tushadi va yetakchi bo'ladi (1-davr).
+   B m3 ni qabul qiladi -> offset 1 = m3.   B: [m1, m3]
+4. A ishga tushadi, izdosh bo'ladi. Eski qoida: "o'z HW'ing (=2) gacha kes" ->
+   A hech narsa kesmaydi: [m1, m2]. Keyin fetch(2) — B da offset 2 yo'q.
+   NATIJA: offset 1 da A da m2, B da m3 — nusxalar ABADIY ajralgan.
+```
+
+Muammo ildizi — izdosh o‘zi saqlagan raqamga (HW) tayanadi, bu raqam esa
+**qaysi yetakchilik davriga** tegishli ekanini bilmaydi. Leader epoch bilan:
+A qaytganda “mening oxirgi davrim 0 — sizda 0-davr qayerda tugaydi?” deb
+so‘raydi. B javob beradi: “offset 1 da (1-davr m3 bilan shu yerdan
+boshlanadi)”. A offset 1 dan boshlab kesadi (m2 ketadi) va m3 ni oladi.
+Nusxalar yana bir xil.
+
+Bu stsenariyda m2 yo‘qoladi — ikkala server **bir vaqtda** elektrsiz qolib,
+biri ma’lumotni diskka yozib ulgurmagani uchun. Kafka bu xavfni ongli
+qabul qiladi (fsync kutilmaydi — 5-bo‘lim 4-qadam) va unga nusxalarni turli
+stoyka va binolarga joylash bilan qarshi turadi. Lekin **nusxalar
+ajralishi** — hech qachon qabul qilinmaydi: u “qaysi biri haqiqat?” degan
+javobsiz savolni tug‘diradi.
+</Deep>
+
+<Check q="Nega o'quvchilar faqat high watermark gacha o'qiydi, yetakchidagi hamma yozuvlarni emas?">
+Chunki HW dan keyingi yozuvlar hali **tasdiqlanmagan** — ular faqat
+yetakchida (va ba’zi izdoshlarda) bor. Agar yetakchi hozir o‘lsa, yangi
+yetakchida ular bo‘lmasligi mumkin va jurnal o‘sha offset’lardan **boshqa**
+yozuvlar bilan davom etadi.
+
+Agar o‘quvchi HW dan keyingi yozuvni o‘qigan bo‘lsa, u **hech qachon
+mavjud bo‘lmagan** hodisani ko‘rgan bo‘ladi: “buyurtma № 81 402 to‘landi”
+xabari asosida mahsulot jo‘natildi — lekin bu yozuv yetakchi almashganda
+yo‘qoldi, va ishlab chiqaruvchi uni qayta yuborishi ham, yubormasligi ham
+mumkin (masalan, to‘lov aslida rad etilgan bo‘lsa). O‘quvchilar orasida ham
+ziddiyat paydo bo‘ladi: biri ko‘rgan, boshqasi ko‘rmagan.
+
+HW chegarasi kafolat beradi: o‘quvchi ko‘rgan har bir yozuv **abadiy** shu
+offset’da, shu ko‘rinishda qoladi. Narxi — kichik kechikish (HW siljishini
+kutish, 6.1).
+</Check>
+
+## 7. O‘quvchilar: offset, lag va semantika
+
+### 7.1 Offset’ni qachon commit qilish
+
+O‘quvchi xabarni oladi, ishlaydi (masalan, bazaga yozadi) va offset’ni
+commit qiladi. Qulash istalgan paytda bo‘lishi mumkin. Tartib natijani
+belgilaydi:
+
+| Tartib | Qulash oraliqda bo‘lsa | Semantika |
+| --- | --- | --- |
+| Commit → ishlash | Offset saqlangan, ish bajarilmagan → xabar **o‘tkazib yuboriladi** | Ko‘pi bilan bir marta (at-most-once) |
+| Ishlash → commit | Ish bajarilgan, offset saqlanmagan → xabar **qayta ishlanadi** | Kamida bir marta (at-least-once) |
+| Ishlash va commit atomik | Yo ikkalasi, yo hech biri | Aynan bir marta (exactly-once) — 8-bo‘lim |
+
+Amalda eng keng tarqalgani — **kamida bir marta** va **idempotent** ishlash:
+xabar ikki marta kelsa ham natija o‘zgarmaydi (masalan, bazaga `UPSERT`
+buyurtma raqami bo‘yicha). Bu Airbnb darsidagi idempotentlik kalitining
+aynan o‘zi.
+
+### 7.2 Lag — asosiy sog‘liq ko‘rsatkichi
+
+**Lag** — partition oxiri (LEO yoki HW) va o‘quvchining commit qilingan
+offset’i orasidagi farq. Lag o‘sib borsa — o‘quvchilar yozuvchilardan sekin.
+
+<Calc title="Lag'ni vaqtga aylantirish va o'quvchilar sonini hisoblash" result="30 daqiqalik cho'qqida lag ~27 M xabarga (~9 daqiqa orqada) yetadi va 1.5 soatda tarqaladi; 20 partition va 13 o'quvchi bilan lag umuman o'smaydi">{`Topic: 50 000 xabar/s kiradi, 10 partition, 10 o'quvchi
+Har o'quvchi: ~5 500 xabar/s ishlay oladi -> jami 55 000/s (10% zaxira)
+
+Kechqurun cho'qqi: 70 000/s, 30 daqiqa davomida
+  lag o'sishi: (70 000 - 55 000) x 1 800 s = 27 M xabar
+  vaqt bo'yicha: 27 M / 50 000 = ~9 daqiqa orqada
+
+Cho'qqidan keyin (50 000/s) lag kamayishi: 55 000 - 50 000 = 5 000/s
+  27 M / 5 000 = 5 400 s = 1.5 soat
+
+Agar partition 20 ta va o'quvchi 13 ta bo'lsa: 71 500/s
+  cho'qqida ham lag o'smaydi
+Xulosa: o'quvchilar sig'imi cho'qqi uchun rejalashtiriladi, o'rtacha uchun emas`}</Calc>
+
+Lag’ni **xabarlar**da emas, **vaqtda** o‘lchash qulayroq: “o‘quvchi 9
+daqiqa orqada” har qanday topic uchun bir xil tushuniladi. Bu darsning skini
+ham shunday: o‘ng tomondagi “consumer lag” — qolgan daqiqalar.
+
+<Deep title="Sekin ishlov: o'quvchi guruhdan qanday 'chiqarib yuboriladi'">
+O‘quvchi sikli: `poll()` — xabarlar to‘plamini olish, ularni ishlash, yana
+`poll()`. Koordinator o‘quvchi tirikligini ikki yo‘l bilan kuzatadi:
+fon “yurak urishi” (heartbeat) va **poll oralig‘i** — o‘quvchi
+`max.poll.interval.ms` (standart 5 daqiqa) ichida yana `poll()` chaqirmasa,
+u “osilib qolgan” deb hisoblanadi va guruhdan chiqariladi.
+
+```
+poll() -> 500 ta xabar
+har xabar: tashqi API chaqiruvi ~1 s   (sekin!)
+500 x 1 s = 500 s > 300 s  -> o'quvchi guruhdan chiqariladi
+  -> rebalance: uning partition'lari boshqasiga o'tadi
+  -> commit qilinmagan 500 xabar QAYTA ishlanadi (boshqa o'quvchida)
+  -> yangi o'quvchi ham 500 s ishlaydi -> yana chiqariladi ... cheksiz
+```
+
+Yechimlar: `max.poll.records` ni kamaytirish (masalan, 50 — 50 s ga
+sig‘adi); ishlashni parallel qilish (bitta partition’dan olingan xabarlarni
+kalit bo‘yicha bir nechta ishchi oqimga bo‘lish, tartibni kalit ichida
+saqlab); yoki sekin ishni alohida topic’ga yoki navbatga ko‘chirish.
+Asosiy saboq: **bitta to‘plamni ishlash vaqti** — o‘quvchi dizaynining
+birinchi raqami; u poll chegarasidan ancha kichik bo‘lishi kerak.
+</Deep>
+
+### 7.3 Issiq kalit
+
+Bir xil kalit — bir xil partition (2.3). Agar bitta kalit juda mashhur
+bo‘lsa (masalan, eng yirik mijozning barcha hodisalari), uning partition’i
+qiziydi, qolganlari bo‘sh turadi — va bu partition’ni guruhda faqat **bitta**
+o‘quvchi o‘qiy oladi.
+
+<Calc title="Bitta mashhur kalit" result="Oqimning 30% i bitta kalitda bo'lsa, 60 partition'dan bittasi qolgan 59 ning har biridan ~25 barobar yuklangan — o'quvchilar ko'paytirilsa ham yordam bermaydi">{`Oqim: 100 000 xabar/s, 60 partition
+Bitta yirik mijoz: oqimning 30% i = 30 000 xabar/s -> bitta partition
+Qolgan 70 000/s -> 59 partition'ga ~1 190/s dan
+
+Issiq partition: 30 000 + 1 190 = ~31 000/s — boshqalardan ~26x
+Bitta o'quvchi ~5 500/s ishlasa -> bu partition'da lag cheksiz o'sadi
+
+Yechimlar:
+  kalitni "tuzlash": mijoz_id + (buyurtma_id mod 8) -> 8 ta partition'ga
+    tarqaladi, lekin mijoz bo'yicha umumiy tartib yo'qoladi
+  tartib faqat buyurtma ichida kerak bo'lsa — kalit = buyurtma_id`}</Calc>
+
+Bu Airbnb darsidagi “mashhur uy” va Uber’dagi “issiq katak” bilan bir xil
+muammo: **kalit bo‘yicha taqsimlash — kalitlar tekis bo‘lsagina tekis**.
+Kalit tanlash — tartib kafolati va yuk taqsimoti orasidagi murosa.
+
+<Check q="O'quvchi xabarni ishlab, natijani bazaga yozdi, lekin offset'ni commit qilishdan oldin quladi. Nima bo'ladi va buni qanday xavfsiz qilish mumkin?">
+Qayta ishga tushganda (yoki partition boshqa o‘quvchiga o‘tganda) oxirgi
+**commit qilingan** offset’dan davom etiladi — ya’ni shu xabar **qayta**
+ishlanadi va bazaga ikkinchi marta yoziladi. Bu “kamida bir marta”
+semantikasi.
+
+Xavfsiz qilishning uch yo‘li:
+
+**Idempotent yozish.** Bazaga yozuv tabiiy kalit bilan (`UPSERT` buyurtma
+raqami bo‘yicha, yoki “bu hodisa ID si allaqachon ishlanganmi” jadvali).
+Ikkinchi marta yozish natijani o‘zgartirmaydi. Eng keng tarqalgan va eng
+oddiy usul.
+
+**Offset’ni natija bilan birga saqlash.** Offset’ni Kafka’ga emas, natija
+bilan **bitta bazaviy tranzaksiyada** bazaga yozish. Qayta ishga tushganda
+offset bazadan o‘qiladi. Natija va offset atomik — takror yo‘q.
+
+**Kafka tranzaksiyalari** (8-bo‘lim) — agar natija ham Kafka topic’iga
+yozilsa: natija va offset commit’i bitta Kafka tranzaksiyasida.
+
+Qaysi biri — natija qayerga yozilishiga bog‘liq. Umumiy qoida: tashqi tizim
+bilan “aynan bir marta” — bu Kafka emas, **sizning** tizimingiz kafolati.
+</Check>
+
+## 8. Exactly-once: nima mumkin va nima mumkin emas
+
+### 8.1 Takrorlar qayerdan keladi
+
+“Aynan bir marta” ni tushunish uchun takrorlarning **uchta** manbaini ajratish
+kerak:
+
+| Manba | Qachon | Kafka yechimi |
+| --- | --- | --- |
+| Producer qayta urinishi | Javob yo‘qoldi, producer qayta yubordi | Idempotent producer (PID + seq) |
+| O‘quvchining qayta ishlashi | Offset commit qilinmay qulash | Tranzaksiyalar (natija + offset atomik) |
+| Tashqi yon ta’sirlar | O‘quvchi email yubordi, keyin quladi | **Kafka hal qila olmaydi** — ilova idempotentligi |
+
+Uchinchi qator eng muhimi: Kafka faqat **Kafka ichidagi** holatni boshqaradi.
+Email, SMS, bank o‘tkazmasi, tashqi API chaqiruvi — ular tranzaksiyaga kirmaydi.
+Agar o‘quvchi email yuborib, offset’ni commit qilishdan oldin qulasa, email
+ikkinchi marta ketadi. Buning uchun email xizmatining o‘zi idempotent bo‘lishi
+kerak (masalan, “bu hodisa ID si uchun email allaqachon yuborilgan”).
+
+### 8.2 Tranzaksiya qanday ko‘rinadi
+
+<Flow nodes={["O'qi: A topic, offset 500..599", "Ishla: 100 natija", "Yoz: B topic'ga 100 yozuv (tranzaksiyada)", "Offset 600 ni commit (xuddi shu tranzaksiyada)", "Koordinator: B va __consumer_offsets ga COMMIT belgisi", "read_committed o'quvchi: 100 natijani birdaniga ko'radi"]} caption="Kafka ichidagi 'o'qi-ishla-yoz': hammasi yoki hech narsa" />
+
+<Deep title="LSO: read_committed o'quvchi qayergacha o'qiydi">
+Tranzaksion yozuvlar jurnalga darhol yoziladi — commit’ni kutmasdan. Ya’ni
+jurnalda tugallangan va tugallanmagan tranzaksiyalar aralash yotadi:
+
+```
+offset: 100  101  102  103  104  105  106  107
+        T1   T1   x    T2   T1   T2   T1c  y
+T1 — tranzaksiya 1 yozuvlari, T1c — T1 ning COMMIT belgisi
+T2 — hali ochiq tranzaksiya, x va y — tranzaksiyasiz yozuvlar
+```
+
+`read_committed` o‘quvchi uchun ikkita chegara bor:
+
+**LSO** (last stable offset) — birinchi **ochiq** tranzaksiyaning boshlanishi.
+Bu yerda T2 offset 103 da boshlangan va hali ochiq — LSO = 103. O‘quvchi
+103 dan keyingilarni **hali ko‘rmaydi**, hatto T1 yozuvlarini ham (104, 106),
+chunki tartibni buzmaslik kerak.
+
+**Ochiq tranzaksiya uzoq tursa** — LSO joyida turadi va o‘quvchi to‘xtaydi.
+Shuning uchun tranzaksiyalar uchun vaqt chegarasi (timeout) bor: tugallanmagan
+tranzaksiya avtomatik bekor qilinadi.
+
+LSO yetib kelganda, o‘quvchi ABORT bo‘lgan tranzaksiyalar yozuvlarini
+tashlab ketadi (broker unga “bu oraliqlar bekor qilingan” ro‘yxatini beradi)
+va faqat COMMIT bo‘lganlarini qaytaradi.
+
+Saboq: exactly-once o‘qish **kechikish** narxiga ega — eng uzoq ochiq
+tranzaksiya butun partition’ning ko‘rinishini ushlab turadi. Tranzaksiyalar
+qisqa bo‘lishi kerak (yuzlab ms), soatlab emas.
+</Deep>
+
+### 8.3 Qachon exactly-once kerak emas
+
+<Calc title="Exactly-once narxi va foydasi" result="Tahlil oqimida 0.01% takror hisobotni 0.01% ga buzadi — ko'pincha qabul qilinadi; to'lov hisobida esa bitta takror ham qabul qilinmaydi">{`Holat A: sahifa ko'rishlari hisoblagichi, kuniga 1 mlrd hodisa
+  at-least-once takror ulushi (qayta ishga tushishlar): ~0.01%
+  -> 100 000 ortiqcha "ko'rish" — hisobotda 0.01% xato
+  exactly-once narxi: ~100 ms qo'shimcha kechikish, ko'proq CPU
+  -> ko'pincha KERAK EMAS
+
+Holat B: hisob balansini yangilash oqimi
+  bitta takror = bitta mijozga ikki marta pul qo'shildi
+  -> exactly-once yoki idempotent yozish MAJBURIY`}</Calc>
+
+<Callout type="ogoh" title="'Exactly-once' — marketing so'zi emas, lekin chegarasi aniq">
+Kafka’ning exactly-once kafolati **Kafka topic’laridan o‘qib, Kafka
+topic’lariga yozadigan** oqimlar uchun. Tashqi bazaga, email xizmatiga,
+to‘lov tizimiga yozuvda kafolat yo‘q — u yerda idempotentlik yoki
+offset’ni natija bilan birga saqlash kerak (7-bo‘lim Check). Intervyuda
+“Kafka exactly-once beradi” degan gapdan keyin albatta “qayergacha?” deb
+so‘rang yoki o‘zingiz aniqlashtiring.
+</Callout>
+
+<Check q="Idempotent producer yoqilgan. Nega bu 'aynan bir marta'ni to'liq hal qilmaydi?">
+Idempotent producer faqat **bitta manbadan** keladigan takrorlarni yo‘q
+qiladi: producer qayta urinishi (javob yo‘qolgan yozuvni qayta yuborish).
+Broker (PID, partition, seq) bo‘yicha takrorni taniydi va yozmaydi.
+
+Lekin takrorlarning boshqa manbalari qoladi:
+
+**Producer ilovasining qayta ishga tushishi.** Yangi seansda yangi PID — eski
+qayta urinishlar tanilmaydi. Buning uchun tranzaksion ID kerak (u seanslar
+orasida saqlanadi).
+
+**O‘quvchining qayta ishlashi.** O‘quvchi xabarni ishlab, natijani yozdi,
+offset’ni commit qilmay quladi — xabar qayta ishlanadi va natija yana
+yoziladi. Bu producer takrori emas — **yangi** yozuv (yangi seq), idempotentlik
+uni to‘xtatmaydi. Buning uchun tranzaksiya (natija + offset atomik) kerak.
+
+**Tashqi yon ta’sirlar** — umuman Kafka doirasidan tashqarida.
+
+Ya’ni idempotent producer — zarur qatlam, lekin exactly-once uchun yetarli
+emas. To‘liq zanjir: idempotent producer + tranzaksiyalar + `read_committed`
+o‘quvchilar + tashqi tizimlarda idempotentlik.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="Kafka klasteri va uning atrofi"
+  layers={[
+    { name: "Ishlab chiqaruvchilar", boxes: ["Ilova servislari", "CDC (bazalar jurnali)", "Veb va mobil hodisalar", "Loglar va metrikalar"], note: "To'plab, siqib, idempotent yozadi; kalit — partition va tartibni belgilaydi." },
+    { name: "Brokerlar", boxes: ["Partition yetakchilari va izdoshlari", "Segmentlar va indekslar", "Sahifa keshi va nol-nusxa", "Guruh va tranzaksiya koordinatorlari"], note: "Odatda 3+ AZ ga tarqalgan; har partition RF=3." },
+    { name: "Kontroller (KRaft)", boxes: ["Metadata jurnali (Raft)", "Yetakchi saylovlari", "ISR o'zgarishlari"], note: "3 yoki 5 ta kontroller; brokerlar metadata'ni jurnal sifatida o'qiydi." },
+    { name: "Uzoq saqlash", boxes: ["Tiered storage (ob'ekt ombori)"], note: "Eski segmentlar arzon omborda; offset'lar o'zgarmaydi (14-qadam)." },
+    { name: "Iste'molchilar", boxes: ["Consumer group'lar", "Oqimli ishlov (Streams, Flink)", "Connect: bazalar, qidiruv, ombor"], note: "Har guruh — o'z offset'lari bilan mustaqil; lag — asosiy ko'rsatkich." },
+  ]}
+/>
+
+Diagrammadagi eng muhim xususiyat — **ishlab chiqaruvchilar va iste’molchilar
+bir-birini bilmaydi**. Ular faqat topic nomini va xabar formatini bilishadi.
+Yangi iste’molchi qo‘shish ishlab chiqaruvchilarga tegmaydi; ishlab
+chiqaruvchini almashtirish iste’molchilarga tegmaydi. 1-bo‘limdagi `N × M`
+muammosi `N + M` ga aylanadi.
+
+<Flow nodes={["Buyurtma servisi: 'buyurtma yaratildi' (kalit = buyurtma ID)", "Topic 'buyurtmalar', partition 4, RF=3", "HW siljidi: tasdiqlandi", "Ombor guruhi: mahsulotni band qildi", "To'lov guruhi: pulni yechdi -> 'to'landi' topic'iga", "Bildirishnoma guruhi: SMS", "Tahlil guruhi: ombor jadvaliga"]} caption="Bitta hodisa — to'rtta mustaqil guruh; har biri o'z tezligida, o'z offset'i bilan" />
+
+<Timeline
+  rows={[
+    { when: "2010", what: "LinkedIn ichida Kafka yaratiladi", why: "Faollik oqimi va operatsion ma'lumotlarni yagona jurnal orqali tarqatish." },
+    { when: "2011", what: "Ochiq kod va Apache inkubatori", why: "NetDB konferensiyasida Kafka maqolasi: log asosidagi xabarlar tizimi." },
+    { when: "2012", what: "Apache'ning yuqori darajali loyihasi", why: "Replikatsiya qo'shiladi (0.8): broker o'limiga chidamlilik." },
+    { when: "2015-2016", what: "Kafka Connect va Kafka Streams", why: "Tashqi tizimlar bilan ulanish va jurnal ustida oqimli ishlov." },
+    { when: "2017", what: "0.11: idempotent producer, tranzaksiyalar, leader epoch", why: "Exactly-once semantika va replikatsiyadagi nozik xatolar tuzatildi (7, 10, 11-qadamlar)." },
+    { when: "2019", what: "Bosqichmali qayta muvozanatlash (2.4); izdoshdan o'qish", why: "Katta guruhlarda uzilishlar va zonalararo trafik kamaydi." },
+    { when: "2022-2025", what: "KRaft (3.3), tiered storage (3.9), 4.0 — ZooKeeper'siz", why: "Metadata ham jurnal; arzon uzoq saqlash; yangi guruh protokoli (13-14-qadamlar)." },
+  ]}
+/>
+
+Tarixdagi eng qiziq kuzatuv: Kafka rivojlanishining katta qismi **jurnal
+g‘oyasini o‘zining ichiga qo‘llash**. Offset’lar — jurnalda
+(`__consumer_offsets`). Tranzaksiya holati — jurnalda. Metadata — jurnalda
+(KRaft). Oqimli ishlov holati — siqilgan jurnalda. Bitta kuchli abstraksiya
+tizimning har qatlamida qayta ishlatiladi.
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Nima bo‘ladi | Himoya |
+| --- | --- | --- |
+| Bitta broker o‘ldi | Uning partition’larida yangi yetakchilar (soniyalar) | RF=3, ISR, toza saylov |
+| Butun AZ o‘ldi | Har partition’ning bitta nusxasi yo‘q | Nusxalar turli AZ da (rack awareness) |
+| Disk to‘ldi | Broker yozuvlarni qabul qila olmaydi | Saqlash chegaralari, disk monitoringi, tiered storage |
+| Sekin izdosh | ISR kichrayadi, himoya kamayadi | `replica.lag.time.max.ms`, monitoring |
+| O‘quvchilar orqada | Lag o‘sadi, saqlash muddati tugab, xabar o‘qilmasdan o‘chishi mumkin | Lag ogohlantirishi, sig‘im zaxirasi |
+| “Zaharli” xabar | O‘quvchi har safar shu xabarda qulaydi | Xatolar topic’i (DLQ), sxema tekshiruvi |
+| Kontroller o‘ldi | Yangi kontroller (KRaft — soniyalar) | 3–5 kontroller kvorumi |
+
+Beshinchi qator Kafka’ga xos va jim: agar o‘quvchi 7 kundan ko‘p orqada
+qolsa, uning o‘qimagan xabarlari **saqlash muddati tugagani uchun o‘chiriladi**.
+Hech qanday xato yo‘q — ma’lumot shunchaki yo‘q. Lag ogohlantirishi saqlash
+muddatidan ancha oldin chalinishi kerak.
+
+<Calc title="Lag va saqlash muddati: qancha vaqtimiz bor" result="7 kunlik saqlashda o'quvchi 6 kun orqada bo'lsa — 1 kunlik zaxira qoladi; ogohlantirish lag 'soatlar'da bo'lganda chalinishi kerak">{`Saqlash: 7 kun (168 soat)
+O'quvchi xizmati buzildi, hech kim sezmadi
+
+Lag o'sishi: har soatda 1 soat
+  6 kundan keyin: 144 soat orqada -> eng eski o'qilmagan xabar 24 soatdan
+  keyin o'chiriladi
+
+Agar ogohlantirish "lag > 1 soat" bo'lsa: 167 soat vaqt bor
+Agar ogohlantirish umuman bo'lmasa: 7-kuni jim ma'lumot yo'qotish
+  (o'quvchi qaytganda "offset topilmadi" -> sozlamaga qarab eng eskisidan
+   yoki eng yangisidan boshlaydi — ikkalasi ham yomon)`}</Calc>
+
+### 10.2 Bitta hodisa: disk to‘ldi
+
+<Timeline
+  rows={[
+    { when: "09:00", what: "Yangi xizmat 'debug' loglarini topic'ga yoza boshlaydi", why: "Oqim odatdagidan 5 barobar ko'p; saqlash muddati 7 kun, hajm chegarasi yo'q." },
+    { when: "14:30", what: "Brokerlar diski 85% ga yetadi", why: "Ogohlantirish chalinadi; navbatchi sababni izlaydi." },
+    { when: "15:10", what: "Uch broker diski 100%", why: "Ular yozuvlarni qabul qila olmaydi; ularning partition'larida yozish to'xtaydi." },
+    { when: "15:12", what: "ISR lar kichrayadi, min.insync.replicas buziladi", why: "acks=all producer'lar xato oladi — boshqa topic'lar ham ta'sirlanadi." },
+    { when: "15:25", what: "Debug topic'ining saqlash muddati 1 soatga tushiriladi", why: "Eski segmentlar o'chiriladi, joy bo'shaydi." },
+    { when: "15:40", what: "Topic'ga hajm chegarasi va producer kvotasi qo'yiladi", why: "Bitta mijoz boshqalarni to'xtata olmasin." },
+  ]}
+/>
+
+Hodisaning asosiy saboqi — **bir mijoz umumiy resursni egallab oladi**.
+Himoya ikki qatlamli: har topic uchun hajm chegarasi (`retention.bytes`,
+vaqt chegarasidan tashqari) va har mijoz uchun **kvotalar** (sekundiga baytlar).
+Kvota oshsa, broker mijozni sekinlashtiradi (javobni kechiktiradi), rad
+etmaydi — mijoz o‘zi sekinlashadi, boshqalar ta’sirlanmaydi.
+
+<Deep title="Stoyka va AZ bo'yicha joylash: nima uchun va qancha turadi">
+Partition’ning 3 nusxasi tasodifiy brokerlarga joylansa, ular bitta
+stoyka yoki AZ da bo‘lib qolishi mumkin — va bitta elektr yoki tarmoq
+hodisasi hammasini birdaniga o‘chiradi (S3 darsidagi korrelyatsiyalangan
+buzilishlar). Kafka’da har brokerga `broker.rack` (odatda AZ nomi)
+beriladi va nusxalar turli “rack”larga tarqatiladi.
+
+```
+3 AZ, 9 broker (har AZ da 3):
+  partition 0: yetakchi az-a/b1, izdoshlar az-b/b4, az-c/b7
+  partition 1: yetakchi az-b/b5, izdoshlar az-c/b8, az-a/b2
+  ...
+Bitta AZ yo'qolsa: har partition'da 2 nusxa qoladi -> ISR = 2
+  min.insync.replicas = 2 -> yozish davom etadi
+```
+
+Narxi — **zonalararo trafik**. Har yozuv ikki boshqa AZ ga replikatsiya
+qilinadi; o‘quvchilar ham ko‘pincha boshqa AZ dagi yetakchidan o‘qiydi.
+Bulut provayderlari zonalararo trafik uchun pul oladi — va katta
+klasterlarda bu hisobning eng katta qatori bo‘lishi mumkin (12-bo‘lim).
+Kafka 2.4 da qo‘shilgan **izdoshdan o‘qish** (KIP-392) o‘quvchiga o‘z
+AZ idagi nusxadan o‘qish imkonini beradi — trafikning bir qismi yo‘qoladi.
+</Deep>
+
+<Callout type="maslahat" title="Saqlash chegaralarini ikkala o'lchamda qo'ying">
+Har topic uchun ham **vaqt** (`retention.ms`), ham **hajm** (`retention.bytes`)
+chegarasi bo‘lsin. Faqat vaqt chegarasi — bitta shovqinli ishlab chiqaruvchi
+diskni to‘ldirishi mumkin (10.2). Faqat hajm chegarasi — sokin kunlarda
+ma’lumot kerakligidan uzoq saqlanadi. Ikkalasi birga: qaysi biri avval
+yetsa, shu ishlaydi.
+</Callout>
+
+<Check q="O'quvchi 8 kun ishlamadi, saqlash muddati 7 kun. U qaytganda nima bo'ladi va buni qanday oldini olish mumkin?">
+O‘quvchining commit qilingan offset’i endi jurnalda **mavjud emas** —
+o‘sha segmentlar o‘chirilgan. Kafka o‘quvchiga “offset diapazondan tashqarida”
+deydi, va o‘quvchi `auto.offset.reset` sozlamasiga qarab harakat qiladi:
+`earliest` — hozir mavjud eng eski yozuvdan boshlaydi (bir kunlik xabarlar
+o‘qilmasdan yo‘qolgan); `latest` — eng yangisidan (8 kunlik barcha xabarlar
+o‘tkazib yuborilgan); `none` — xato beradi. Uchalasi ham ma’lumot yo‘qotish
+yoki to‘xtash — farqi faqat qanchalik ko‘p.
+
+Oldini olish: (1) **lag ogohlantirishi** vaqt bo‘yicha va saqlash muddatidan
+ancha oldin (“lag > 1 soat”); (2) muhim topic’larda saqlash muddati
+o‘quvchilarning eng uzoq mumkin bo‘lgan uzilishidan (masalan, dam olish
+kunlari + zaxira) uzunroq; (3) tiered storage bilan uzoq saqlash arzon —
+30–90 kun ham mumkin (14-qadam); (4) juda muhim holatlar uchun `none`
+va qo‘lda tiklash — jim yo‘qotishdan ko‘ra aniq to‘xtash yaxshi.
+</Check>
+
+## 11. Xavfsizlik va ma’lumot sifati
+
+### 11.1 Kim yozadi, kim o‘qiydi
+
+Kafka ko‘pincha kompaniyaning **barcha** hodisalarini tashiydi: to‘lovlar,
+shaxsiy ma’lumotlar, parollarni tiklash tokenlari. Standart sozlamada esa
+Kafka ochiq: tarmoqqa ulangan har kim istalgan topic’ni o‘qiy va yoza oladi.
+
+| Qatlam | Mexanizm | Nimadan himoya |
+| --- | --- | --- |
+| Shifrlash | TLS (mijoz ↔ broker, broker ↔ broker) | Tarmoqni tinglash |
+| Autentifikatsiya | SASL (SCRAM, Kerberos, OAuth) yoki mijoz sertifikati (mTLS) | Begona mijozlar |
+| Avtorizatsiya | ACL: kim qaysi topic’ga yoza/o‘qiy oladi, qaysi guruhga kira oladi | Ichki xizmatlar orasida ortiqcha huquq |
+| Kvotalar | Mijoz bo‘yicha tezlik chegarasi | Bir mijoz klasterni to‘xtatishi |
+
+<Calc title="TLS ning narxi" result="TLS yoqilganda nol-nusxa ishlamaydi va broker CPU si 20-50% ko'proq ishlatiladi — lekin zamonaviy protsessorlarda bu odatda qabul qilinadi">{`Broker: 1 GB/s kiruvchi + 3 GB/s chiquvchi (o'quvchilar va replikatsiya)
+
+TLS siz: nol-nusxa (sendfile) — o'qish deyarli CPU siz
+TLS bilan: har bayt shifrlanadi -> ma'lumot dastur xotirasidan o'tadi
+  AES-GCM (apparat tezlatish): ~2-5 GB/s bitta yadroda
+  4 GB/s -> ~1-2 yadro shifrlash uchun + xotira nusxalari
+
+Tipik natija: CPU ishlatilishi 20-50% ga oshadi, o'tkazuvchanlik
+  bir oz pasayadi — broker qo'shish yoki kuchliroq protsessor bilan qoplanadi`}</Calc>
+
+### 11.2 Zaharli xabar
+
+Xavfsizlikning boshqa tomoni — **noto‘g‘ri ma’lumot**. Bitta ishlab chiqaruvchi
+formatni buzsa (maydon nomini o‘zgartirsa, JSON o‘rniga matn yuborsa), barcha
+o‘quvchilar shu xabarda xato beradi.
+
+<Deep title="Zaharli xabar va o'lik xatlar topic'i">
+Oddiy o‘quvchi sikli: o‘qi → ishla → commit. Agar ishlash **har doim**
+xato bersa (format buzilgan), o‘quvchi offset’ni commit qilmaydi, qayta
+ishga tushadi, xuddi shu xabarni oladi, yana quladi — cheksiz sikl. Partition
+to‘xtaydi, lag o‘sadi, va undan keyingi barcha (to‘g‘ri) xabarlar kutib qoladi.
+
+Yechim — **o‘lik xatlar topic’i** (dead letter queue, DLQ):
+
+```
+for xabar in poll():
+    try:
+        ishla(xabar)
+    except FormatXatosi as e:           # qayta urinish yordam bermaydi
+        dlq.send(xabar, sabab=str(e))   # alohida topic'ga
+    except VaqtinchalikXato:            # tarmoq, baza band
+        qayta_urin(xabar, kutish=eksponensial)   # bir necha marta
+commit()
+```
+
+Ikki xil xatoni ajratish muhim: **vaqtinchalik** (baza band — qayta urinish
+yordam beradi) va **doimiy** (format buzilgan — qayta urinish befoyda).
+Doimiy xatolar DLQ ga ketadi va keyin odam ko‘radi; oqim to‘xtamaydi.
+
+Oldini olish — **sxema**: har topic uchun xabar formati ro‘yxatdan
+o‘tkaziladi (sxema reyestri), ishlab chiqaruvchi faqat mos xabar yubora
+oladi, va format o‘zgarishlari “orqaga mos” bo‘lishi tekshiriladi (yangi
+maydon qo‘shish mumkin, mavjudini o‘chirish — yo‘q). Bu API versiyalash
+g‘oyasining oqimlardagi ko‘rinishi.
+</Deep>
+
+<Check q="Nega Kafka'da xabar formatini boshqarish REST API'dagidan ham muhimroq?">
+Uchta sababga ko‘ra.
+
+**Iste’molchilar noma’lum.** REST API da serverni kim chaqirishini
+ko‘pincha bilasiz. Kafka topic’ini esa o‘nlab jamoa o‘qiydi, va ishlab
+chiqaruvchi ularning ko‘pchiligini bilmaydi (bu arxitekturaning **maqsadi** —
+9-bo‘lim). Formatni o‘zgartirish kimni buzishini bilib bo‘lmaydi.
+
+**Xabarlar qoladi.** REST da eski format bilan kelgan so‘rov javob olib,
+yo‘qoladi. Kafka’da eski formatdagi xabarlar kunlab-oylab jurnalda turadi
+(siqilgan topic’larda — abadiy). Yangi o‘quvchi jurnalni boshidan o‘qisa,
+barcha eski formatlarni ham tushunishi kerak.
+
+**Xato tarqaladi.** Bitta buzilgan xabar bitta so‘rovni emas, butun
+partition’ni to‘xtatishi mumkin (zaharli xabar, 11.2 Deep).
+
+Shuning uchun Kafka ekotizimida sxema reyestri va “orqaga moslik”
+qoidalari keng tarqalgan: format — bu ishlab chiqaruvchi va noma’lum
+ko‘p iste’molchilar orasidagi **shartnoma**.
+</Check>
+
+## 12. Iqtisod: bir GB/s qancha turadi
+
+### 12.1 Klasterning to‘rt xarajati
+
+Kafka klasteri hisobida odatda to‘rtta qator bor: **serverlar** (CPU va
+xotira), **disklar**, **tarmoq** (ayniqsa bulutda zonalararo trafik) va
+**odamlar** (boshqarish). Bulutda eng kutilmagani — uchinchisi.
+
+<Calc title="Bulutda 1 GB/s: zonalararo trafik hisobi" result="RF=3, 3 AZ va 3 o'quvchi guruhi bilan zonalararo trafik ~4.7 GB/s — oyiga ~250 000 $; izdoshdan o'qish bilan ~2 barobar kam">{`Kiruvchi oqim: 1 GB/s, 3 AZ, RF=3, o'quvchi guruhlari: 3
+
+Zonalararo trafik (soddalashtirilgan):
+  producer -> yetakchi: 2/3 hollarda boshqa AZ da    -> ~0.67 GB/s
+  replikatsiya: har yozuv 2 ta boshqa AZ ga            -> 2 GB/s
+  o'quvchilar: 3 guruh, har biri 2/3 hollarda boshqa AZ -> 3 x 0.67 = 2 GB/s
+  Jami: ~4.7 GB/s
+
+Narx (faraz, bulutdagi tipik): ~0.02 $/GB (ikki tomon uchun jami)
+  4.7 GB/s x 86 400 x 30 = ~12 PB/oy x 0.02 $/GB = ~244 000 $/oy
+
+Izdoshdan o'qish (o'quvchilar o'z AZ idagi nusxadan): o'quvchi qismi ~0 ->
+  ~2.7 GB/s -> ~140 000 $/oy
+Siqish (zstd, ~3-4x) hamma qatorlarni 3-4 barobar kamaytiradi -> ~35-45 000 $/oy`}</Calc>
+
+Hisobning xulosasi: bulutda katta Kafka klasterining **eng katta** xarajati
+ko‘pincha serverlar ham, disklar ham emas, **tarmoq**. Shuning uchun uchta
+eng samarali optimallashtirish: siqish (3-qadam) — hamma narsani bir necha
+barobar kamaytiradi; izdoshdan o‘qish (10.1 Deep) — o‘quvchi trafigini
+yo‘q qiladi; va ishlab chiqaruvchilarni yetakchi joylashgan AZ ga yaqinlashtirish.
+
+### 12.2 Disk va saqlash muddati
+
+<Calc title="Saqlash muddatining narxi" result="1 GB/s va RF=3 da har qo'shimcha kun ~260 TB tez disk; 7 kundan 30 kunga o'tish — tiered storage bo'lmasa, disk xarajati 4 barobar">{`1 GB/s x 86 400 s = 86 TB/kun x 3 nusxa = ~260 TB tez disk kuniga
+  (siqilgan holda ~65-85 TB)
+
+7 kun: ~1.8 PB (siqishsiz)   30 kun: ~7.8 PB
+
+Tiered storage bilan (14-qadam): mahalliy 1 kun (~260 TB), qolgani
+  ob'ekt omborida bitta nusxa (ombor o'zi ishonchli)
+  -> 30 kunlik saqlash narxi tez diskda saqlashdan ~5-7 barobar arzon`}</Calc>
+
+<Callout type="info" title="Oddiy tilda: Kafka qayerda pul yeydi">
+Kafka hisobini “qancha xabar” emas, “qancha bayt, qancha nusxa, qancha vaqt
+va qancha marta o‘qiladi” degan to‘rtta savol belgilaydi. Baytlarni siqish,
+nusxalarni kerakli topic’larda saqlash, vaqtni ehtiyojga qarab tanlash va
+o‘qishlarni o‘z zonasida qilish — to‘rttasini ham birga kamaytirish mumkin.
+</Callout>
+
+<Deep title="Siqish algoritmini tanlash">
+Siqish to‘plam darajasida (3-qadam), va algoritm ishlab chiqaruvchida
+tanlanadi. Broker siqilgan to‘plamni ochmasdan saqlaydi va uzatadi, o‘quvchi
+ochadi. Ya’ni CPU narxi — ishlab chiqaruvchi va o‘quvchida, foyda — tarmoq,
+disk va broker CPU sida.
+
+```
+Tipik JSON hodisalari uchun (tartib jihatidan):
+  algoritm   siqish nisbati   siqish tezligi    ochish tezligi
+  gzip       ~5-6x            sekin             o'rtacha
+  snappy     ~2.5-3x          juda tez          juda tez
+  lz4        ~3x              juda tez          eng tez
+  zstd       ~4-6x            tez               tez
+```
+
+Ko‘p hollarda **zstd** eng yaxshi murosa (Kafka 2.1 dan beri mavjud):
+gzip darajasidagi nisbat, lekin ancha tezroq. Juda past kechikish muhim
+bo‘lsa — lz4. Bitta muhim nozik jihat: siqish **to‘plam hajmiga** bog‘liq.
+Kichik to‘plamlar (bitta-ikkita xabar) yomon siqiladi — takrorlanuvchi
+maydon nomlari to‘plam ichida topiladi. Shuning uchun `linger.ms` va
+to‘plam hajmi siqish samaradorligiga ham ta’sir qiladi: 5–20 ms kutish
+nafaqat so‘rovlar sonini, balki trafikni ham bir necha barobar kamaytiradi.
+</Deep>
+
+## 13. Sig‘im rejalashtirish
+
+### 13.1 Nechta broker
+
+<Calc title="Broker soni: disk, tarmoq va partition'lar bo'yicha" result="1 GB/s kiruvchi, 3 guruh, 7 kun, RF=3 uchun eng qattiq cheklov — tarmoq; ~12-15 broker (zaxira bilan)">{`Talab: 1 GB/s kiruvchi (siqilgan: ~300 MB/s), RF=3, 3 o'quvchi guruhi, 7 kun
+
+Bitta broker (faraz): 25 Gbit/s tarmoq (~3 GB/s), 12 x 4 TB NVMe = 48 TB
+
+DISK: 300 MB/s x 3 x 604 800 s = ~545 TB -> 545 / 48 = ~12 broker
+TARMOQ (siqilgan baytlar):
+  kirish: 300 MB/s + replikatsiya 600 MB/s = 900 MB/s klaster bo'ylab
+  chiqish: o'quvchilar 3 x 300 = 900 MB/s + replikatsiya 600 MB/s
+  jami ~2.4 GB/s kirish+chiqish; bitta broker xavfsiz ishlatishi: ~40%
+  (cho'qqi va tiklash uchun zaxira) -> ~1.2 GB/s -> ~2 broker
+DISK bu yerda hal qiluvchi -> ~12 broker; bitta broker o'lganda qolgan
+  11 tasi yukni ko'tarishi uchun zaxira bilan: ~14-15 broker
+
+Tiered storage bilan (1 kun mahalliy): disk ~78 TB -> tarmoq va
+  tiklash tezligi hal qiluvchi bo'ladi -> ~4-6 broker`}</Calc>
+
+Oxirgi qator muhim tendensiyani ko‘rsatadi: tiered storage bilan brokerlar
+**disk hajmidan** ozod bo‘ladi va ular soni asosan tarmoq va CPU bo‘yicha
+belgilanadi. Bu yangi broker qo‘shish va buzilganini almashtirishni ham
+tezlashtiradi: ko‘chirish kerak bo‘lgan ma’lumot kam.
+
+### 13.2 Nechta partition
+
+<Callout type="info" title="Oddiy tilda: partition — kassa">
+Partition’lar — do‘kondagi kassalar. Kassalar kam bo‘lsa — navbatlar uzun,
+kassirlar (o‘quvchilar) ko‘paytirilsa ham foyda yo‘q: har kassada bittadan
+kassir ishlay oladi. Kassalar juda ko‘p bo‘lsa — har biri uchun joy, chiroq,
+tartib kerak, va ko‘pi bo‘sh turadi. Kassalar sonini o‘zgartirish esa
+mijozlarni “qaysi kassaga borishi” qoidasini buzadi — shuning uchun uni
+boshidan to‘g‘ri tanlash kerak.
+</Callout>
+
+<Deep title="Partition soni: ko'p ham yomon, kam ham">
+Partition soni — Kafka’da eng qiyin qaytariladigan qarorlardan biri:
+uni oshirish mumkin, lekin bunda `hash(kalit) mod N` o‘zgaradi va bir xil
+kalit **boshqa** partition’ga tusha boshlaydi — kalit bo‘yicha tartib
+o‘zgarish paytida buziladi. Kamaytirish esa umuman mumkin emas.
+
+**Kam partition xavfi:**
+
+```
+- O'quvchilar parallelligi chegaralangan (guruhda partition <= o'quvchi)
+- Bitta partition bitta broker diskida — o'tkazuvchanlik chegarasi
+- Issiq kalitlar ko'proq to'qnashadi
+```
+
+**Ko‘p partition xavfi:**
+
+```
+- Har partition = bir necha ochiq fayl (segmentlar, indekslar) + xotira
+- Yetakchi saylovlari: broker o'lganda uning 10 000 partition'i uchun
+  10 000 ta saylov (KRaft da tez, ZooKeeper davrida sekin edi)
+- Producer to'plamlari partition bo'yicha — ko'p partition = kichik
+  to'plamlar = yomon siqish va ko'proq so'rovlar
+- Rebalance sekinroq, har o'quvchi ko'proq partition kuzatadi
+```
+
+Amaliy qoida: kutilgan **eng yuqori** o‘quvchi parallelligi va o‘tkazuvchanlik
+(5-bo‘lim 1-qadamdagi hisob) bo‘yicha hisoblab, 1.5–2 barobar zaxira
+qo‘shish — va keyin o‘zgartirmaslik. Kalit bo‘yicha tartib muhim bo‘lsa,
+kengaytirish kerak bo‘lganda yangi topic yaratib, oqimni ko‘chirish
+xavfsizroq.
+</Deep>
+
+<Check q="Nega Kafka'da partition sonini keyin oshirish muammoli, kamaytirish esa umuman mumkin emas?">
+**Oshirish**: yozuvning partition’i `hash(kalit) mod N` bilan aniqlanadi.
+N o‘zgarsa, ko‘p kalitlar uchun natija o‘zgaradi — “buyurtma 81 401” oldin
+4-partition’ga tushgan, endi 9-ga. Eski hodisalari 4 da, yangilari 9 da. Bu
+ikki partition’ni turli o‘quvchilar turli tezlikda o‘qiydi — **kalit bo‘yicha
+tartib buziladi**: “bekor qilindi” hodisasi “yaratildi”dan oldin ishlanishi
+mumkin. Tartib muhim bo‘lmasa (loglar), oshirish xavfsiz.
+
+**Kamaytirish**: partition — mustaqil jurnal, o‘z offset’lari bilan. Ikki
+jurnalni bittaga birlashtirish ularning offset’larini o‘zgartiradi — va
+barcha o‘quvchilarning commit qilingan offset’lari ma’nosini yo‘qotadi.
+Siqilgan topic’larda esa kalit bo‘yicha oxirgi qiymat noto‘g‘ri partition’da
+qolib ketadi. Shuning uchun Kafka bunga ruxsat bermaydi.
+
+Xulosa: partition sonini boshidan zaxira bilan tanlash kerak (13.2 Deep),
+va tartib muhim bo‘lsa, o‘zgartirish o‘rniga yangi topic’ga ko‘chish.
+</Check>
+
+## 14. Kuzatuv
+
+### 14.1 Metrikalar
+
+| Qatlam | Metrika | Nima uchun |
+| --- | --- | --- |
+| Replikatsiya | Under-replicated partition’lar | ISR < RF: himoya kamaygan, nimadir sekin yoki o‘lik |
+| Replikatsiya | ISR < min.insync.replicas partition’lar | Yozish **to‘xtagan** — eng yuqori ustuvorlik |
+| Mavjudlik | Offline partition’lar | Yetakchisi yo‘q — na yozish, na o‘qish |
+| Kontroller | Faol kontroller soni | Aynan 1 bo‘lishi kerak |
+| O‘quvchilar | Lag (xabarlar va **vaqt**), guruh bo‘yicha | O‘quvchilar ulgurmayapti; saqlash muddatiga yaqinlashish |
+| Kechikish | Produce va fetch p99, so‘rov navbati | Disk, tarmoq, GC muammolari |
+| Resurslar | Disk to‘lganligi, tarmoq, sahifa keshi urilishi | 10.2 dagi kabi hodisalarni oldini olish |
+
+<Calc title="Ogohlantirish chegaralari: shovqin va xavf" result="'Under-replicated > 0' har rejalashtirilgan qayta ishga tushirishda chalinadi — u 5 daqiqadan uzoq davom etganda chalinishi kerak; 'ISR < min' esa darhol">{`Rejalashtirilgan ish: har hafta 12 brokerni navbat bilan yangilash
+  har broker ~3 daqiqa o'chiq -> uning partition'lari under-replicated
+
+Qoida A: "under-replicated > 0" -> darhol ogohlantirish
+  haftada 12 ta yolg'on ogohlantirish -> navbatchi e'tibor bermay qo'yadi
+
+Qoida B: "under-replicated > 0 VA 10 daqiqadan ko'p" -> faqat haqiqiy muammo
+Qoida C: "ISR < min.insync.replicas" -> DARHOL (yozish to'xtagan)
+Qoida D: "o'quvchi lag > 1 soat" (vaqt bo'yicha) -> ish vaqtida ko'rib chiqish
+Qoida E: "o'quvchi lag > saqlash muddatining 50%" -> darhol`}</Calc>
+
+### 14.2 Uchidan-uchiga tekshiruv
+
+Ichki metrikalar klaster sog‘ligini ko‘rsatadi, lekin mijoz tajribasini
+emas. Shuning uchun **kanareyka** (S3 darsidagi kabi): har AZ da doimiy
+ravishda maxsus topic’ga vaqt belgili xabar yozadigan va o‘qiydigan kichik
+jarayon. U “yozishdan o‘qishgacha necha ms” ni to‘g‘ridan-to‘g‘ri o‘lchaydi
+va har qanday qatlamdagi muammoni (tarmoq, broker, kontroller, TLS
+sertifikati muddati) bitta raqamda ko‘rsatadi.
+
+<Callout type="xato" title="Lag'ni faqat xabarlarda o'lchash aldaydi">
+“Lag: 50 000 xabar” — ko‘pmi, ozmi? Sekundiga 1 M xabarli topic uchun —
+50 ms, sekundiga 10 xabarli topic uchun — 1.4 soat. Xabarlar sonidagi
+bitta chegara (“lag > 10 000”) gavjum topic’larda doimiy shovqin, sokin
+topic’larda esa haqiqiy muammoni soatlab yashiradi. Lag’ni **vaqtda**
+o‘lchang: “eng eski o‘qilmagan xabar necha soniya oldin yozilgan”.
+</Callout>
+
+<Check q="Under-replicated partition'lar soni 0 dan 40 ga oshdi, ISR < min esa 0. Bu qanchalik xavfli va nima qilasiz?">
+**Hozircha yozish va o‘qish ishlayapti**: “ISR < min” = 0, ya’ni har
+partition’da kamida `min.insync.replicas` ta nusxa sinxron. Lekin **himoya
+kamaygan**: 40 ta partition’da bitta nusxa orqada yoki o‘lik — agar yana
+bitta broker o‘lsa, ulardan ba’zilarida yozish to‘xtaydi.
+
+Birinchi savol — **bu kutilganmi?** Rejalashtirilgan yangilanish (bitta
+broker qayta ishga tushmoqda) bo‘lsa, 40 ta partition — aynan uning
+partition’lari, va ular bir necha daqiqada tiklanadi. Kutilmagan bo‘lsa:
+
+1. Qaysi brokerlar: hammasi bitta brokerga tegishlimi? → o‘sha broker
+   (disk, tarmoq, GC, o‘lik).
+2. Hammasi bitta AZ dami? → zona tarmog‘i.
+3. Tarqoqmi? → umumiy yuk oshgan (izdoshlar ulgurmayapti) — ishlab
+   chiqaruvchilar oqimi, katta qayta o‘qish, disk sekinligi.
+
+Ustuvorlik: vaqt bo‘yicha uzoq davom etsa (10 daqiqadan ko‘p) — ko‘rib chiqish;
+“ISR < min” paydo bo‘lsa — darhol. Kuzatish orqali “himoya kamaydi” va
+“xizmat to‘xtadi” ni farqlash — navbatchi uchun asosiy ko‘nikma.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Kafka'ni vazifalar navbati sifatida (har vazifa — xabar, sekin ishchilar)", pro: "Bitta tizim hamma narsa uchun", con: "Bitta sekin vazifa butun partition'ni to'xtatadi; ishchilar soni <= partition'lar (7.2 Deep)" },
+    { choice: "acks=1 yoki min.insync.replicas=1 muhim ma'lumot uchun", pro: "Kechikish bir necha ms kam", con: "Yetakchi o'lganda tasdiqlangan xabarlar jim yo'qoladi (6-qadam)" },
+    { choice: "Offset'ni ishlashdan OLDIN commit qilish", pro: "Takrorlar yo'q", con: "Qulashda xabarlar o'tkazib yuboriladi — jim yo'qotish (7.1)" },
+    { choice: "Barcha xabarlar bitta kalit bilan (yoki kalitsiz, lekin tartib kerak)", pro: "Global tartib", con: "Bitta partition — butun oqim bitta disk va bitta o'quvchi tezligida (7.3)" },
+    { choice: "Partition sonini 'keyin oshiramiz' deb kam tanlash", pro: "Boshida kam resurs", con: "Oshirish kalit tartibini buzadi; kamaytirish mumkin emas (13.2)" },
+  ]}
+/>
+
+**Birinchi qator** — eng keng tarqalgani. Kafka — **jurnal**, navbat emas:
+partition ichida xabarlar tartib bilan ishlanadi va bitta xabar keyingisini
+kutadi. Agar vazifalar turli vaqt olsa (bittasi 10 ms, boshqasi 10 daqiqa),
+sekin vazifa uning ortidagi hammani ushlab turadi. Vazifalar navbati uchun
+(har vazifani mustaqil ishchi oladi, tartib muhim emas) klassik navbat
+tizimlari yoki Kafka’ning yangi “share group” imkoniyati (16-bo‘lim)
+mosroq.
+
+**Ikkinchi qator** sezilmaydigan xavf: hamma narsa ishlaydi, test o‘tadi,
+va faqat yetakchi to‘satdan o‘lganda bir necha ming xabar yo‘qoladi — hech
+qanday xato xabarisiz.
+
+**Uchinchi qator** avtomatik commit bilan tasodifan paydo bo‘ladi:
+ba’zi mijozlarda offset’lar fonda davriy commit qilinadi — xabar hali
+ishlanmagan bo‘lishi mumkin. Muhim oqimlar uchun commit’ni ishlashdan
+keyin, qo‘lda qilish kerak.
+
+**To‘rtinchi qator** — “global tartib” talabi. Ko‘pincha u haqiqatan kerak
+emas: tartib **bitta ob’ekt** (buyurtma, foydalanuvchi, hisob) ichida kerak,
+va kalit shu ob’ekt ID si bo‘lsa, tartib saqlanadi va yuk tarqaladi.
+
+**Beshinchi qator** 13-bo‘limdagi Check’ning amaliy natijasi.
+
+<Deep title="Kafka ma'lumotlar bazasimi?">
+Ba’zan “Kafka — bu ma’lumotlar bazasi” degan gapni eshitasiz. Qisman to‘g‘ri:
+u ma’lumotni ishonchli saqlaydi, replikatsiya qiladi, siqilgan topic’larda
+har kalitning oxirgi qiymatini abadiy saqlaydi. Lekin bazaning muhim
+qismlari yo‘q:
+
+```
+Kafka BERADI:                         Kafka BERMAYDI:
+- ishonchli, tartibli jurnal            - kalit bo'yicha tez qidiruv
+- kalit bo'yicha oxirgi qiymat          - ikkinchi darajali indekslar
+  (siqilgan topic, to'liq o'qish orqali) - so'rovlar (filtr, JOIN)
+- hodisalarni qayta o'ynash             - bir nechta kalit ustida tranzaksiya
+                                          (mustaqil ilova holati bilan)
+```
+
+To‘g‘ri tasavvur: Kafka — bazaning **jurnali**, jadvallari emas. Jadvallar
+(ko‘rinishlar) jurnaldan quriladi — ma’lumotlar bazasida, qidiruv indeksida,
+keshda yoki oqimli ishlov holatida. Bu 2.2 dagi “jurnal va jadval” g‘oyasi:
+jurnal — haqiqat manbai, jadvallar — undan hosila va ular so‘rovlar uchun
+optimallashtiriladi.
+
+Amaliy natija: “foydalanuvchi 42 ning hozirgi manzili qanday?” savoliga
+Kafka’dan to‘g‘ridan-to‘g‘ri javob olish uchun butun topic’ni o‘qish kerak.
+Buning o‘rniga, bitta xizmat topic’ni o‘qib, jadvalni bazada yangilab boradi —
+va savollarga baza javob beradi.
+</Deep>
+
+<Callout type="xato" title="Oltinchi antinaqsh: har bir xabarni sinxron yuborib, javobini kutish">
+Ishlab chiqaruvchi har xabarni yuborib, `get()` bilan tasdiqni kutsa, keyin
+keyingisini yuborsa — to‘plash (3-qadam) umuman ishlamaydi: har to‘plamda
+bitta xabar. Tasdiq ~5 ms bo‘lsa, sekundiga ~200 xabar — Kafka imkoniyatidan
+ming barobar kam. To‘g‘ri usul: asinxron yuborish (callback bilan natijani
+tekshirish) va tartib uchun idempotent producer’ga tayanish — u bir nechta
+parallel to‘plamda ham tartibni saqlaydi.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "acks=all, min.insync.replicas=2", pro: "Tasdiqlangan xabar yo'qolmaydi", con: "Kechikish yuqoriroq; 2 broker o'lsa yozish to'xtaydi" },
+    { choice: "acks=1", pro: "Past kechikish, yuqori mavjudlik", con: "Yetakchi o'lganda oxirgi ms lar yo'qoladi" },
+    { choice: "Katta linger va to'plamlar", pro: "Yuqori o'tkazuvchanlik, yaxshi siqish", con: "Har xabar bir necha ms ko'proq kutadi" },
+    { choice: "Kichik linger", pro: "Eng past kechikish", con: "Ko'p so'rov, yomon siqish, broker CPU si" },
+    { choice: "Uzoq saqlash (tiered)", pro: "Qayta o'ynash va yangi iste'molchilar uchun oylar", con: "Qo'shimcha tizim; eski ma'lumotni o'qish sekinroq" },
+    { choice: "Exactly-once (tranzaksiyalar)", pro: "Kafka ichida takrorsiz", con: "Kechikish (tranzaksiya oralig'i), murakkablik; tashqi tizimlarda kafolat yo'q" },
+  ]}
+/>
+
+Jadvaldagi har juftlik ikki o‘q orasida: **kechikish va o‘tkazuvchanlik**
+(to‘plash) yoki **mavjudlik va saqlanish** (acks, min ISR). Kafka’ning
+kuchi — bu tanlovni **har topic, hatto har ishlab chiqaruvchi uchun alohida**
+qilish imkoniyati: to‘lov hodisalari qat’iy, metrikalar va loglar tez va
+arzon.
+
+<Versus
+  left={{ title: "Kafka (jurnal)", points: [
+    "Xabar o'qilgandan keyin ham qoladi",
+    "Ko'p mustaqil guruh bitta oqimni o'qiydi",
+    "Tartib partition ichida; parallellik <= partition'lar",
+    "O'quvchi 'qayergacha o'qidim' — bitta son",
+    "Qayta o'ynash va yangi iste'molchi — tabiiy",
+  ] }}
+  right={{ title: "Klassik navbat", points: [
+    "Xabar tasdiqlangach o'chiriladi",
+    "Har xabarni bitta ishchi oladi",
+    "Ishchilar soni cheklanmagan; tartib odatda kafolatlanmaydi",
+    "Har xabar alohida tasdiqlanadi (ack), qayta yuboriladi",
+    "Qayta o'ynash — qiyin yoki imkonsiz",
+  ] }}
+/>
+
+<Versus
+  left={{ title: "Kamida bir marta + idempotent ishlov", points: [
+    "Oddiy: tranzaksiyalar yo'q",
+    "Past kechikish",
+    "Tashqi tizimlar bilan ham ishlaydi",
+    "Idempotentlikni har iste'molchi o'zi ta'minlaydi",
+    "Eng keng tarqalgan amaliy tanlov",
+  ] }}
+  right={{ title: "Kafka tranzaksiyalari", points: [
+    "Kafka ichida takrorsiz, avtomatik",
+    "Tranzaksiya oralig'iga teng qo'shimcha kechikish",
+    "Faqat Kafka topic'lari o'rtasida",
+    "Kutubxona (masalan, Kafka Streams) hal qiladi",
+    "Oqimli ishlov quvurlari uchun qulay",
+  ] }}
+/>
+
+<Deep title="Kafka va navbatlar: share group'lar (4.0)">
+15-bo‘limning birinchi antinaqshi — Kafka’ni vazifalar navbati sifatida
+ishlatish — shunchalik keng tarqalganki, Kafka 4.0 da (2025, sinov uchun)
+**navbat semantikasi** qo‘shildi: KIP-932, “share group”lar.
+
+```
+Oddiy consumer group:  partition -> aynan bitta o'quvchi, tartib bilan
+Share group:           partition -> bir nechta o'quvchi birga o'qiydi,
+                       har xabar alohida "qarzga olinadi" (acquire),
+                       ishlangach tasdiqlanadi yoki muddati o'tsa
+                       boshqa o'quvchiga qaytariladi
+```
+
+Share group’da ishchilar soni partition’lardan ko‘p bo‘lishi mumkin, sekin
+xabar boshqalarni to‘xtatmaydi, va har xabar necha marta urinilgani sanaladi
+(ko‘p marta muvaffaqiyatsiz bo‘lsa — chetga). Narxi — partition ichidagi
+tartib kafolati yo‘qoladi.
+
+Bu qo‘shimcha Kafka’ning falsafasini o‘zgartirmaydi: ostida baribir
+jurnal. Faqat **o‘qish** semantikasi boshqacha: “qayergacha o‘qidim” (bitta
+son) o‘rniga “qaysi xabarlar kimda, qaysilari tugagan” (har xabar holati).
+Bu klassik navbatning ichki holati — va u jurnal ustiga qurilgan.
+</Deep>
+
+<Callout type="maslahat" title="Qaysi metrikani optimallashtiryapsiz?">
+Kafka’da kamida to‘rtta metrika bir-biriga zid: **saqlanish** (acks,
+min ISR), **mavjudlik** (ISR kichrayganda yozish davom etadimi), **kechikish**
+(linger, tranzaksiya oralig‘i) va **narx** (nusxalar, saqlash muddati,
+zonalararo trafik). Intervyuda “Kafka’ni qanday sozlaysiz?” degan savolga
+avval “bu topic’da nima oqadi va bitta xabar yo‘qolsa nima bo‘ladi?” deb
+so‘rang. To‘lov hodisasi va sahifa ko‘rishi — butunlay boshqa sozlamalar.
+</Callout>
+
+### Butun dars o‘nta gapda
+
+1. **Kafka — faqat oxiriga yoziladigan jurnal**: yozuvlar o‘zgarmaydi,
+   o‘quvchining holati — bitta son (offset) (2-bo‘lim).
+2. **Markaziy jurnal `N × M` integratsiyani `N + M` ga aylantiradi**:
+   manbalar va iste’molchilar bir-birini bilmaydi (1.1).
+3. **Disk sekin emas — tasodifiy disk sekin**: ketma-ket yozish, to‘plash,
+   operatsion tizim keshi va nol-nusxa Kafka tezligining asosi (3–4-qadamlar).
+4. **Partition — parallellik va tartib birligi**: tartib faqat partition
+   ichida, kalit partition’ni belgilaydi (1-qadam, 2.3).
+5. **Tasdiqlangan = high watermark o‘tgan**: ISR dagi hamma nusxada bor,
+   yetakchi o‘lsa ham yo‘qolmaydi (5-qadam, 6-bo‘lim).
+6. **`acks=all` + `min.insync.replicas=2`** — xavfsiz sozlama; ISR kichrayganda
+   tizim yozishni to‘xtatadi, lekin yolg‘on tasdiq bermaydi (6-qadam).
+7. **Leader epoch** — nusxalar “qayergacha kesish kerak”ni HW dan emas,
+   yetakchilik davridan biladi; aks holda yo‘qotish va ajralish (7-qadam).
+8. **Offset’ni qachon commit qilish** — semantikani belgilaydi: ishlashdan
+   keyin commit + idempotent ishlov — eng keng tarqalgan yo‘l (7.1).
+9. **Exactly-once — Kafka ichida**: idempotent producer + tranzaksiyalar +
+   read_committed; tashqi tizimlar uchun — sizning idempotentligingiz (8-bo‘lim).
+10. **Jurnal g‘oyasi hamma joyda**: offset’lar, tranzaksiyalar, metadata
+    (KRaft) — hammasi Kafka ichida jurnal sifatida saqlanadi (9-bo‘lim).
+
+## 17. Intervyu savollari
+
+<Callout type="info" title="Kafka savoliga qanday yondashish">
+“Kafka’ni tushuntiring” yoki “hodisalar tizimini loyihalang” savolida
+birinchi daqiqalarni uch narsaga bering: (1) **jurnal va offset** —
+navbatdan farqi; (2) **partition** — tartib va parallellik birligi, kalit
+tanlash; (3) **tasdiq** — acks, ISR, high watermark. Keyin raqamlar: oqim,
+xabar hajmi, saqlash muddati, o‘quvchi guruhlari soni. Semantika (kamida
+bir marta, aynan bir marta) — oxirida, chunki u yuqoridagilarga tayanadi.
+</Callout>
+
+### 17.1 Jurnal va partition
+
+<QA q="Kafka va oddiy xabarlar navbati o'rtasidagi asosiy farq nimada?">
+Navbatda xabar tasdiqlangach o‘chiriladi va har xabarni bitta ishchi
+oladi. Kafka — jurnal: xabar o‘qilgach ham saqlash muddati tugaguncha
+qoladi, o‘quvchi faqat offset’ni (bitta son) saqlaydi. Natijada ko‘p
+mustaqil guruh bitta oqimni o‘z tezligida o‘qiydi, xato bo‘lsa offset’ni
+orqaga surib qayta ishlash mumkin, yangi xizmat jurnalni boshidan o‘qib
+holat quradi. Narxi — saqlash hajmi va partition ichida qat’iy tartib (sekin
+xabar ortidagilarni ushlab turadi).
+</QA>
+
+<QA q="Partition nima va nega kerak?">
+Topic’ning bitta mustaqil jurnali. Topic bir nechta partition’ga bo‘linadi,
+ular turli brokerlarda — yozish va o‘qish parallel bo‘ladi. Tartib faqat
+partition ichida kafolatlanadi. Yozuv partition’i kalit xeshi bilan
+aniqlanadi — bir xil kalit har doim bir xil partition. Guruh ichida
+partition’ni bitta o‘quvchi o‘qiydi, shuning uchun partition soni —
+o‘quvchilar parallelligining yuqori chegarasi.
+</QA>
+
+<QA q="Kafka qanday qilib sekundiga millionlab xabarni yozadi?">
+Faqat ketma-ket yozish (jurnal oxiriga) — disk tasodifiy yozishdan yuzlab
+barobar tez. To‘plash: ishlab chiqaruvchi xabarlarni partition bo‘yicha
+to‘plamlarga yig‘adi, to‘plam siqiladi va butunligicha saqlanadi va
+uzatiladi. Har yozuvda fsync yo‘q — saqlanish replikatsiyadan. O‘qish
+operatsion tizim keshidan va nol-nusxa (`sendfile`) bilan — ma’lumot dastur
+xotirasidan o‘tmaydi. Va partition’lar ko‘p brokerga tarqalgan.
+</QA>
+
+<QA q="Segment va siyrak indeks nima uchun kerak?">
+Partition jurnali ~1 GB li segment fayllarga bo‘lingan. Saqlash muddati
+segment bo‘yicha: eski segment butunligicha o‘chiriladi — jurnalni qayta
+yozish shart emas. Har segmentda siyrak indeks (har ~4 KB ga bitta yozuv:
+offset → fayldagi o‘rin): offset bo‘yicha qidiruv — segmentni topish,
+indeksda ikkilik qidiruv va bir necha KB ketma-ket o‘qish. Indeks kichik
+(1 GB ga ~2 MB) va xotirada turadi.
+</QA>
+
+<QA q="Log compaction nima va qachon ishlatiladi?">
+Fon jarayoni eski segmentlarda har kalit uchun faqat oxirgi yozuvni
+qoldiradi; o‘chirish — bo‘sh qiymatli “qabr toshi”. Topic hajmi kalitlar
+soniga teng bo‘ladi, lekin har kalitning oxirgi holati abadiy saqlanadi.
+Ishlatilishi: holat o‘zgarishlari oqimi (foydalanuvchi profillari, sozlamalar),
+oqimli ishlov holatining zaxirasi, `__consumer_offsets`. Yangi xizmat
+bunday topic’ni boshidan o‘qib, to‘liq jadvalni quradi.
+</QA>
+
+<QA q="Partition sonini qanday tanlaysiz?">
+Ikki hisobdan kattasi: kerakli o‘tkazuvchanlik ÷ bitta partition tezligi
+va kerakli o‘quvchilar parallelligi (har o‘quvchi qancha xabar ishlaydi).
+Ustiga 1.5–2 barobar zaxira. Ko‘p partition — ochiq fayllar, kichik
+to‘plamlar, sekinroq saylov va rebalance; kam — parallellik va o‘tkazuvchanlik
+chegarasi. Keyin oshirish kalit bo‘yicha tartibni buzadi (`hash mod N`
+o‘zgaradi), kamaytirish mumkin emas — shuning uchun boshidan to‘g‘ri tanlanadi.
+</QA>
+
+<QA q="Bitta kalit juda mashhur bo'lsa (issiq kalit), nima qilasiz?">
+Uning partition’i qiziydi va guruhda faqat bitta o‘quvchi uni o‘qiy oladi —
+o‘quvchilarni ko‘paytirish yordam bermaydi. Variantlar: tartib aslida
+qaysi ob’ekt ichida kerakligini aniqlab, kalitni maydaroq qilish (mijoz
+emas, buyurtma); “tuzlash” (kalit + kichik tasodifiy yoki xesh qism) —
+yuk tarqaladi, lekin mijoz bo‘yicha umumiy tartib yo‘qoladi; issiq kalit
+uchun alohida topic va ko‘p o‘quvchili ishlov.
+</QA>
+
+### 17.2 Replikatsiya va tasdiq
+
+<QA q="ISR va high watermark nima?">
+ISR — yetakchiga yetib olgan nusxalar ro‘yxati (belgilangan vaqt ichida
+jurnal oxiriga yetgan). High watermark — ISR dagi hamma nusxada bor bo‘lgan
+eng katta offset. HW gacha yozuvlar tasdiqlangan: yangi yetakchi ISR dan
+tanlanadi va unda ular bor. O‘quvchilar faqat HW gacha o‘qiydi — tasdiqlanmagan
+va keyinchalik yo‘qolishi mumkin bo‘lgan yozuvlarni ko‘rmaydi.
+</QA>
+
+<QA q="acks=0, 1 va all o'rtasidagi farq nima? Qaysi birini tanlaysiz?">
+`0` — tasdiq kutilmaydi, yo‘qotish mumkin; `1` — yetakchi yozganda tasdiq,
+yetakchi izdoshlar ko‘chirmasdan o‘lsa oxirgi yozuvlar yo‘qoladi; `all` —
+ISR dagi hamma nusxa olganda (HW o‘tganda). Muhim ma’lumot uchun `all` va
+`min.insync.replicas=2` (RF=3): ISR ikkitadan kichik bo‘lsa yozish rad
+etiladi. Kafka 3.0 dan standart — `acks=all` va idempotent producer. `1`
+yoki `0` — ongli ravishda, yo‘qotish kechirimli oqimlar (metrikalar, ba’zi
+loglar) uchun.
+</QA>
+
+<QA q="Nega min.insync.replicas kerak, acks=all yetarli emasmi?">
+`acks=all` “ISR dagi hamma” deydi, ISR esa kichrayishi mumkin — eng yomon
+holatda faqat yetakchi qoladi va `acks=all` amalda `acks=1` bo‘ladi.
+`min.insync.replicas=2` ISR ikkitadan kichik bo‘lsa `acks=all` yozuvlarni
+rad etadi: tizim mavjudlikdan voz kechadi, lekin bitta nusxada tasdiq
+bermaydi. RF=3 da bitta broker o‘lsa yozish davom etadi, ikkitasi — to‘xtaydi.
+</QA>
+
+<QA q="Yetakchi broker o'ldi. Qadam-baqadam nima bo'ladi?">
+Kontroller o‘limni aniqlaydi (yurak urishi to‘xtadi), shu broker yetakchi
+bo‘lgan har partition uchun ISR dan yangi yetakchi tanlaydi, davr (leader
+epoch) raqamini oshiradi va metadata’ni tarqatadi. Ishlab chiqaruvchi va
+o‘quvchilar metadata’ni yangilab, yangi yetakchiga ulanadi. Qolgan izdoshlar
+yangi yetakchidan “mening oxirgi davrim qayerda tugaydi” deb so‘rab, dumini
+kesadi va fetch’ni davom ettiradi. Tasdiqlanmagan dum yo‘qolishi mumkin —
+ishlab chiqaruvchi uni qayta yuboradi (idempotentlik takrorni oldini oladi).
+</QA>
+
+<QA q="Leader epoch nima uchun kerak? HW gacha kesish nega xato?">
+Izdoshning HW si har doim eskirgan bo‘lishi mumkin — u yetakchidan keyingi
+fetch javobida keladi. Qayta ishga tushgan izdosh o‘z HW sigacha kessa,
+tasdiqlangan yozuvni o‘chirib yuborishi mumkin (keyin yetakchi o‘lsa —
+yo‘qotish), yoki aksincha, yangi yetakchidagidan farqli dumni saqlab qolishi
+mumkin (ajralish). Leader epoch bilan har yozuv o‘z davri raqamiga ega;
+izdosh yangi yetakchidan o‘z oxirgi davri qayerda tugashini so‘raydi va aynan
+shu joygacha kesadi — yetakchining haqiqatiga tayanadi.
+</QA>
+
+<QA q="Toza bo'lmagan yetakchi saylovi nima va qachon yoqish mumkin?">
+ISR dagi hamma nusxa o‘lganda, ISR dan tashqaridagi (orqada qolgan) nusxani
+yetakchi qilish. Mavjudlik tiklanadi, lekin tasdiqlangan yozuvlar yo‘qolishi
+mumkin. Kafka 0.11 dan standart bo‘yicha o‘chiq — saqlanish ustun. Yoqish
+mumkin bo‘lgan holatlar: yo‘qotish kechirimli va to‘xtash qimmat bo‘lgan
+oqimlar (monitoring metrikalari, ba’zi loglar). Moliyaviy yoki buyurtma
+hodisalari uchun — hech qachon.
+</QA>
+
+<QA q="Nega Kafka har yozuvda fsync qilmaydi va bu xavfsizmi?">
+fsync yozuvlar soniga bog‘liq qimmat amal (HDD da ~5–10 ms) — har yozuvda
+qilish o‘tkazuvchanlikni ming barobar kamaytiradi. Kafka saqlanishni
+replikatsiyadan oladi: yozuv bir nechta brokerning xotirasiga (sahifa
+keshiga) yetgach tasdiqlanadi. Hammasi bir vaqtda elektrsiz qolishi —
+butun bino darajasidagi hodisa, unga qarshi nusxalar turli stoyka va AZ da.
+Qolgan xavf (hamma nusxa bir vaqtda o‘chishi) ongli qabul qilingan; kerak
+bo‘lsa, topic uchun majburiy fsync sozlamasi ham bor.
+</QA>
+
+### 17.3 O‘quvchilar, semantika va ekspluatatsiya
+
+<QA q="Consumer group qanday ishlaydi?">
+Bitta vazifani bajaruvchi o‘quvchilar guruhi. Guruh ichida har partition
+aynan bitta o‘quvchiga biriktiriladi; turli guruhlar mustaqil, har biri
+butun topic’ni o‘qiydi. Guruh koordinatori (broker) a’zolikni kuzatadi va
+qo‘shilish, chiqish yoki qulashda qayta muvozanatlaydi. Har o‘quvchi
+offset’ini `__consumer_offsets` topic’iga commit qiladi; partition boshqasiga
+o‘tsa, u oxirgi commit’dan davom etadi.
+</QA>
+
+<QA q="At-most-once, at-least-once va exactly-once qanday amalga oshiriladi?">
+Commit → ishlash: qulashda xabar o‘tkazib yuboriladi — ko‘pi bilan bir marta.
+Ishlash → commit: qulashda qayta ishlanadi — kamida bir marta; idempotent
+ishlov bilan (UPSERT, “ishlangan ID lar” jadvali) amalda takrorsiz. Aynan
+bir marta: natija va offset atomik — Kafka ichida tranzaksiyalar bilan,
+tashqi bazada — offset’ni natija bilan bitta bazaviy tranzaksiyada saqlash.
+Tashqi yon ta’sirlar (email, to‘lov) uchun — faqat ularning idempotentligi.
+</QA>
+
+<QA q="Idempotent producer qanday ishlaydi?">
+Ishlab chiqaruvchi ishga tushganda PID oladi va har partition uchun har
+to‘plamga tartib raqami beradi. Broker har (PID, partition) uchun oxirgi
+raqamni eslaydi: keyingisi — yozadi, takror — yozmaydi va avvalgi natijani
+qaytaradi, oraliq — xato. Holat jurnal bilan saqlanadi, yetakchi almashsa
+ham tiklanadi. Cheklov: bitta seans ichida; ilova qayta ishga tushsa, yangi
+PID — buning uchun tranzaksion ID. Kafka 3.0 dan standart yoqilgan.
+</QA>
+
+<QA q="Kafka tranzaksiyalari qanday ishlaydi?">
+Tranzaksion ID li ishlab chiqaruvchi koordinatorga tranzaksiya boshlaydi,
+bir nechta partition’ga yozadi va o‘quvchi offset’larini ham shu tranzaksiyada
+commit qiladi. Commit’da koordinator har ishtirokchi partition’ga COMMIT
+belgisini yozadi. `read_committed` o‘quvchilar faqat commit bo‘lgan
+yozuvlarni ko‘radi va LSO (birinchi ochiq tranzaksiya boshi) dan nariga
+o‘tmaydi. Bir xil tranzaksion ID bilan yangi nusxa kelsa, eski “zombi”
+nusxa bloklanadi (epoch bilan).
+</QA>
+
+<QA q="Qayta muvozanatlash (rebalance) nima uchun muammo va qanday yumshatiladi?">
+Eski (eager) protokolda har a’zolik o‘zgarishida butun guruh barcha
+partition’larini qaytarib, to‘xtardi — katta guruhlarda soniyalab va har
+qayta ishga tushirishda. Yumshatish: bosqichmali protokol (faqat ko‘chadigan
+partition’lar to‘xtaydi), statik a’zolik (qisqa qayta ishga tushishda rebalance
+yo‘q), server tomonidagi yangi protokol (KIP-848, Kafka 4.0). Va o‘quvchi
+`max.poll.interval.ms` ichida ishlashni tugatishi — aks holda u guruhdan
+chiqarilib, cheksiz rebalance sikli boshlanadi.
+</QA>
+
+<QA q="Consumer lag o'sib bormoqda. Qanday tekshirasiz va nima qilasiz?">
+Avval lag’ni vaqtda o‘lchab, saqlash muddatiga qancha qolganini bilaman.
+Keyin sabab: barcha partition’lardami yoki bittasidami (issiq kalit)?
+O‘quvchilar guruhdan chiqib-kirayaptimi (rebalance sikli — sekin ishlov)?
+Tashqi bog‘liqlik sekinmi (baza, API)? Kiruvchi oqim oshganmi? Chora:
+o‘quvchilarni ko‘paytirish (partition soni chegarasida), to‘plam hajmi va
+ishlovni parallellashtirish, issiq kalitni tarqatish, tashqi bog‘liqlikni
+tuzatish. Vaqtinchalik — saqlash muddatini oshirish (ma’lumot yo‘qolmasligi uchun).
+</QA>
+
+<QA q="KRaft nima va ZooKeeper'ni olib tashlash nima berdi?">
+KRaft — Kafka metadata’sini (topic’lar, partition’lar, yetakchilar, ISR)
+kontrollerlar guruhi Raft protokoli bilan yuritadigan jurnalda saqlash.
+Oldin bu ZooKeeper’da edi: ikkinchi tizimni boshqarish, va kontroller
+almashganda barcha metadata’ni qayta yuklash — ko‘p partition’da daqiqalar.
+KRaft’da kutuvchi kontrollerlar jurnalni doim o‘qib turadi — almashinuv
+soniyalarda, brokerlar metadata o‘zgarishlarini oqim sifatida oladi, millionlab
+partition mumkin. 3.3 da ishlab chiqarish uchun tayyor, 4.0 da ZooKeeper olib
+tashlandi.
+</QA>
+
+<QA q="Tiered storage nima beradi?">
+Eski, yopilgan segmentlar ob’ekt omboriga (masalan, S3) ko‘chiriladi,
+brokerda faqat so‘nggi qism qoladi. Oylar-yillik saqlash arzonlashadi (ombor
+bitta nusxada ishonchli, tez disk kerak emas), broker soni disk hajmidan
+ozod bo‘ladi, broker almashtirish va qayta muvozanatlash tez (kam ma’lumot
+ko‘chadi). O‘quvchi uchun offset’lar bir xil — faqat eski ma’lumotni o‘qish
+sekinroq. KIP-405: 3.6 da sinov uchun, 3.9 da to‘liq.
+</QA>
+
+<QA q="Bulutda Kafka hisobida eng katta qator ko'pincha nima va qanday kamaytirasiz?">
+Zonalararo tarmoq trafigi: RF=3 va 3 AZ da har yozuv ikki boshqa zonaga
+replikatsiya qilinadi, ishlab chiqaruvchi va o‘quvchilar ham ko‘pincha
+boshqa zonadagi yetakchi bilan ishlaydi. Kamaytirish: siqish (zstd — hamma
+trafik 3–5 barobar kam), izdoshdan o‘qish (o‘quvchi o‘z zonasidagi nusxadan),
+to‘plamlarni kattalashtirish (yaxshiroq siqish), kerakmas topic’larda RF va
+saqlash muddatini kamaytirish, tiered storage.
+</QA>
+
+<QA q="Hodisalar tizimini noldan loyihalashda Kafka'ni qanday sozlaysiz (buyurtmalar oqimi)?">
+Topic `buyurtmalar`: kalit — buyurtma ID (buyurtma ichida tartib, yuk tarqaladi).
+Partition — cho‘qqi o‘tkazuvchanlik va o‘quvchilar parallelligi bo‘yicha,
+2 barobar zaxira bilan. RF=3, `min.insync.replicas=2`, nusxalar 3 AZ da,
+`acks=all`, idempotent producer, zstd siqish. Saqlash — kamida 7 kun, vaqt
+va hajm chegarasi bilan (tiered bilan uzoqroq). Iste’molchilar — har vazifa
+alohida guruh, ishlashdan keyin commit, idempotent yozish; zaharli xabarlar
+uchun DLQ; sxema reyestri. Monitoring — lag vaqtda, under-replicated va
+ISR < min partition’lar.
+</QA>
+
+<QA q="Nega Kafka'da xabar formatini (sxemani) boshqarish muhim?">
+Iste’molchilar ko‘p va ishlab chiqaruvchiga noma’lum; xabarlar kunlab va
+siqilgan topic’larda abadiy qoladi; bitta buzilgan xabar butun partition’ni
+to‘xtatishi mumkin (zaharli xabar). Sxema reyestri har topic uchun format
+va uning versiyalarini saqlaydi, ishlab chiqaruvchi faqat mos xabar yuboradi,
+va o‘zgarishlar “orqaga mos” bo‘lishi tekshiriladi (yangi ixtiyoriy maydon —
+mumkin, mavjud maydonni o‘chirish yoki turini o‘zgartirish — yo‘q).
+</QA>
+
+<QA q="Kafka'ni qachon ishlatmaslik kerak?">
+Kichik tizim va oddiy vazifalar navbati (bir nechta ishchi, tartib muhim
+emas) uchun — Kafka ortiqcha murakkab; oddiy navbat yoki bazadagi jadval
+yetadi. So‘rov-javob (sinxron RPC) uchun — Kafka emas, to‘g‘ridan-to‘g‘ri
+chaqiruv. Kalit bo‘yicha qidiruv va so‘rovlar uchun — ma’lumotlar bazasi
+(Kafka — uning jurnali bo‘lishi mumkin, o‘rni emas). Juda past kechikish
+(mikrosekundlar) kerak bo‘lsa — boshqa vositalar. Kafka o‘z kuchini
+ko‘rsatadi: ko‘p manba va ko‘p iste’molchi, katta oqim, qayta o‘ynash va
+uzoq saqlash kerak bo‘lganda.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/kafka/` da:
+`replication.py` — yetakchi va izdosh mantiqi, yettita funksiya TODO;
+`model.py` — tayyor `Record`, `Replica` va `LeaderState`; `sim.py` — uch
+brokerli simulyator (qulash, qaytish, tarmoq uzilishi, toza saylov, elektr
+o‘chishi); `check.py` — 16 ta tekshiruv, taxminan bir soniya. Faqat Python
+standart kutubxonasi.
+
+<Deep title="Simulyator qanday ishlaydi: bitta tik ichida nima bo'ladi">
+Simulyator vaqtni “tik”larga bo‘ladi. Har tikda qat’iy tartibda olti ish
+bo‘ladi — xuddi haqiqiy klasterda bir vaqtda sodir bo‘ladigan narsalarni
+navbatga qo‘ygandek:
+
+```
+1. xaos:      tasodifan broker qulaydi yoki qaytadi, izdosh tarmoqdan uziladi
+2. saylov:    yetakchi o'lgan bo'lsa -> ISR dagi tirik nusxadan yangisi, davr + 1
+3. kesish:    yangi yetakchiga ulangan izdoshlar dumini kesadi
+              (end_offset_for_epoch -> truncate)
+4. yozish:    uch ishlab chiqaruvchi append qiladi; javob yo'qolsa -> qayta yuboradi
+5. o'qish:    o'quvchi HW gacha o'qiydi (consumer_read)
+6. fetch:     har izdosh ~50% ehtimol bilan yetakchidan nusxa oladi
+              (on_fetch + on_response)
+7. tasdiq:    HW yozuvdan o'tgan bo'lsa -> ishlab chiqaruvchiga "yozildi"
+```
+
+Ikki tafsilot muhim. Birinchisi — **izdoshlar har tikda emas, o‘z
+tezligida** so‘raydi. Shuning uchun ular doim bir oz orqada va bu
+orqada qolish 6.3 va 7-qadamdagi xavfli holatlarni tabiiy ravishda
+tug‘diradi. Agar izdoshlar har tikda yetib olsa edi, “o‘z HW igacha kesish”
+kabi xatolar hech qachon ko‘rinmasdi. Ikkinchisi — **o‘quvchi fetch dan
+oldin** o‘qiydi: shu tartibda yetakchining HW si haqiqatan “hali hamma
+nusxada yo‘q” yozuvlarni ajratib turadi, va LEO gacha o‘qiydigan xato
+darhol “arvoh” yozuvga olib keladi.
+
+Xaos tugagach, `heal` hamma brokerni qaytaradi, tarmoqni tiklaydi va
+izdoshlar har tikda so‘raydigan bo‘ladi — tizim tinchlanishi kerak:
+barcha xabarlar yozilgan, nusxalar tenglashgan, o‘quvchi oxirigacha
+o‘qigan. Tinchlanmasa (masalan, ISR hech qachon kengaymasa), test
+“yakunlanmadi” deb yiqiladi — bu **tiriklik** (liveness) tekshiruvi.
+</Deep>
+
+<Task title="1-daraja: v0 jurnali va fsync narxi">
+3-bo‘limdagi `Log` klassini ishga tushiring va o‘lchang: 10 000 ta 100
+baytli yozuv (1) har yozuvda `fsync` bilan, (2) har 1 000 yozuvda bitta
+`fsync` bilan, (3) `fsync` siz. Keyin `read` ni offset bo‘yicha tasodifiy
+o‘qish bilan o‘lchang.
+
+**Tekshiruv mezoni:** (1) uch rejimning sekundiga yozuvlar sonini jadvalga
+yozing va 4.1-dagi hisob bilan solishtiring (SSD da farq kichikroq, lekin
+baribir o‘nlab barobar); (2) jarayonni yozish o‘rtasida `kill -9` bilan
+o‘ldiring va qayta ishga tushiring — `_rebuild` qaysi rejimda nechta
+yozuvni tiklaydi; (3) faylning oxiriga yarim yozuv qo‘lda qo‘shing (4 bayt
+uzunlik, qiymatning yarmi) — `_rebuild` nima qiladi va uni qanday tuzatish
+kerak (javob: oxirgi to‘liq bo‘lmagan yozuvni kesish; Kafka buni har
+segment uchun nazorat summasi bilan qiladi).
+</Task>
+
+<Task title="2-daraja: partition replikatsiyasi (asosiy topshiriq)">
+`replication.py` dagi `append`, `update_hw`, `on_fetch`, `on_response`,
+`end_offset_for_epoch`, `truncate` va `consumer_read` ni yozing. `python
+check.py` ularni birlik testlari, darsdagi KIP-101 va KIP-279 stsenariylari
+hamda yuzlab yetakchi almashinuvli xaos bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 16/16 OK`. Shu jumladan: bir xil `(pid, seq)`
+qayta yuborilsa — bir xil offset; HW — ISR dagi LEO larning minimumi va
+kamaymaydi; orqada qolgan izdosh ISR dan chiqadi va faqat yetib olgach
+qaytadi; 40 ta xaos stsenariysida birorta tasdiqlangan xabar yo‘qolmaydi,
+takror yo‘q, nusxalar bir xil va o‘quvchi “arvoh” yozuv ko‘rmaydi. Keyin
+tajriba: `truncate` ni leader epoch o‘rniga **izdoshning o‘z HW igacha**
+kesadigan qilib o‘zgartiring (7-qadamdan oldingi Kafka) — qaysi testlar
+yiqilishini ko‘ring va 7-qadamdagi Deep stsenariysini simulyator jurnalida
+(`sim.events`) toping.
+</Task>
+
+<Task title="3-daraja: consumer group va qayta muvozanatlash">
+Alohida modul yozing: guruh koordinatori, a’zolar va partition’larni
+taqsimlash. Ikki usul: (a) “hamma to‘xtaydi” — har o‘zgarishda hamma
+partition’lar qaytarib olinadi va qayta bo‘linadi; (b) bosqichma-bosqich
+(9-qadam) — faqat ko‘chishi kerak bo‘lgan partition’lar qaytariladi.
+Har a’zo `heartbeat` yuboradi; `session_timeout` ichida yubormasa —
+guruhdan chiqariladi.
+
+**Tekshiruv mezoni:** (1) har daqiqada hech bir partition ikki a’zoda
+bir vaqtda bo‘lmaydi (asosiy invariant); (2) 100 ta a’zo va 1 000
+partition’li guruhda bitta a’zo qayta ishga tushganda: (a) usulda
+qancha partition to‘xtaydi, (b) usulda qancha — 9-qadamdagi hisob bilan
+solishtiring; (3) “yopishqoq” taqsimlash: a’zo qaytganda o‘zining eski
+partition’larini oladimi; (4) har partition uchun oxirgi commit qilingan
+offset saqlansin va yangi egasi aynan shu yerdan davom etsin — hech bir
+xabar o‘tkazib yuborilmasin.
+</Task>
+
+<Task title="4-daraja: sig'im va narx modeli">
+Skript yoki jadval: kirish — kiruvchi oqim (MB/s), xabar hajmi, siqish
+nisbati, RF, o‘quvchi guruhlari soni, saqlash muddati, AZ lar soni,
+izdoshdan o‘qish yoqilganmi, tiered storage yoqilganmi, broker turi
+(disk, tarmoq, narx). Chiqish — broker soni, disk hajmi, partition soni,
+zonalararo trafik va oylik narx.
+
+**Tekshiruv mezoni:** (1) 12.1, 12.2 va 13.1-dagi hisoblarni takrorlang;
+(2) qaysi cheklov (disk, tarmoq, partition) qaysi oqimda birinchi bo‘lib
+“uriladi” — grafik chizing; (3) saqlash muddatini 7 kundan 30 kunga
+oshiring: tiered bilan va tiered siz narx qanchaga o‘zgaradi; (4)
+izdoshdan o‘qishni (KIP-392) yoqish zonalararo trafikni necha foizga
+kamaytiradi va buning evaziga nima yo‘qotiladi (kechikish, eskirgan o‘qish)?
+</Task>
+
+<Deep title="Invariantlar bilan tekshirish: nega aniq javobni solishtirmaymiz">
+Tarqalgan tizim testida “to‘g‘ri javob”ni oldindan yozib qo‘yib bo‘lmaydi:
+qaysi broker qachon qulashi, qaysi javob yo‘qolishi tasodifiy va har
+stsenariyda boshqacha. Shuning uchun `check.py` natijani emas,
+**hech qachon buzilmasligi kerak bo‘lgan qoidalarni** tekshiradi:
+
+```
+1. Tasdiqlangan xabar yo'qolmaydi:
+     ishlab chiqaruvchi "yozildi" olgan har xabar yakuniy jurnalda, HW dan oldin
+2. Takror yo'q:        har qiymat jurnalda bir marta
+3. Nusxalar bir xil:   tinchlangandan keyin uch jurnal bayt-baqayt teng
+4. Arvoh o'qish yo'q:  o'quvchi ko'rgan har (offset, qiymat) yakuniy jurnalda
+                       aynan shu joyda turadi
+5. Tiriklik:           xaos tugagach, tizim cheklangan vaqtda tinchlanadi
+```
+
+Bu yondashuv sanoatda **Jepsen** testlari bilan mashhur bo‘ldi: tizimga
+tarmoq bo‘linishlari va qulashlar yuboriladi, keyin yig‘ilgan tarix
+izchillik qoidalariga zidmi — tekshiriladi. Kafka’ning o‘zi ham shunday
+sinalgan: 2013-yildagi Jepsen tahlili `acks` va toza bo‘lmagan saylov
+tufayli tasdiqlangan yozuvlar yo‘qolishini ko‘rsatgan, va keyingi yillardagi
+o‘zgarishlar (unclean election o‘chirilgani, leader epoch, KRaft uchun
+rasmiy TLA+ modeli) qisman shu kabi tahlillarga javob.
+
+Simulyatorning afzalligi — **takrorlanuvchanlik**: bir xil `seed` — bir
+xil tasodif, bir xil xato. Yiqilgan stsenariyni `Sim(rep, seed=N)` bilan
+qayta ishga tushirib, `sim.events` dagi har qulash va saylovni qadam-baqadam
+kuzatish mumkin. Haqiqiy klasterda bunday imkoniyat yo‘q — shuning uchun
+katta tizimlar (FoundationDB, TigerBeetle) butun kodini deterministik
+simulyatsiyada ishlatadi.
+</Deep>
+
+<Deep title="Kafka replikatsiyasi va Raft: nimasi bir xil, nimasi farq">
+Ikkalasi ham “bitta yetakchi, jurnal, davr raqami” g‘oyasiga qurilgan,
+lekin kvorumni turlicha tushunadi.
+
+**Raft**: yozuv **ko‘pchilik** nusxaga (5 tadan 3 tasiga) yetganda
+tasdiqlanadi. Yetakchi saylovida ham ko‘pchilik ovozi kerak. `f` ta
+nosozlikka chidash uchun `2f + 1` nusxa: 1 ta nosozlik — 3 nusxa,
+2 ta — 5 nusxa. Sekin nusxa kutilmaydi — ko‘pchilik yetadi.
+
+**Kafka ISR**: yozuv **ISR dagi hamma** nusxaga yetganda tasdiqlanadi
+(`acks=all`), ISR esa dinamik — orqada qolgan nusxa undan chiqariladi.
+`f` ta nosozlikka chidash uchun `f + 1` nusxa yetadi: RF=3 bilan 2 ta
+nosozlik. Evaziga — ISR ro‘yxatini kimdir ishonchli saqlashi kerak: bu
+kontroller, u esa o‘zi Raft (KRaft) yoki ZooKeeper ustida.
+
+```
+                     Raft (5 nusxa)        Kafka ISR (RF=3, min.isr=2)
+disk va trafik       5x                    3x
+tasdiq kutadi        ko'pchilikni (3)      ISR ning hammasini (2-3)
+sekin nusxa          kutilmaydi            ISR dan chiqariladi (30 s)
+2 nosozlik           chidaydi              ma'lumot chidaydi, yozish to'xtaydi
+                                           (ISR < min.isr) — ongli tanlov
+metadata             o'zida                tashqi kontrollerda (KRaft)
+```
+
+Kafka yo‘li arzonroq (kamroq nusxa), lekin murakkablik kontrollerga
+ko‘chadi. Qizig‘i — Kafka’ning **metadata**si (KRaft, 13-qadam) aynan
+Raft bilan saqlanadi: kichik, lekin eng muhim ma’lumot uchun ko‘pchilik
+kvorumi, katta ma’lumot oqimi uchun esa arzon ISR. Leader epoch (7-qadam)
+ham Raft’ning “term” tushunchasiga juda o‘xshash — Kafka uni aynan shu
+sababdan qarzga oldi.
+</Deep>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan o‘n uchta
+varianti bilan sinalgan: HW ni ISR minimumi o‘rniga yetakchining LEO siga
+tenglash, ISR ni hech qachon kichraytirmaslik, izdoshni yetib olmasdan ISR
+ga qaytarish, o‘z HW igacha kesish (7-qadamdan oldingi xato), faqat
+KIP-101 dagi sodda davr qidiruvi (KIP-279 siz), umuman kesmaslik, o‘quvchiga
+LEO gacha berish, `append` da takrorni tekshirmaslik, `min.insync.replicas`
+ni e’tiborsiz qoldirish, izdosh HW sini LEO sidan oshirish, `append` dan
+keyin HW ni yangilamaslik, HW ni kamaytirishga ruxsat berish va takrorni
+faqat qiymat bo‘yicha aniqlash. Har biri kamida bitta testni yiqitadi.
+Referens yechim esa 600 ta tasodifiy stsenariydan xatosiz o‘tadi.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Jurnal (commit log) | Faqat oxiriga yoziladigan, tartiblangan yozuvlar ketma-ketligi |
+| Offset | Yozuvning partition ichidagi tartib raqami |
+| Topic | Bir mavzudagi xabarlar oqimi; bir nechta partition’dan iborat |
+| Partition | Topic’ning mustaqil jurnali; tartib faqat uning ichida |
+| Kalit (key) | Xabar qaysi partition’ga tushishini belgilaydi |
+| Segment | Partition jurnalining bitta fayli (odatda 1 GB) |
+| Siyrak indeks | Har bir necha KB da bitta yozuv: offset → fayldagi o‘rin |
+| Broker | Partition nusxalarini saqlovchi va xizmat qiluvchi server |
+| Producer | Xabar yozuvchi mijoz |
+| Consumer | Xabar o‘qiydigan mijoz |
+| Consumer group | Partition’larni o‘zaro bo‘lib o‘qiydigan o‘quvchilar guruhi |
+| Lag | O‘quvchi jurnal oxiridan qancha orqada (xabar yoki vaqt) |
+| Replication factor (RF) | Har partition nechta brokerda nusxalanadi |
+| Yetakchi (leader) | Partition yozuvlarini qabul qiluvchi nusxa |
+| Izdosh (follower) | Yetakchidan nusxa oluvchi nusxa |
+| ISR | Yetakchi bilan yetib turgan nusxalar ro‘yxati |
+| LEO | Log end offset: nusxadagi keyingi yoziladigan offset |
+| High watermark (HW) | ISR dagi hamma nusxada bor chegara; o‘quvchi faqat shu gacha ko‘radi |
+| acks | Producer tasdiq kutadigan nusxalar soni: 0, 1 yoki all |
+| min.insync.replicas | acks=all yozuvi uchun ISR ning eng kichik hajmi |
+| Leader epoch | Yetakchilik davri raqami; izdosh dumini to‘g‘ri kesish uchun |
+| Toza bo‘lmagan saylov | ISR dan tashqaridagi nusxani yetakchi qilish (ma’lumot yo‘qolishi mumkin) |
+| Qayta muvozanatlash | Guruh a’zolari o‘zgarganda partition’larni qayta bo‘lish |
+| Idempotent producer | (PID, seq) bilan takrorlarni broker o‘zi tashlaydigan producer |
+| Tranzaksiya | Bir nechta partition’ga yozuv va offset commit’ini atomar qilish |
+| LSO | Last stable offset: read_committed o‘quvchi chegarasi |
+| Log compaction | Har kalitning faqat oxirgi qiymatini saqlash |
+| Tombstone | Qiymati bo‘sh xabar: kalitni o‘chirish belgisi |
+| KRaft | Kafka metadata’sini Raft bilan o‘zida saqlaydigan rejim (ZooKeeper’siz) |
+| Tiered storage | Eski segmentlarni ob’ekt omborida saqlash |
+| DLQ | O‘lik xatlar topic’i: ishlov berib bo‘lmagan xabarlar uchun |
+| Share group | Navbatga o‘xshash o‘qish: bitta partition’ni bir nechta o‘quvchi baham ko‘radi |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| LinkedIn miqyosi | Kuniga 7 trillion xabar; 100+ klaster, 4 000+ broker, 100 000+ topic, ~7 M partition (2019) | LinkedIn Engineering, “How LinkedIn customizes Apache Kafka for 7 trillion messages per day” (2019) |
+| Kafka’ning boshlanishi | LinkedIn, 2010–2011; ochiq manba 2011 | Kreps, Narkhede, Rao, NetDB 2011 |
+| Segment hajmi | 1 GB (standart) | Kafka hujjatlari (`log.segment.bytes`) |
+| Saqlash muddati | 7 kun (standart) | Kafka hujjatlari (`log.retention.hours`) |
+| ISR dan chiqarish | 30 s (standart) | Kafka hujjatlari (`replica.lag.time.max.ms`) |
+| acks=all va idempotentlik | 3.0 dan beri standart | KIP-679 |
+| Toza bo‘lmagan saylov | 0.11 dan beri standart o‘chiq | Kafka hujjatlari |
+| Exactly-once va leader epoch | 0.11 (2017) | KIP-98, KIP-101 |
+| KRaft | 3.3 da ishlab chiqarishga tayyor (2022); 4.0 da ZooKeeper olib tashlandi (2025) | KIP-500, KIP-833 |
+| Tiered storage | 3.6 da sinov (2023), 3.9 da GA (2024) | KIP-405 |
+| Izdoshdan o‘qish | 2.4 (2019) | KIP-392 |
+| Bosqichma-bosqich qayta muvozanatlash | 2.4 (2019); yangi protokol 4.0 da GA | KIP-429, KIP-848 |
+| Share group’lar | 4.0 da sinov | KIP-932 |
+| Disk tezliklari | HDD ketma-ket ~200 MB/s, fsync ~5–10 ms | Disk spetsifikatsiyalari (taxminan) |
+| 2-daraja natijalari | 16/16; 13 mutatsiya; 600 tasodifiy stsenariy | `docs/amaliyot/kafka/`, referens implementatsiya |
+
+Klasterlar hajmi va oqimlar, xabar hajmlari, kechikishlar, broker va
+tarmoq tezliklari, bulut narxlari (zonalararo trafik, disk, ob’ekt ombori),
+o‘quvchi tezliklari va partition sonlari — **illyustratsiya uchun
+taxminiy**. Haqiqiy qiymatlar apparat, bulut provayderi va sozlamalarga
+qarab bir necha barobar farq qiladi. Asosiy xulosalar — ketma-ket yozish
+tasodifiydan yuzlab barobar tez; to‘plash so‘rovlar sonini keskin
+kamaytiradi; ishonchlilik fsync emas, replikatsiyadan keladi; o‘quvchi
+faqat HW gacha ko‘radi; bulutda asosiy xarajat ko‘pincha zonalararo trafik —
+bu raqamlarning bir necha barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Jay Kreps, Neha Narkhede, Jun Rao (2011), “Kafka: a Distributed Messaging
+  System for Log Processing”, NetDB
+- Jay Kreps (2013), “The Log: What every software engineer should know
+  about real-time data’s unifying abstraction”, LinkedIn Engineering
+- LinkedIn Engineering (2019), “How LinkedIn customizes Apache Kafka for 7
+  trillion messages per day”
+- Apache Kafka hujjatlari: Design (persistence, efficiency, replication),
+  Operations, Configuration
+- KIP-98: Exactly Once Delivery and Transactional Messaging
+- KIP-101: Alter Replication Protocol to use Leader Epoch rather than High
+  Watermark for Truncation
+- KIP-279: Fix log divergence between leader and follower after fast leader
+  fail over
+- KIP-392: Allow consumers to fetch from closest replica
+- KIP-405: Kafka Tiered Storage
+- KIP-429: Kafka Consumer Incremental Rebalance Protocol
+- KIP-500: Replace ZooKeeper with a Self-Managed Metadata Quorum
+- KIP-848: The Next Generation of the Consumer Rebalance Protocol
+- KIP-932: Queues for Kafka
+- Neha Narkhede (2017), “Exactly-once Semantics Are Possible: Here’s How
+  Kafka Does It”, Confluent blog
+- Diego Ongaro, John Ousterhout (2014), “In Search of an Understandable
+  Consensus Algorithm”, USENIX ATC (Raft)
+- Kyle Kingsbury (2013), “Jepsen: Kafka”, aphyr.com
