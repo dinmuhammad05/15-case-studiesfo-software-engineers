@@ -66,7 +66,7 @@ kalkulyatorda takrorlash mumkin.
 | 12 | [Uber ETA](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/uber-eta/) | ✅ Tayyor | 19 000 so‘z | Yo‘l grafi, A* va Contraction Hierarchies, jonli tirbandlik, H3, DeepETA |
 | 13 | [Amazon S3](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/amazon-s3/) | ✅ Tayyor | 18 500 so‘z | 11 ta to‘qqiz, uch nusxa va erasure coding, metadata indeksi, kuchli izchillik, nazorat summalari |
 | 14 | [Apache Kafka](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/kafka/) | ✅ Tayyor | 17 500 so‘z | Commit log, partition, ISR va high watermark, consumer group, exactly-once, KRaft |
-| 15 | Fond birjasi | ⏳ Rejada | | Order book, matching engine, past kechikish |
+| 15 | [Fond birjasi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/stock-exchange/) | ✅ Tayyor | 17 500 so‘z | Buyurtmalar kitobi, matching engine, sekvenser va deterministik jurnal, bozor ma’lumotlari oqimi, adolat |
 | 16 | Bluesky | ⏳ Rejada | | AT Protocol, federatsiya, firehose |
 | 17 | Meta Serverless | ⏳ Rejada | | XFaaS, sovuq start, rejalashtirish |
 

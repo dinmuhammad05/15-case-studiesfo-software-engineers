@@ -332,12 +332,13 @@ export const lessons: Lesson[] = [
     order: 15,
     slug: "stock-exchange",
     title: "Fond birjasi qanday ishlaydi",
-    summary: "Order book, matching engine va mikrosoniyalik kechikish talabi.",
+    summary:
+      "Sekundiga millionlab buyurtma, mikrosekundlar va bir tiyin ham xatosiz: buyurtmalar kitobi, matching engine, sekvenser va jurnal, bozor ma'lumotlari oqimi, adolat va nosozliklarga chidamlilik.",
     accent: "#16a34a",
-    status: "rejada",
+    status: "tayyor",
     level: "murakkab",
-    minutes: 34,
-    topics: ["Order book", "Matching", "Low latency", "Sequencer"],
+    minutes: 180,
+    topics: ["Order book", "Matching engine", "Sekvenser", "Deterministik replay", "Market data", "Kechikish", "Risk nazorati", "Adolat"],
   },
   {
     order: 16,

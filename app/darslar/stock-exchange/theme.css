@@ -1,0 +1,48 @@
+/* Birja skini — savdo terminali uslubi (biror birja yoki brokerning brend materiali emas) */
+[data-skin="birja"] {
+  --skin-bg: #0b0e13;
+  --skin-surface: #121720;
+  --skin-surface-2: #19202b;
+  --skin-border: #252d3a;
+  --skin-text: #e6e9ef;
+  --skin-muted: #8d97a8;
+  --skin-accent: #22c55e;
+  --skin-accent-text: #03140a;
+  --skin-ring: rgba(34, 197, 94, 0.3);
+  --skin-radius: 6px;
+  --skin-font: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  --skin-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bx-up: #22c55e;
+  --bx-down: #f0495b;
+  --bx-amber: #f5b83d;
+  --bx-panel: #0f141c;
+}
+
+[data-skin="birja"] .lesson-prose h2 {
+  letter-spacing: -0.015em;
+}
+[data-skin="birja"] .lesson-prose pre {
+  background: #070a0e;
+}
+
+@keyframes bx-tape {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+[data-skin="birja"] .bx-tape {
+  animation: bx-tape 60s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="birja"] .bx-tape {
+    animation: none;
+  }
+}
+
+body:has([data-skin="birja"]) {
+  background: #0b0e13;
+}

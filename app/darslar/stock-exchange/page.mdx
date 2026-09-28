@@ -1,0 +1,2461 @@
+## Bu darsda nima o‘rganasiz
+
+Telefoningizdagi broker ilovasida “Sotib olish” tugmasini bosdingiz: 10 ta
+aksiya, narxi 100.50 dan oshmasin. Taxminan bir soniyadan keyin ekranda
+“Bajarildi: 10 ta, 100.48” degan yozuv chiqadi. Shu bir soniya ichida
+buyurtmangiz brokerning serverlariga, undan birjaga yetib bordi, birjada
+boshqa bir odamning “100.48 dan sotaman” degan buyurtmasi bilan
+juftlandi, bitim qayd etildi, va bu haqida xabar butun dunyodagi minglab
+treyderlarning ekraniga tarqaldi. Birjaning o‘zida bu ishning asosiy qismi
+**mikrosekundlarda** — soniyaning milliondan bir ulushlarida — bajariladi.
+
+Fond birjasi — dunyodagi eng talabchan dasturiy tizimlardan biri. U bir
+vaqtning o‘zida to‘rtta qiyin shartni bajarishi kerak:
+
+**1. Mutlaq aniqlik.** Bitta tiyinlik xato — birovning puli. Ikki marta
+bajarilgan buyurtma, yo‘qolgan bitim yoki noto‘g‘ri narx — sud ishi va
+regulyator jarimasi. Bu yerda “deyarli to‘g‘ri” degan tushuncha yo‘q.
+
+**2. Tezlik.** Katta birjalar sekundiga yuz minglab–millionlab xabarni
+qabul qiladi va har biriga o‘nlab mikrosekundda javob beradi. Muhimi —
+nafaqat o‘rtacha tezlik, balki **barqarorlik**: bitta sekin javob ham
+kimgadir pul yo‘qotish degani.
+
+**3. Adolat.** Kim birinchi kelgan bo‘lsa — o‘sha birinchi. Hamma bir xil
+ma’lumotni bir vaqtda ko‘rishi kerak. Birja qaysidir mijozga yashirin
+ustunlik bersa — bu dasturiy xato emas, jinoyat.
+
+**4. Ishonchlilik.** Savdo soatlarida birja to‘xtashga haqli emas, va
+server o‘lsa ham birorta tasdiqlangan bitim yo‘qolmasligi kerak.
+
+Dars shu to‘rt talabga qanday javob berilishini noldan, bitta Python
+ro‘yxatidan boshlab ko‘rsatadi. Yo‘lda uchta katta g‘oyani o‘rganasiz:
+**buyurtmalar kitobi** va narx-vaqt ustuvorligi (bozor narxi qanday
+tug‘iladi), **sekvenser va deterministik jurnal** (nega eng tez birjalar
+bitta ipda ishlaydi va qanday qilib server o‘lsa ham hech narsa
+yo‘qolmaydi), va **bozor ma’lumotlari oqimi** (millionlab odam bitta
+kitobning nusxasini qanday ushlab turadi).
+
+Har yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan beriladi. Dars oxirida — butun darsning o‘n gaplik
+xulosasi. Oldingi darslardan foydali: Kafka darsidagi jurnal va offset
+g‘oyasi (bu yerda u yanada qat’iy ko‘rinishda), Airbnb darsidagi
+idempotentlik va Redis darsidagi “bitta ip — qulf yo‘q” tamoyili.
+
+<Callout type="ogoh" title="Bu dars investitsiya haqida emas">
+Dars birjaning **muhandisligi** haqida: dasturiy tizim qanday qurilgan va
+nega aynan shunday. Qaysi aksiyani olish, qachon sotish yoki savdo
+strategiyalari haqida gap yo‘q. Misollardagi narxlar, kompaniyalar va
+miqdorlar — tushuntirish uchun o‘ylab topilgan.
+</Callout>
+
+## 1. Muammo: minglab odam bitta narx haqida kelishadi
+
+### 1.1 Birja aslida nima qiladi
+
+Oddiy tilda: birja — **bozor**, lekin olma o‘rniga kompaniyalarning ulushlari
+(aksiyalar) sotiladi. Bozorda sotuvchi “kilosi 12 ming” deydi, xaridor “10
+mingga beraymi?” deb so‘raydi, va ular qayerdadir kelishadi. Birjada ham
+xuddi shunday, faqat sotuvchi va xaridorlar bir-birini ko‘rmaydi, minglab
+va bir vaqtda savdolashadi, va kelishuv qoidalari qat’iy yozilgan.
+
+Birjaning asosiy vazifasi uchta:
+
+**Juftlash (matching).** Kim qancha narxda qancha olmoqchi yoki sotmoqchi —
+shu takliflarni yig‘ish va mos kelganlarini qat’iy qoida bo‘yicha
+juftlash. Buni **matching engine** (juftlash mexanizmi) qiladi.
+
+**Narxni e’lon qilish (market data).** Hozir eng yaxshi taklif qancha, oxirgi
+bitim qancha narxda bo‘ldi — hammaga, bir vaqtda.
+
+**Bitimlarni yakunlash (clearing va settlement).** Bitim bo‘ldi — endi pul
+xaridordan sotuvchiga, aksiya sotuvchidan xaridorga o‘tishi kerak. Bu
+odatda birjadan keyingi alohida tashkilotlarda, bir kundan keyin bo‘ladi
+(13-qadam).
+
+Oddiy odam birjaga to‘g‘ridan-to‘g‘ri ulanmaydi: uning buyurtmasini
+**broker** (birja a’zosi) olib boradi. Broker o‘z mijozlarini tekshiradi
+(pul bormi?), buyurtmalarni birjaga yuboradi va natijani qaytaradi.
+
+### 1.2 Talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| To‘g‘rilik | Har bitim qoidaga mos: narx, miqdor, ustuvorlik — bir tiyin ham xatosiz |
+| Determinizm | Bir xil kirish ketma-ketligi — har doim bir xil natija (qayta o‘ynash, audit) |
+| Kechikish | Buyurtmadan javobgacha birja ichida o‘nlab mikrosekund; p99 va p99.99 ham barqaror |
+| O‘tkazuvchanlik | Cho‘qqida sekundiga yuz minglab–millionlab xabar |
+| Adolat | Kelish tartibi aniq; bozor ma’lumotlari hammaga bir vaqtda |
+| Saqlanish | Tasdiqlangan bitim server o‘lsa ham yo‘qolmaydi |
+| Mavjudlik | Savdo soatlarida to‘xtamaslik; nosozlikda soniyalar ichida zaxiraga o‘tish |
+| Audit | Har xabar, har qaror yillar davomida tiklanadigan bo‘lib saqlanadi |
+
+Ikkinchi qator — bu darsning kaliti. Oddiy veb-tizimda “bir xil so‘rov
+har doim bir xil natija bermasa” ham ko‘pincha hech narsa bo‘lmaydi.
+Birjada esa **determinizm** — ishonchlilik (8-bo‘lim), audit va adolatning
+(12-qadam) asosi.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="6 M/s" label="LMAX: bitta ipda buyurtmalar" hint="2011, Martin Fowler maqolasi" />
+  <Stat value="~5 µs" label="Yorug'lik optik tolada 1 km" hint="Fizika" />
+  <Stat value="350 µs" label="IEX 'tezlik to'sig'i'" hint="2016-yildan birja" />
+  <Stat value="T+1" label="AQSh'da hisob-kitob muddati" hint="2024-yil maydan" />
+</StatGrid>
+
+<Calc title="Bir kunlik oqim: o'rtacha va cho'qqi" result="Kuniga 500 M xabar — o'rtacha ~21 000/s, lekin ochilish va yopilish daqiqalarida 10-20 barobar ko'p: ~300 000/s va undan yuqori">{`Faraz: o'rta kattalikdagi birja, kuniga 500 000 000 xabar
+  (yangi buyurtmalar, bekor qilishlar, o'zgartirishlar)
+Savdo kuni: 6.5 soat = 23 400 s
+
+O'rtacha: 500 M / 23 400 = ~21 000 xabar/s
+
+Lekin oqim tekis emas:
+  ochilish (birinchi daqiqalar) va yopilish: 10-20x o'rtacha
+  muhim yangilik (masalan, foiz stavkasi e'loni): soniyalar ichida 50x+
+  -> cho'qqi: 300 000 - 1 000 000 xabar/s
+
+Tizim cho'qqi uchun quriladi, o'rtacha uchun emas (13-bo'lim)`}</Calc>
+
+<Calc title="Buyurtmalarning ko'pi bitimga aylanmaydi" result="Har bitimga o'nlab buyurtma va bekor qilish to'g'ri keladi: tizimning asosiy yuki — bitimlar emas, kitobni o'zgartiruvchi xabarlar">{`Faraz: kuniga 500 M xabar, shundan:
+  yangi buyurtma:     ~45%  (225 M)
+  bekor qilish:       ~45%  (225 M)
+  o'zgartirish:       ~10%  (50 M)
+
+Bitimlar: kuniga ~5 M
+  xabarlar / bitimlar = 500 M / 5 M = ~100 ta xabar har bitimga
+
+Sabab: bozor qiluvchilar (market maker) narx o'zgarishi bilan
+  o'z takliflarini doim yangilab turadi — eski taklifni bekor qilib,
+  yangisini qo'yadi. Bu bozorni likvid qiladi, lekin birja uchun —
+  asosiy yuk
+
+Xulosa: bekor qilish (cancel) yangi buyurtma kabi tez bo'lishi shart`}</Calc>
+
+<Calc title="Masofa — kechikish: yorug'lik ham sekin" result="Optik tolada 1 km ~5 µs; 1 000 km — ~5 ms bir tomonga. Birja ichidagi 20-50 µs lik ish bilan solishtirganda masofa hal qiluvchi">{`Yorug'lik vakuumda: ~300 000 km/s
+Optik tolada (sindirish koeffitsiyenti ~1.47): ~200 000 km/s
+  -> 1 km = 1 / 200 000 s = 5 µs
+
+Misollar (bir tomonga, taxminan):
+  birja binosi ichida, 100 m kabel:    ~0.5 µs
+  shahar ichida, 20 km:                 ~100 µs
+  Chikago -> Nyu-Jersi, ~1 200 km tola: ~6 ms
+  xuddi shu yo'l mikroto'lqinli radio orqali (havoda ~300 000 km/s,
+    to'g'riroq yo'l): ~4 ms
+
+Birja ichida buyurtmani qayta ishlash: ~20-50 µs (faraz)
+  -> tashqi dunyo uchun asosiy kechikish — masofa, birja emas
+  -> shuning uchun treyderlar serverlarini birja yoniga qo'yadi
+     (colocation, 12-qadam)`}</Calc>
+
+<Check q="Nega birjada 'o'rtacha tez' yetarli emas va p99.99 ham muhim?">
+Chunki bitta sekin javob ham **kimgadir pul yo‘qotish** degani. Treyder
+narxni ko‘rib buyurtma yubordi; birja uni 30 µs o‘rniga 3 ms da ishlasa,
+shu vaqtda narx o‘zgargan bo‘lishi mumkin — va u endi yaxshi bo‘lmagan
+narxda bajariladi yoki umuman bajarilmaydi.
+
+Ikkinchi sabab — **adolat**. Agar birja ba’zan sekinlashsa, kim oldin
+kelganini aniqlash qiyinlashadi: navbatlar paydo bo‘ladi, ularda xabarlar
+aralashadi, va bozor qatnashchilari “birja ishonchsiz” deb, o‘z
+takliflarini kamaytiradi — bozor yomonlashadi.
+
+Uchinchi sabab — **yuklama cho‘qqilari**. Sekinlashish aynan eng muhim
+paytda bo‘ladi: yangilik chiqqanda, hamma bir vaqtda harakat qilganda.
+Kuniga 500 million xabarda 0.01% — bu 50 000 ta sekin javob, va ular
+tasodifiy emas, eng qizg‘in daqiqalarga to‘planadi. Shuning uchun birjalar
+nafaqat o‘rtacha, balki p99, p99.99 va **maksimal** kechikishni ham
+o‘lchaydi (14-bo‘lim).
+</Check>
+
+## 2. Nol nuqta: buyurtmalar kitobi
+
+### 2.1 Buyurtma: “qancha, qanchadan, qaysi tomonga”
+
+Oddiy tilda: buyurtma — bu birjaga yozilgan xat: “Men **100 ta** aksiyani
+**100.50 dan qimmat bo‘lmagan** narxda **sotib olmoqchiman**”. Unda uchta
+asosiy narsa bor: tomon (olish yoki sotish), miqdor va narx chegarasi.
+
+Ikki asosiy turi bor:
+
+**Limit buyurtma** — narx chegarasi bilan. “100.50 dan qimmat emas”
+(xarid) yoki “100.40 dan arzon emas” (sotuv). Mos taklif hozir bo‘lmasa,
+buyurtma **kutib turadi** — kitobga yoziladi.
+
+**Bozor (market) buyurtmasi** — narx chegarasisiz: “hozir, qanday narx
+bo‘lsa ham”. U kutmaydi: bor takliflar bilan darhol bajariladi. Tez, lekin
+xavfli — kitob yupqa bo‘lsa, kutilganidan ancha yomon narx chiqishi mumkin
+(4.7 va 11-bo‘lim).
+
+### 2.2 Kitob: ikki navbat va ular orasidagi bo‘shliq
+
+Kutib turgan limit buyurtmalar **buyurtmalar kitobi**ga (order book)
+yoziladi. Kitobning ikki tomoni bor: xaridorlar (**bid**) va sotuvchilar
+(**ask** yoki offer).
+
+```
+                 SOTUVCHILAR (ask)
+   narx      miqdor    buyurtmalar (kelish tartibida)
+  100.53       900    [#41: 500] [#57: 400]
+  100.52       300    [#38: 300]
+  100.51       700    [#12: 200] [#44: 500]        <- eng yaxshi ask
+  ---------------------------------------------   spred = 0.02
+  100.49       400    [#09: 400]                   <- eng yaxshi bid
+  100.48     1 200    [#15: 1000] [#61: 200]
+  100.47       500    [#33: 500]
+                 XARIDORLAR (bid)
+```
+
+**Eng yaxshi bid** — eng yuqori xarid narxi (100.49): kimdir hozir
+shuncha to‘lashga tayyor. **Eng yaxshi ask** — eng past sotuv narxi
+(100.51). Ular orasidagi farq — **spred** (0.02). Kitob **kesishmaydi**:
+agar kimdir 100.51 dan olishga tayyor bo‘lsa, u allaqachon sotuvchi bilan
+juftlangan bo‘lardi. Kitobda qolganlar — hali kelisha olmaganlar.
+
+Har narx **darajasi**da bir nechta buyurtma bo‘lishi mumkin, va ular
+**kelish tartibida** navbatda turadi. Kitobning shu “ichki” ko‘rinishi — bu
+darsning asosiy ma’lumot tuzilmasi.
+
+<Callout type="info" title="Oddiy tilda: kitob — ikki navbatli bozor">
+Bozorning bir tomonida sotuvchilar narx bo‘yicha saf tortgan: eng arzoni
+eng oldinda. Ikkinchi tomonida xaridorlar: eng saxiysi eng oldinda. Bir
+narxdagilar orasida — kim oldin kelgan bo‘lsa, o‘sha oldinda. Yangi
+kelgan odam ikki saf o‘rtasiga qaraydi: narxi mos kelsa — darhol savdo,
+kelmasa — o‘z safining tegishli joyiga turadi.
+</Callout>
+
+### 2.3 Juftlash: narx-vaqt ustuvorligi
+
+Yangi buyurtma kelganda matching engine bitta qat’iy qoidani qo‘llaydi —
+**narx-vaqt ustuvorligi** (price-time priority, FIFO):
+
+1. Avval **eng yaxshi narx**dagi qarshi buyurtmalar bilan.
+2. Bir narxda — **eng oldin kelgan** buyurtma bilan.
+3. Bitim narxi — **kitobda kutib turgan** buyurtmaning narxi.
+
+Kitobda kutib turgan buyurtma **maker** (likvidlik yaratuvchi), kelib uni
+“olgan” buyurtma **taker** (likvidlik oluvchi) deyiladi.
+
+<Calc title="Bitta buyurtmaning yo'li kitob bo'ylab" result="1 000 ta xarid 100.52 gacha: uch bitim — 200 @ 100.51, 500 @ 100.51, 300 @ 100.52. O'rtacha narx ~100.513; qoldiq yo'q">{`Kitob (ask tomoni, yuqoridagi rasm):
+  100.51: [#12: 200] [#44: 500]
+  100.52: [#38: 300]
+  100.53: [#41: 500] [#57: 400]
+
+Keladi: #70 XARID 1 000 ta, limit 100.52
+
+1) eng yaxshi narx 100.51, birinchi navbatda #12:
+     bitim 200 @ 100.51 (maker #12, taker #70) — #12 tugadi
+2) o'sha narxda keyingisi #44:
+     bitim 500 @ 100.51 — #44 tugadi, 100.51 darajasi bo'shadi
+3) keyingi narx 100.52 <= limit 100.52, #38:
+     bitim 300 @ 100.52 — #70 ning 1 000 tasi to'ldi
+4) 100.53 — limitdan yuqori, to'xtaymiz (kerak ham emas)
+
+Jami to'langan: 700 x 100.51 + 300 x 100.52 = 100 513.00
+  o'rtacha narx: 100.513 — limit 100.52 dan yaxshi`}</Calc>
+
+Bitim narxi nega maker’niki? Chunki maker o‘z narxini **oldin** e’lon
+qilgan va boshqalar uni ko‘rib qaror qilgan. Taker “100.52 gacha
+tayyorman” desa ham, kitobda 100.51 lik taklif turgan ekan — u 100.51
+to‘laydi. Bu xaridor uchun adolatli (yaxshiroq narx) va sotuvchi uchun
+ham (u aynan so‘ragan narxini oldi).
+
+### 2.4 Nega aynan shu qoida
+
+Narx-vaqt ustuvorligi ikki narsani rag‘batlantiradi. **Yaxshi narx
+taklif qilishni** — yaxshiroq narx har doim oldinda. **Erta taklif
+qilishni** — bir narxda birinchi bo‘lgan birinchi bajariladi. Ikkalasi
+ham bozorni **likvid** (har doim kimdir savdoga tayyor) va **tor spredli**
+qiladi.
+
+Yagona qoida emas: ba’zi bozorlarda (masalan, ayrim fyuchers va
+obligatsiya bozorlari) bir narxdagi buyurtmalar **hajmga mutanosib**
+(pro-rata) bo‘linadi. Ikkala yondashuvning farqi — 16-bo‘limda. Bu darsda
+asosiy model — FIFO, chunki aksiyalar birjalarining ko‘pchiligi shunday
+ishlaydi va u eng sodda, eng deterministik qoida.
+
+<Check q="Kitobda sotuvda 100.51 dan 200 ta (kelgan: 09:30:01) va 100.51 dan 500 ta (09:30:02), 100.50 dan 100 ta (09:30:05) bor. 250 talik xarid 100.51 gacha kelsa, nima bo'ladi?">
+Avval **eng yaxshi narx** — 100.50 (eng arzon sotuv), garchi u eng kech
+kelgan bo‘lsa ham: bitim 100 @ 100.50. Narx vaqtdan ustun.
+
+Keyin 100.51 darajasi, bu yerda **vaqt** hal qiladi: birinchi bo‘lib
+09:30:01 dagi buyurtma. Kerak yana 150 ta: bitim 150 @ 100.51. Uning
+qolgan 50 tasi o‘z o‘rnida — navbat boshida — qoladi. 09:30:02 dagi 500
+talik buyurtmaga navbat kelmadi.
+
+Xaridor jami 100 × 100.50 + 150 × 100.51 = 25 126.50 to‘laydi. Kitobda
+endi: 100.51 da [50] [500], 100.50 darajasi yo‘q.
+</Check>
+
+## 3. v0: bitta server, bitta ro‘yxat
+
+Eng sodda matching engine — barcha buyurtmalar bitta ro‘yxatda. Yangi
+buyurtma kelganda qarshi tomondagi mos buyurtmalarni saralab, bittalab
+juftlaymiz:
+
+```python
+import itertools
+
+class Exchange:
+    def __init__(self):
+        self.book = []                    # hamma kutayotgan buyurtmalar
+        self.clock = itertools.count()    # kelish tartibi
+
+    def submit(self, oid, side, qty, price):
+        t = next(self.clock)
+        opp = [o for o in self.book if o["side"] != side and
+               (price >= o["price"] if side == "B" else price <= o["price"])]
+        # eng yaxshi narx, keyin eng oldin kelgan
+        opp.sort(key=lambda o: (o["price"] if side == "B" else -o["price"], o["t"]))
+        trades = []
+        for o in opp:
+            if qty == 0:
+                break
+            q = min(qty, o["qty"])
+            trades.append((oid, o["oid"], o["price"], q))
+            o["qty"] -= q
+            qty -= q
+        self.book = [o for o in self.book if o["qty"] > 0]
+        if qty > 0:
+            self.book.append({"oid": oid, "side": side, "qty": qty, "price": price, "t": t})
+        return trades
+```
+
+Bu v0 **to‘g‘ri** ishlaydi: narx-vaqt ustuvorligi, maker narxi, qisman
+bajarilish — hammasi bor. Aynan shu kod amaliyotdagi `check.py` ichida
+“sodda model” sifatida sizning tez kitobingizni tekshiradi. Kichik
+bozorda — kuniga bir necha ming buyurtma — u yetarli. Muammolar
+kattalik, pul, nosozliklar va adolat bilan chiqadi.
+
+## 4. Nima sindi
+
+v0 ga 1-bo‘limdagi talablarni qo‘yamiz: cho‘qqida sekundiga yuz minglab
+xabar, pul bilan ishlash, server o‘limi, minglab bir vaqtdagi mijoz. Har
+muammo 5-bo‘limdagi bir yoki bir nechta qadamga olib keladi.
+
+### 4.1 Har buyurtma butun kitobni saralaydi
+
+Oddiy tilda: har yangi mijoz kelganda bozordagi hamma sotuvchilarni qaytadan
+safga turg‘izish. Sotuvchilar 10 ta bo‘lsa — sezilmaydi. 20 000 ta bo‘lsa —
+bozor to‘xtaydi.
+
+<Calc title="v0 ning narxi: har xabar butun kitob bo'ylab" result="20 000 buyurtmali kitobda har xabar ~0.3 M amal; 300 000 xabar/s uchun sekundiga ~10^11 amal — C da ham ~100 yadro, Python da minglab. To'g'ri tuzilma bilan har xabar ~yuzlab nanosekund">{`Kitobda 20 000 kutayotgan buyurtma (bitta faol aksiya, faraz)
+v0 har yangi buyurtmada:
+  filtrlash: 20 000 ta tekshiruv
+  saralash: n log n = 20 000 x ~15 = ~300 000 taqqoslash
+  qayta yig'ish (self.book = [...]): yana 20 000
+  -> ~0.3 M amal har xabarga
+
+Cho'qqi: 300 000 xabar/s
+  -> 300 000 x 0.3 M = ~10^11 amal/s
+  bitta yadro ~10^9 oddiy amal/s -> C da ham ~100 yadro kerak
+  Python da 50-100x sekinroq -> minglab yadro
+
+Bekor qilish (cancel) ham ro'yxatdan qidiradi: yana O(n)
+
+Maqsad: eng yaxshi narx — O(1), bekor qilish — O(1),
+  bitta xabar — yuzlab nanosekund (5-bo'lim, 1-qadam)`}</Calc>
+
+### 4.2 Float bilan pul
+
+v0 da narx — Python’ning `float` soni. Birinchi qarashda muammo yo‘q:
+`100.51` — oddiy son. Lekin kompyuterda `0.1 + 0.2` aynan `0.3` ga teng
+emas (`0.30000000000000004`). Pul hisobida bu kichik xatolar yig‘iladi,
+va eng yomoni — ikki server bir xil hisobni **turlicha yaxlitlashi**
+mumkin. Birjada bu ikki xavf: noto‘g‘ri summa va zaxira server asosiydan
+**farqli** natija olishi (4.3, 8-bo‘lim).
+
+<Calc title="Float xatosi qanday yig'iladi" result="Oddiy yig'indida ham xato paydo bo'ladi; narx va summalar faqat butun sonlarda: narx — 'tick'larda (tiyinlarda), summa — eng kichik pul birligida">{`Python:
+  0.1 + 0.2              -> 0.30000000000000004
+  100.51 * 3             -> 301.53000000000003
+  sum([0.01] * 100)      -> 1.0000000000000007
+
+Birjada: bir kunda millionlab bitim summasi yig'iladi,
+  va natija "to'g'ri" bo'lishi kerak — ikki server uchun AYNAN bir xil
+
+Yechim: butun sonlar
+  narx 100.51 -> 10 051 tick (tick = 0.01)
+  summa: 10 051 x 300 = 3 015 300 (tiyin) -> 30 153.00
+  hech qanday yaxlitlash yo'q, har server bir xil natija`}</Calc>
+
+### 4.3 Server o‘ldi — kitob ham
+
+v0 da kitob faqat xotirada. Server o‘lsa, minglab mijozlarning kutib
+turgan buyurtmalari yo‘qoladi. Undan ham yomoni: bitim bo‘ldi, mijozga
+“bajarildi” deb javob ketdi, lekin bu hech qayerda yozilmagan. Qayta ishga
+tushgan birja bu bitim haqida bilmaydi, mijoz esa biladi. Kimning
+hisobiga ishonish kerak? Bu — birja uchun eng qo‘rqinchli holat.
+
+### 4.4 Ikki mijoz bir vaqtda
+
+v0 ni tezlashtirishning birinchi fikri — ko‘p ip (thread): har mijozning
+buyurtmasi o‘z ipida. Lekin ikki buyurtma bir vaqtda kitobga tegsa, ular
+bir-birini buzadi (ikkalasi ham bitta sotuvchining 100 ta aksiyasini
+“oladi”). Qulf (lock) qo‘ysak — to‘g‘ri bo‘ladi, lekin **kim birinchi**
+ekanini operatsion tizimning ip rejalashtiruvchisi hal qiladi: tasodifiy.
+Adolat va determinizm yo‘qoladi. Bu muammoning yechimi hayratlanarli —
+5-bo‘lim, 4–5-qadamlar.
+
+### 4.5 Hamma narxni so‘raydi
+
+Mijozlar joriy narxni bilishi kerak. v0 da ular birjadan “kitob qanday?”
+deb so‘raydi. 10 000 mijoz har 10 ms da so‘rasa — sekundiga 1 million
+so‘rov, har biri butun kitobni o‘qiydi. Matching engine savdo qilish
+o‘rniga ma’lumot tarqatish bilan band bo‘ladi. Bundan tashqari, “qaysi
+mijoz birinchi bo‘lib so‘radi” — yana adolat muammosi.
+
+### 4.6 Bitta buyurtma — ikki marta
+
+Mijoz buyurtma yubordi, javob kelmadi (tarmoq uzildi). Qayta yuborsa —
+ikki buyurtma, ikki bitim, ikki barobar aksiya va pul. Yubormasa — balki
+birinchisi ham yetib bormagan. Airbnb darsidagi “ikki marta yechish”
+muammosi, faqat bu yerda mikrosekundlarda va milliardlab so‘mda.
+
+### 4.7 Xato buyurtma
+
+Treyder “100 ta” o‘rniga “100 000 ta” yozdi, yoki algoritmdagi xato
+sekundiga minglab buyurtma yubora boshladi. v0 hammasini bajaradi. Real
+tarixda bunday xato kompaniyani 45 daqiqada bankrot qilgan (10.2).
+Birjada **tekshiruvlar** — narx va miqdor chegaralari, “o‘chirish tugmasi”
+(kill switch) — shart (7-qadam).
+
+<Callout type="ogoh" title="Kichik ehtimol x katta oqim = har kuni">
+“Tarmoq kamdan-kam uziladi”, “xato buyurtma deyarli bo‘lmaydi” — kuniga
+500 million xabarda “kamdan-kam” degani “kuniga bir necha ming marta”.
+Har bir nodir holat — takror, uzilish, xato narx, bir vaqtda kelish —
+ertami-kechmi bo‘ladi, va aynan eng qizg‘in paytda. Shuning uchun birja
+dizayni “baxtli yo‘l”dan emas, nosozliklardan boshlanadi.
+</Callout>
+
+### 4.8 Muammolar ro‘yxati
+
+| Muammo | Nima kerak | Qadam |
+| --- | --- | --- |
+| Har xabar butun kitobni saralaydi | Narx darajalari va FIFO navbatlar | 1 |
+| Float bilan pul | Butun sonli narx va miqdor | 2 |
+| Faqat limit va market | IOC, FOK, post-only va boshqa turlar | 3 |
+| Ko‘p ip — tasodifiy tartib | Bitta ipli matching engine | 4 |
+| Kim birinchi — noaniq | Sekvenser: har xabarga tartib raqami | 5 |
+| Server o‘lsa, kitob yo‘q | Jurnal, deterministik qayta o‘ynash, zaxira | 6 |
+| Takror va xato buyurtmalar | Shlyuz: sessiya, idempotentlik, risk tekshiruvi | 7 |
+| Hamma narxni so‘raydi | Bozor ma’lumotlari oqimi (multicast) | 8 |
+| Bitta server hamma aksiyalar uchun | Instrumentlar bo‘yicha bo‘lish | 9 |
+| Mikrosekundlar | Kechikishni kamaytirish texnikalari | 10 |
+| Ochilish, yopilish, keskin tebranish | Auksionlar va to‘xtatish mexanizmlari | 11 |
+| Kim tezroq — o‘sha ustun | Adolat mexanizmlari | 12 |
+| Bitimdan keyin pul va aksiya | Kliring va hisob-kitob | 13 |
+| Ma’lumot markazi yonsa | Zaxira sayt va tiklash | 14 |
+
+<Check q="Nega v0 ni ko'p ipga bo'lib tezlashtirish birja uchun noto'g'ri yo'l?">
+Ko‘p ip ikki narsani buzadi. **To‘g‘rilik**: ikki ip bir vaqtda bitta
+kitobga tegsa, bitta aksiya ikki marta sotilishi mumkin. Buni qulf bilan
+tuzatish mumkin, lekin keyin ikkinchi muammo qoladi.
+
+**Tartib va adolat**: qaysi ip qulfni birinchi olishini operatsion tizim
+hal qiladi — bu kelish tartibiga bog‘liq emas va har safar boshqacha. 09:30:00.000001
+da kelgan buyurtma 09:30:00.000002 dagisidan keyin bajarilishi mumkin.
+Natija tasodifiy bo‘lsa, uni qayta o‘ynab tekshirib ham bo‘lmaydi
+(determinizm yo‘q), zaxira server ham asosiy bilan bir xil holatga kela
+olmaydi.
+
+Qulflarning o‘zi ham qimmat: yuk ostida iplar bir-birini kutadi,
+protsessor keshlari “sakraydi”, va kechikish barqaror bo‘lmaydi. Birjalar
+boshqa yo‘lni tanlaydi: kiruvchi xabarlarni **bitta tartibga** keltirish
+(sekvenser) va kitobni **bitta ipda** ishlash — 4–5-qadamlar.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Har qadam 4-bo‘limdagi bitta muammoni hal qiladi va o‘z narxini to‘laydi.
+Qadamlar taxminan tarixiy tartibda: 1–3 — kitobning o‘zi, 4–6 — tartib va
+ishonchlilik yuragi, 7–8 — tashqi dunyo bilan aloqa, 9–14 — masshtab,
+tezlik, adolat va bozor atrofidagi tizimlar.
+
+<Step n={1} title="Narx darajalari va FIFO navbatlar" gain="Eng yaxshi narx — darhol; bekor qilish — darhol; har xabar yuzlab nanosekund" cost="Uch xil tuzilmani doim bir-biriga mos ushlab turish kerak; xato bo'lsa — kitob 'yolg'on gapiradi'">
+
+Oddiy tilda: bozordagi hamma sotuvchini bitta uzun safga emas, **narx
+bo‘yicha alohida saflarga** turg‘izamiz: “100.51 lik saf”, “100.52 lik saf”.
+Saflar narx bo‘yicha tartiblangan, har saf ichida — kelish tartibi. Yangi
+xaridor faqat eng oldingi safga qaraydi. Kimdir ketmoqchi bo‘lsa, uning
+qaysi safda turganini daftardan qarab, darhol chiqaramiz.
+
+Kitob uchta tuzilmadan iborat:
+
+```
+1. Narx darajalari (har tomon uchun alohida):
+     narxlar tartiblangan -> eng yaxshisi: xaridda eng kattasi, sotuvda eng kichigi
+2. Har daraja — FIFO navbat:  100.51 -> [#12: 200] -> [#44: 500]
+     boshidan olish — O(1), oxiriga qo'shish — O(1),
+     o'rtasidan o'chirish (bekor qilish) — O(1) (ikki tomonlama bog'langan ro'yxat)
+3. Indeks: buyurtma raqami -> (tomon, narx, navbatdagi tugun)
+     bekor qilish uchun qidirish shart emas
+```
+
+Narxlarni saqlashning bir nechta usuli bor: saralangan ro‘yxat, balanslangan
+daraxt yoki — ko‘p birjalarda — **massiv**: narx diapazoni cheklangan
+(masalan, joriy narxdan ±20%), tick esa aniq, shuning uchun har mumkin
+bo‘lgan narxga massivda bitta katak. Eng yaxshi narxni topish — ko‘rsatkichni
+yangilash, xolos.
+
+<Calc title="Massiv bilan kitob: xotira va tezlik" result="±20% diapazon va 0.01 tick bilan 100 so'mlik aksiyaga ~4 000 katak — bir necha o'n KB; hammasi protsessor keshida, har amal o'nlab nanosekund">{`Aksiya narxi ~100.00, tick = 0.01, ruxsat etilgan diapazon +-20%
+  narxlar: 80.00 ... 120.00 -> 4 000 ta mumkin bo'lgan daraja
+  har katak: navbat boshi va oxiri ko'rsatkichlari + jami miqdor = ~24 bayt
+  4 000 x 24 = ~96 KB -> protsessorning L2 keshiga sig'adi
+
+Eng yaxshi narx: alohida o'zgaruvchi, daraja bo'shaganda keyingi
+  band katakka siljiydi (odatda bir necha katak)
+
+Buyurtma tuguni: oid, miqdor, egasi, oldingi/keyingi -> ~48 bayt
+  100 000 kutayotgan buyurtma -> ~5 MB — oldindan ajratilgan hovuzdan
+
+Taqqoslash: v0 da bitta xabar ~0.3 M amal; bu yerda ~10-50 amal`}</Calc>
+
+Narxi — **ichki moslik**. Daraja jami miqdori navbatdagi buyurtmalar
+yig‘indisiga, indeks esa haqiqiy tugunlarga doim teng bo‘lishi kerak.
+Bitta unutilgan yangilash — va kitob mijozlarga yo‘q taklifni ko‘rsatadi.
+Amaliyotdagi fuzz-test aynan shuni tekshiradi: tez kitob har qadamda sodda
+model bilan bir xil holatda.
+</Step>
+
+<Step n={2} title="Butun sonli narx va miqdor" gain="Yaxlitlash xatolari yo'q; har server aynan bir xil natija oladi" cost="Har instrument uchun tick va lot qoidalari; chiqishda formatlash"> 
+
+Oddiy tilda: bozorda narx “12 ming 350 so‘m” deyiladi, “12.35 ming” emas —
+chunki tiyinlar bilan adashish oson. Birja ham narxni **eng kichik qadam**
+(tick) sonida saqlaydi: 100.51 emas, 10 051 tick.
+
+Uch qoida:
+
+**Narx — tick karrali butun son.** Tick — narxning eng kichik o‘zgarishi.
+AQSh aksiyalarida 1 dollardan qimmat aksiyalar uchun odatda 0.01 dollar;
+Yevropada tick jadvali narx va likvidlikka bog‘liq. 100.505 degan narx
+shunchaki qabul qilinmaydi.
+
+**Miqdor — lot karrali butun son.** Ba’zi bozorlarda bitta aksiyadan,
+boshqalarida 10 yoki 100 talik lotlardan.
+
+**Summa — eng kichik pul birligida.** Narx × miqdor — butun son, hech qanday
+bo‘lish yo‘q. Komissiya kabi bo‘lishli hisoblar esa aniq yozilgan
+yaxlitlash qoidasi bilan, matching engine’dan tashqarida.
+
+<Calc title="Tick hajmi va spred" result="100 so'mlik aksiyada 0.01 tick — 0.01%; 2 so'mlik aksiyada — 0.5%. Tick juda katta bo'lsa spred 'sun'iy' keng, juda kichik bo'lsa — navbatda turishning ma'nosi yo'qoladi">{`Aksiya A: narx 100.00, tick 0.01
+  eng tor spred = 1 tick = 0.01 -> nisbiy: 0.01 / 100 = 0.01%
+
+Aksiya B: narx 2.00, tick 0.01
+  eng tor spred = 0.01 -> nisbiy: 0.5% (50 barobar keng!)
+  xaridor va sotuvchi uchun sun'iy xarajat
+
+Tick juda kichik bo'lsa (masalan, 0.0001):
+  navbatda birinchi bo'lish uchun narxni 0.0001 ga yaxshilash kifoya
+  -> vaqt ustuvorligi ma'nosini yo'qotadi, kitob "titraydi"
+
+Shuning uchun tick jadvallari: narx diapazoni va likvidlikka qarab`}</Calc>
+
+Amaliyotdagi `book.py` narxi `100.5` yoki `100.0` (float) bo‘lgan buyurtmani
+`"tick"` sababi bilan rad etadi — hatto `100.0` qiymat jihatdan butun bo‘lsa
+ham. Qoida oddiy: pul kodiga float kirmaydi.
+</Step>
+
+<Step n={3} title="Buyurtma turlari: IOC, FOK, post-only va boshqalar" gain="Mijozlar o'z xavfini aniq boshqaradi; bozor qiluvchilar xavfsiz taklif qo'yadi" cost="Har yangi tur — matching mantig'ida yangi tarmoq va yangi xato imkoniyati">
+
+Oddiy tilda: do‘konga “non bo‘lsa — olaman, bo‘lmasa — kutmayman” deb
+kirasiz. Yoki “aynan 10 ta bo‘lsa olaman, kam bo‘lsa — umuman kerak emas”.
+Birjada ham buyurtma nafaqat “qancha va qanchadan”, balki **“nima bo‘lmasa,
+nima qilish”**ni ham aytadi.
+
+| Tur | Ma’nosi | Qoldiq |
+| --- | --- | --- |
+| GTC / Day | Bajarilmagani kitobda kutadi (kun oxirigacha yoki bekor qilinguncha) | Kitobga |
+| IOC | Darhol bajarilishi mumkin bo‘lgani — bajariladi | Bekor |
+| FOK | To‘liq darhol bajarilsa — bajariladi, aks holda hech narsa | Hammasi bekor |
+| Post-only | Faqat kitobga qo‘shilishi kerak; darhol bitim bo‘lsa — rad | — |
+| Iceberg | Kitobda faqat bir qismi ko‘rinadi, qolgani yashirin | Ko‘rinadigan qism tugasa, yangisi navbat oxiriga |
+| Stop | Narx belgilangan darajaga yetganda faollashadi | Faollashgach — oddiy buyurtma |
+
+**FOK** eng nozik: matching engine avval “yetadimi?” deb **sanaydi**, keyin
+bajaradi. Yetmasa — kitobga umuman tegmaydi. **Post-only** bozor qiluvchilar
+uchun: ular kitobga taklif qo‘yib maker komissiyasini olmoqchi, taker bo‘lib
+qolishni xohlamaydi (12-bo‘lim). **O‘z-o‘zi bilan savdoni oldini olish**
+(self-trade prevention, STP) ham shu yerda: bitta firmaning xarid
+buyurtmasi o‘zining sotuv buyurtmasiga yetsa — bitim bo‘lmasligi kerak
+(soxta hajm yaratmaslik uchun), va birja nima qilishini oldindan aytadi:
+yangisini bekor qilish, eskisini bekor qilish yoki ikkalasini.
+
+<Calc title="FOK: sanash, keyin bajarish" result="Kitobda 100.51 gacha 700 ta bor. FOK 1 000 ta — hech qanday bitim yo'q; FOK 600 ta — ikki bitim, to'liq">{`Kitob (ask): 100.51: [200] [500]    100.52: [300]
+
+FOK XARID 1 000, limit 100.51:
+  sanash: 200 + 500 = 700  (100.52 limitdan tashqarida)
+  700 < 1 000 -> [Qabul, Bekor(1 000, "fok")] — kitob o'zgarmadi
+
+FOK XARID 600, limit 100.51:
+  sanash: 200 + 500 = 700 >= 600
+  -> bitim 200 @ 100.51, bitim 400 @ 100.51 — to'liq
+
+STP bilan nozik holat: navbatda birinchi o'z buyurtmasi turgan bo'lsa,
+  undan keyingilarga yetib bo'lmaydi -> "mavjud" miqdor faqat
+  birinchi o'z buyurtmasigacha sanaladi`}</Calc>
+</Step>
+
+<Check q="IOC va FOK farqi nima? Kitobda 100.51 da 300 ta bor, 500 talik xarid 100.51 gacha kelsa, har biri bilan nima bo'ladi?">
+**IOC** (immediate or cancel) — “bor-u yo‘qini darhol ol, qolganini bekor
+qil”. Natija: bitim 300 @ 100.51, qolgan 200 ta bekor. Mijoz qisman
+bajarilishga rozi.
+
+**FOK** (fill or kill) — “hammasi yoki hech narsa”. 300 ta 500 dan kam,
+shuning uchun hech qanday bitim bo‘lmaydi, butun buyurtma bekor, kitob
+o‘zgarmaydi — 100.51 dagi 300 ta joyida qoladi.
+
+Ikkalasining umumiy tomoni: **kitobda qolmaydi**. Farq — qisman
+bajarilishga munosabat. FOK uchun matching engine avval sanaydi, keyin
+bajaradi; IOC uchun sanash shart emas — bajaradi va qoldiqni bekor qiladi.
+Sanash bosqichida ham narx-vaqt ustuvorligi va STP qoidalari bir xil
+qo‘llanishi kerak, aks holda “sanadim — yetadi” degan xulosa bajarish
+paytida yolg‘on chiqadi.
+</Check>
+
+<Step n={4} title="Bitta ipli matching engine" gain="Qulflar yo'q, tartib aniq, natija deterministik; bitta yadroda sekundiga millionlab buyurtma" cost="Bitta kitob bitta yadrodan tez ishlay olmaydi; hamma sekin ish (disk, tarmoq) asosiy ipdan tashqariga chiqarilishi shart">
+
+Oddiy tilda: bitta tajribali kassir, oldida bitta navbat. Ikki kassir
+bitta kassadan pul olsa — janjal. Bitta kassir esa hech kim bilan
+kelishmaydi, hech kimni kutmaydi va juda tez ishlaydi — faqat unga
+hamma narsani tayyor holda, navbat bilan berib turish kerak.
+
+2010-yillar boshida London’dagi LMAX birjasi (valyuta va CFD savdosi)
+shu yondashuvni mashhur qildi. Martin Fowler 2011-yilda yozgan maqolada
+LMAX’ning biznes mantiqi **bitta ipda** sekundiga ~6 million buyurtmani
+ishlashi tasvirlangan. Sir — qulflar, ma’lumotlar bazasi va tarmoq bilan
+ishlash asosiy ipdan butunlay olib tashlangani:
+
+```
+kirish ipi(lar):   tarmoqdan o'qish, dekodlash, tekshirish
+        |
+        v   halqali bufer (ring buffer) — qulfsiz
+asosiy ip:         FAQAT kitob va juftlash — hamma narsa xotirada
+        |
+        v   halqali bufer
+chiqish ipi(lar):  javoblar, bozor ma'lumotlari, jurnal, replikatsiya
+```
+
+<Calc title="6 million buyurtma sekundiga — bitta buyurtmaga qancha vaqt" result="~170 ns buyurtmaga — bu ~500 protsessor sikli; bitta keshdan tashqari xotira murojaati (~100 ns) ham sezilarli ulush">{`1 s / 6 000 000 = ~167 ns bitta buyurtmaga
+Protsessor 3 GHz: 167 ns x 3 = ~500 sikl
+
+Taqqoslash uchun (taxminiy):
+  L1 kesh murojaati:           ~1 ns
+  asosiy xotira murojaati:     ~100 ns   <- bittasi ham budjetning 60% i
+  qulf olish (raqobatsiz):     ~20 ns; raqobat bilan — mikrosekundlar
+  tizim chaqiruvi (syscall):   ~100-1 000 ns
+  diskka fsync:                ~10 000 - 10 000 000 ns
+
+Xulosa: asosiy ipda disk, tarmoq, qulf va xotira ajratish uchun joy yo'q`}</Calc>
+
+<Deep title="Halqali bufer (Disruptor): iplar qulfsiz qanday gaplashadi">
+Iplar orasida ma’lumot uzatishning oddiy usuli — qulfli navbat. Muammo:
+har `put` va `get` qulf oladi, iplar bir-birini kutadi, operatsion tizim
+ularni uxlatib uyg‘otadi — mikrosekundlar va tasodifiy kechikish.
+
+LMAX’ning **Disruptor** kutubxonasi boshqa yo‘l tutdi. Oldindan ajratilgan
+massiv (masalan, 2²⁰ katak) halqa sifatida ishlatiladi. Har ishtirokchi
+faqat o‘z **hisoblagichi**ni (sequence) oshiradi:
+
+```
+halqa: [ 0 ][ 1 ][ 2 ][ 3 ] ... [ N-1 ]   (i-katak = seq mod N)
+
+yozuvchi:   next = yozildi + 1; katakka yozadi; keyin "yozildi = next" e'lon qiladi
+o'quvchi:   "yozildi" ni o'qiydi; o'zidan to o'sha raqamgacha hammasini ishlaydi
+            (to'plab! bir o'qishda 1 yoki 1 000 ta xabar)
+yozuvchi to'lib qolmasligi uchun: eng sekin o'quvchi hisoblagichini kuzatadi
+```
+
+Uchta hiyla tezlikni beradi. **Qulf yo‘q**: har hisoblagichni faqat bitta
+ip yozadi, boshqalar faqat o‘qiydi — protsessorning xotira tartibi
+kafolatlari yetarli. **Xotira ajratish yo‘q**: katak ob’ektlari bir marta
+yaratiladi va qayta ishlatiladi — Java’da axlat yig‘uvchi (GC) uyg‘onmaydi.
+**Tabiiy to‘plash**: o‘quvchi orqada qolsa, keyingi safar bir yo‘la ko‘p
+xabarni oladi — yuk oshganda samaradorlik ham oshadi.
+
+Bitta nozik joy — **soxta ulashish** (false sharing): ikki ipning
+hisoblagichlari bitta 64 baytlik kesh qatorida tursa, protsessorlar shu
+qatorni bir-biridan “tortib oladi”. Yechim — hisoblagichlar orasiga bo‘sh
+baytlar qo‘yish (padding). Bir necha bayt “isrof” — o‘nlab nanosekund tejash.
+</Deep>
+
+Narxi — **bitta kitob — bitta yadro**. Agar bitta aksiyaga yadroning
+imkoniyatidan ko‘p xabar kelsa, uni bo‘lib bo‘lmaydi (bir kitobning ikki
+yarmi bo‘lmaydi). Amalda bu kamdan-kam cheklov: zamonaviy yadro sekundiga
+millionlab buyurtmani ishlaydi, eng faol aksiyaga esa odatda undan kam
+keladi. Ko‘p aksiyalar esa ko‘p yadroga bo‘linadi (9-qadam).
+</Step>
+
+<Step n={5} title="Sekvenser: har xabarga yagona tartib raqami" gain="'Kim birinchi' — bitta raqam bilan aniq; butun tizim bitta tarixni ko'radi" cost="Sekvenser — yagona nuqta: uning tezligi va ishonchliligi butun birjaniki">
+
+Oddiy tilda: bankdagi navbat chiptasi. Kim qachon kirganidan qat’i nazar,
+chipta raqami tartibni hal qiladi: 57-raqam 58-dan oldin. Soatlar
+tortishuvga sabab bo‘ladi (“men oldin keldim!”), chipta raqami — yo‘q.
+
+**Sekvenser** — birjaga kiruvchi har xabarga (yangi buyurtma, bekor qilish,
+o‘zgartirish, hatto “savdo ochildi” kabi tizim hodisalari) ketma-ket
+raqam beradigan komponent. Shundan keyin tizimning **hamma** qismi —
+matching engine, jurnal, zaxira serverlar, bozor ma’lumotlari — shu
+raqamlangan ketma-ketlikni ishlaydi:
+
+```
+shlyuz A: #OID-7 yangi        \
+shlyuz B: #OID-9 bekor         >-- sekvenser --> 1001: A yangi
+shlyuz C: #OID-2 o'zgartirish /                  1002: C o'zgartirish
+                                                 1003: B bekor
+                                                   |
+                         +-------------------------+----------------------+
+                         v                         v                      v
+                  matching engine            jurnal (disk)        zaxira engine
+                  (1001, 1002, 1003)         (1001, 1002, 1003)   (1001, 1002, 1003)
+```
+
+<Callout type="maslahat" title="Tartib — raqam, vaqt emas">
+Matching engine ichida “hozirgi vaqt”ni o‘qimang. Vaqt belgisini (timestamp)
+sekvenser xabarga **yozib beradi**, engine esa faqat shu yozilgan qiymatdan
+foydalanadi. Aks holda qayta o‘ynashda soat boshqacha bo‘ladi va natija
+o‘zgaradi — determinizm buziladi (8-bo‘lim Deep).
+</Callout>
+
+<Calc title="Sekvenserning ish hajmi" result="Sekvenser har xabarga faqat raqam va vaqt qo'shadi: ~50-100 ns; sekundiga 5-10 M xabar — birja cho'qqisidan ancha yuqori">{`Sekvenser ishi: xabarni olish, raqam = oxirgi + 1, vaqt belgisi,
+  keyingi bosqichga uzatish (va jurnal/replikatsiyaga)
+  -> ~50-100 ns xabarga (faraz, qulfsiz bufer bilan)
+  -> sekundiga ~10 M xabar sig'imi
+
+Birja cho'qqisi (1.3): 300 000 - 1 000 000 xabar/s
+  -> zaxira: 10x
+
+Lekin sekvenser o'lsa — HAMMA to'xtaydi:
+  -> u ham zaxiralanadi (6-qadam), va zaxira raqamlarni
+     aynan davom ettiradi: 1003 dan keyin 1004, hech qachon qayta 1003 emas`}</Calc>
+
+Narxi — **yagona nuqta**. Butun birja sekvenserdan tez ishlay olmaydi va
+u ishonchli bo‘lishi shart. Shuning uchun sekvenser juda sodda saqlanadi:
+u hech narsa hisoblamaydi, faqat raqamlaydi. Kafka darsidagi partition
+yetakchisi bilan o‘xshashlik tasodifiy emas: ikkalasi ham “yagona yozuvchi
+beradigan yagona tartib”.
+</Step>
+
+<Step n={6} title="Jurnal va deterministik qayta o'ynash" gain="Server o'lsa, zaxira aynan shu holatda davom etadi; har kunni to'liq qayta tiklash va tekshirish mumkin" cost="Engine qat'iy deterministik bo'lishi shart; jurnal yozuvi tasdiq yo'lida"> 
+
+Oddiy tilda: shaxmat o‘yinini yozib borasiz: “1. e4 e5 2. Kf3 ...”. Taxta
+tushib ketsa, yozuv bo‘yicha pozitsiyani **aynan** tiklaysiz — chunki
+shaxmat qoidalari deterministik: bir xil yurishlar — bir xil pozitsiya.
+Birja ham shunday: jurnal — yurishlar, kitob — taxta.
+
+G‘oya oddiy va kuchli:
+
+```
+holat = f(boshlang'ich holat, raqamlangan xabarlar ketma-ketligi)
+
+Agar f deterministik bo'lsa:
+  * zaxira server bir xil xabarlarni oladi -> bir xil holat, bir xil bitimlar
+  * kunni qayta o'ynash -> bir xil natija (audit, xatolarni tekshirish)
+  * yangi versiyani eski kun jurnalida sinash -> farqlarni topish
+```
+
+Birja **faol-passiv** juftlik bilan ishlaydi: asosiy engine va bir yoki
+bir nechta zaxira. Sekvenser har xabarni ikkalasiga ham yuboradi (yoki
+zaxira jurnalni o‘qiydi). Zaxira hamma narsani **hisoblaydi**, lekin
+javoblarni tashqariga yubormaydi. Asosiy o‘lsa, zaxira oxirgi qayta
+ishlangan raqamdan davom etadi — millisekundlarda.
+
+Mijozga “bajarildi” deb aytishdan oldin nima bo‘lishi kerak? Xabar
+kamida **ikki mustaqil joyda** saqlangan bo‘lishi kerak: masalan, asosiy
+va zaxira serverlarning xotirasida (tasdiq bilan) yoki diskda. Aks holda
+server o‘lganda mijoz biladigan bitim tizimda yo‘q bo‘ladi (4.3).
+
+<Deep title="Surat va jurnal: tiklash qancha vaqt oladi">
+Jurnalni kun boshidan qayta o‘ynash — eng sodda tiklash. Lekin kun
+oxirida jurnalda yuz millionlab xabar bor. Shuning uchun davriy **surat**
+(snapshot) olinadi: butun kitobning holati va u qaysi raqamgacha
+bo‘lganligi. Tiklash = oxirgi surat + undan keyingi jurnal.
+
+```
+Jurnal: 1 ................................ 400 000 000
+Suratlar:        #1 (100 M)    #2 (200 M)    #3 (300 M)
+
+Tiklash: surat #3 ni yuklash + 300 000 001 dan oxirigacha qayta o'ynash
+  = 100 M xabar x ~0.2 us = ~20 s
+Surat bo'lmasa: 400 M x 0.2 us = ~80 s
+```
+
+Suratni **asosiy ipni to‘xtatmasdan** olish kerak. Usullardan biri —
+suratni zaxira serverda olish (u baribir hamma narsani hisoblaydi va
+javob bermaydi, shuning uchun bir necha millisekund “to‘xtab qolsa”
+zarari yo‘q). Boshqasi — operatsion tizimning `fork` va copy-on-write
+imkoniyati (Redis darsidagi RDB kabi).
+
+Muhim nozik joy: surat va jurnal **bir xil kod versiyasi** bilan qayta
+o‘ynalishi kerak. Yangi versiya boshqacha natija bersa (masalan, yaxlitlash
+qoidasi o‘zgargan), eski jurnalni yangi kod bilan o‘ynash boshqa tarix
+beradi. Shuning uchun versiya o‘zgarishi odatda kun boshida, bo‘sh kitob
+yoki yangi surat bilan qilinadi.
+</Deep>
+
+Narxi — **qat’iy determinizm**. Engine ichida soat, tasodifiy son, hash
+jadvalining tartibi, iplar, xotira manzillari — natijaga ta’sir qiladigan
+hech narsa bo‘lmasligi kerak. Amaliyotdagi 3-tekshiruv aynan shuni sinaydi:
+jurnalni qayta o‘ynash aynan o‘sha hodisalar va kitobni beradimi.
+</Step>
+
+<Step n={7} title="Shlyuz: sessiya, idempotentlik va risk tekshiruvi" gain="Takrorlar va xato buyurtmalar engine'ga yetmaydi; har mijoz uchun chegaralar" cost="Har buyurtmaga qo'shimcha mikrosekundlar; tekshiruvlar o'zi ham xato qilishi mumkin">
+
+Oddiy tilda: bank kassasi oldidagi qo‘riqchi. U kim kirayotganini
+tekshiradi, “bu hujjat allaqachon topshirilgan” deydi, va “bir kunda 100
+million so‘mdan ko‘p yechib bo‘lmaydi” degan qoidani eslatadi. Kassir
+(matching engine) faqat tekshirilgan, toza ishni oladi.
+
+Shlyuz (gateway) — mijoz va birja o‘rtasidagi eshik. Uning to‘rt vazifasi:
+
+**Sessiya.** Mijoz bilan doimiy ulanish (FIX protokoli yoki tezroq ikkilik
+protokollar). Har yo‘nalishda xabarlar **sessiya tartib raqami** bilan:
+uzilishdan keyin “men 5 812 gacha oldim, keyingisini yubor” deyish
+mumkin — hech narsa yo‘qolmaydi va takrorlanmaydi.
+
+**Idempotentlik.** Har buyurtmada mijozning o‘z identifikatori (ClOrdID).
+Bir xil ID bilan ikkinchi buyurtma — takror, rad etiladi (4.6).
+
+**Risk tekshiruvi** (pre-trade risk): narx joriy narxdan juda uzoq emasmi
+(“narx yoqasi”, price collar), miqdor va summa chegaradan oshmaydimi,
+mijozning kunlik limiti, sekundiga xabarlar soni.
+
+**O‘chirish tugmasi** (kill switch): bitta buyruq bilan mijozning barcha
+buyurtmalarini bekor qilish va yangilarini to‘xtatish.
+
+<Calc title="Narx yoqasi: xato buyurtmani ushlash" result="+-10% yoqa bilan 100.00 lik aksiyada 1 000.00 lik 'qo'l xatosi' rad etiladi; to'g'ri buyurtmalar ta'sirlanmaydi">{`Oxirgi narx: 100.00, yoqa +-10% -> ruxsat: 90.00 ... 110.00
+
+Treyder "100.00" o'rniga "1000.00" yozdi (XARID limit):
+  1000.00 > 110.00 -> RAD ("narx yoqadan tashqarida")
+  Tekshiruvsiz: bu buyurtma kitobdagi HAMMA sotuvlarni 100.01, 100.02, ...
+  narxlarda "yutib" ketadi va narxni sun'iy ko'taradi
+
+Miqdor chegarasi: bitta buyurtma 50 000 aksiyadan ko'p bo'lmasin
+  "500" o'rniga "500 000" -> RAD
+
+Market buyurtmasi ham himoyalanadi: "eng yaxshi narxdan 5% dan uzoqqa
+  bormaslik" — qolgani bekor (yupqa kitobda halokatdan saqlaydi)`}</Calc>
+
+Narxi — **kechikish va murakkablik**. Har tekshiruv mikrosekundning bir
+qismini oladi, va yuzlab qoida bor. Tekshiruvlarning o‘zi ham xato qilishi
+mumkin: juda qattiq yoqa keskin, lekin haqiqiy narx harakatini ham to‘sib
+qo‘yadi. Shuning uchun yoqalar dinamik va 11-qadamdagi to‘xtatish
+mexanizmlari bilan birga ishlaydi.
+</Step>
+
+<Step n={8} title="Bozor ma'lumotlari: multicast oqim" gain="Bitta xabar bir vaqtda minglab mijozga; birja yuklamasi mijozlar soniga bog'liq emas" cost="UDP xabarlarni yo'qotadi: tartib raqamlari, ikki nusxali oqim va suratdan tiklash kerak">
+
+Oddiy tilda: har mijozga alohida qo‘ng‘iroq qilib narxni aytish o‘rniga,
+radioda e’lon qilish. Radio tinglovchilar soniga qarab sekinlashmaydi.
+Lekin radio “qayta ayting” degan iltimosni eshitmaydi — o‘tkazib yuborgan
+tinglovchi o‘zi tiklanishi kerak.
+
+Birja kitobdagi har o‘zgarishni **UDP multicast** orqali e’lon qiladi:
+tarmoq uskunasi bitta paketni hamma obunachilarga nusxalaydi. Uch darajali
+ma’lumot bor:
+
+| Daraja | Nima | Kim uchun |
+| --- | --- | --- |
+| L1 | Eng yaxshi bid/ask va oxirgi bitim | Ko‘p ilovalar, oddiy treyderlar |
+| L2 | Har narx darajasidagi jami miqdor | Faol treyderlar |
+| L3 | Har bitta buyurtma (qo‘shildi, o‘zgardi, ketdi) | Bozor qiluvchilar, algoritmlar |
+
+Har xabarda **tartib raqami**. Mijoz 5 001 dan keyin 5 003 ni olsa —
+5 002 yo‘qolgan: uning kitob nusxasi endi ishonchsiz. Tiklash uchun
+(7.2): ko‘p birjalar **ikkita bir xil oqim** (A va B) yuboradi turli tarmoq
+yo‘llari orqali — mijoz ikkalasidan birinchi kelganini oladi. Ikkalasida
+ham yo‘qolsa — alohida kanaldan **surat** (snapshot) so‘raladi va undan
+keyingi xabarlar qo‘llanadi. Amaliyotdagi `feed.py` aynan shu mantiq.
+
+<Calc title="Bozor ma'lumotlari oqimi hajmi" result="Sekundiga 1 M L3 xabar x ~40 bayt = ~40 MB/s (~320 Mbit/s); A va B oqimlar bilan ikki barobar. Unicast bilan 1 000 mijozga — 40 GB/s, multicast bilan — o'sha 40 MB/s">{`Cho'qqi: 1 000 000 kitob o'zgarishi/s (L3, har buyurtma)
+Ikkilik xabar: ~30-50 bayt (tur, tartib raqami, oid, narx, miqdor, vaqt)
+  -> ~40 MB/s = ~320 Mbit/s
+
+A va B nusxa: ~80 MB/s — 10 Gbit/s tarmoqda ~6%
+
+Agar har mijozga alohida yuborilsa (TCP, unicast):
+  1 000 mijoz x 40 MB/s = 40 GB/s = 320 Gbit/s — birja chiqishi uchun
+Multicast: birja bitta oqim yuboradi, nusxalashni tarmoq qiladi
+
+Kamchilik: multicast faqat birja ichidagi va maxsus tarmoqlarda;
+  internet orqali mijozlarga — boshqa (sekinroq) yo'llar`}</Calc>
+
+Narxi — **tiklash murakkabligi**. UDP kafolat bermaydi, shuning uchun
+yo‘qolishni aniqlash va tiklash mijoz zimmasida. Bozor ma’lumotlari
+qiymatlari ko‘pincha **absolyut** (“100.51 da endi 700 ta”), o‘zgarish
+(“+200”) emas: takrorni qo‘llash zararsiz, lekin **eski** xabarni yangi
+holat ustiga qo‘llash — xato. Amaliyotdagi uchta test aynan shu nozik
+joylarni tekshiradi.
+</Step>
+
+<Step n={9} title="Instrumentlar bo'yicha bo'lish" gain="Minglab aksiya ko'p yadro va serverga tarqaladi; sig'im chiziqli o'sadi" cost="Bitta aksiya kitobi baribir bitta yadroda; bir nechta instrumentga tegadigan buyurtmalar murakkablashadi">
+
+Oddiy tilda: bitta katta bozorda hamma rastalar bitta kassirga emas —
+har rastaning o‘z kassiri. Olma rastasining navbati uzun bo‘lsa, non
+rastasi kutmaydi.
+
+Aksiyalar bir-biridan mustaqil: A aksiyasining kitobi B nikiga tegmaydi.
+Shuning uchun birja instrumentlarni **guruhlarga** bo‘ladi, har guruh — o‘z
+matching engine ipida (yoki serverida), o‘z sekvenseri yoki umumiy
+sekvenserning o‘z oqimi bilan:
+
+<Calc title="Nechta engine kerak" result="5 000 aksiya, cho'qqida 1 M xabar/s, bitta engine 2 M xabar/s: yuk bo'yicha 1 ta yetardi, lekin xavfsizlik va izolyatsiya uchun 8-16 guruh; eng faol 20 aksiyaga alohida e'tibor">{`Instrumentlar: 5 000 aksiya
+Cho'qqi: 1 000 000 xabar/s (butun birja)
+Bitta engine ipi (faraz): ~2 000 000 xabar/s sig'im
+
+Faqat yuk bo'yicha: 1 M / 2 M = 0.5 -> bitta ip yetadi?
+  Lekin: xabarlar notekis — eng faol 20 aksiya oqimning ~30-40% i
+  bitta engine o'lsa — butun birja to'xtaydi
+  bitta aksiyadagi "bo'ron" boshqalarni sekinlashtiradi
+
+Amaliy tanlov: 8-16 guruh, har biri ~300-600 aksiya
+  eng faol aksiyalar turli guruhlarga taqsimlanadi
+  har guruh cho'qqisi o'z sig'imining 20-30% idan oshmasin
+
+Kun davomida guruhni o'zgartirib bo'lmaydi (holat bir joyda) —
+  taqsimot kun boshida, o'tgan kunlar statistikasi bo'yicha`}</Calc>
+
+Narxi — **issiq instrument**. Bitta aksiya bo‘yicha katta yangilik
+chiqsa, uning oqimi o‘n barobar oshadi, lekin uni bo‘lib bo‘lmaydi. Bu —
+sig‘im rejalashtirishning asosiy savoli (13-bo‘lim). Bir nechta instrumentga
+tegadigan buyurtmalar (masalan, optsion strategiyalari yoki “bir vaqtda
+A ni sot, B ni ol”) esa alohida mexanizmlar talab qiladi.
+</Step>
+
+<Step n={10} title="Kechikishni kamaytirish: yadrodan tarmoqqacha" gain="Buyurtmadan javobgacha o'nlab mikrosekund; eng muhimi — barqaror, 'dumsiz' kechikish" cost="Maxsus uskuna va sozlamalar; yadrolar doim 100% band; kod murakkab va 'g'ayritabiiy'">
+
+Oddiy tilda: poyga mashinasi. Tez dvigatel kerak, lekin undan ham muhimi —
+ortiqcha hech narsa yo‘q: konditsioner, radio, yumshoq o‘rindiq — hammasi
+olib tashlangan. Kechikishga qarshi kurash ham asosan **olib tashlash**
+haqida.
+
+Asosiy texnikalar:
+
+**Yadrodan o‘tib ketish** (kernel bypass): tarmoq kartasi paketlarni
+to‘g‘ridan-to‘g‘ri dastur xotirasiga yozadi, operatsion tizimning tarmoq
+qatlami chetlab o‘tiladi. **Doimiy so‘rash** (busy polling): ip “paket
+keldimi?” deb uxlamasdan so‘raydi — uyg‘onish vaqti yo‘q. **Yadroga
+bog‘lash** (CPU pinning): har muhim ip o‘z yadrosida, boshqa hech narsa
+unga tegmaydi. **Oldindan ajratish**: savdo davomida xotira ajratilmaydi,
+axlat yig‘uvchi ishlamaydi. **Keshga mos tuzilmalar**: ko‘rsatkichlar
+bo‘ylab “sakrash” o‘rniga yonma-yon massivlar. Eng chekkada — **FPGA**:
+tarmoq paketini dasturiy ta’minotsiz, mikrosxemada tahlil qilish.
+
+<Calc title="Kechikish budjeti: paketdan javobgacha" result="Birja ichida ~20 us: tarmoq kartasi va dekodlash ~3 us, risk ~2 us, sekvenser va replikatsiya ~8 us, matching ~1 us, javob ~3 us. Matching o'zi — eng kichik qism">{`Buyurtma paketi birja tarmoq kartasiga keldi (t = 0)
+
+  tarmoq kartasi -> dastur (kernel bypass):   ~1-2 us
+  dekodlash, sessiya tekshiruvi:              ~1 us
+  risk tekshiruvlari:                         ~1-2 us
+  sekvenser + zaxiraga replikatsiya (tasdiq): ~5-10 us   <- eng katta qism
+  matching:                                   ~0.2-1 us
+  javobni kodlash va yuborish:                ~2-3 us
+  --------------------------------------------------------------
+  jami (taxminan):                            ~15-25 us
+
+Oddiy (sozlanmagan) server bilan xuddi shu yo'l: ~200-1 000 us,
+  va p99.99 da — millisekundlar (uyg'onish, GC, kesh)`}</Calc>
+
+Narxi — **samaradorlikdan voz kechish**. Doimiy so‘raydigan yadro bo‘sh
+paytda ham 100% band: elektr va uskuna “isrof”. Kod oddiy dasturchi
+uchun g‘alati: obyektlar qayta ishlatiladi, satrlar yo‘q, istisnolar yo‘q.
+Va eng muhimi — o‘rtachani emas, **dumni** (p99.99, maksimum) o‘lchash va
+kamaytirish (14-bo‘lim).
+</Step>
+
+<Step n={11} title="Auksionlar va savdoni to'xtatish" gain="Ochilish va yopilishda yagona adolatli narx; keskin tebranishda bozor 'nafas oladi'" cost="Ikkinchi matching algoritmi; to'xtatish qoidalari murakkab va munozarali">
+
+Oddiy tilda: ertalab bozor ochilganda hamma birdaniga yuguradi — kim tez
+yetib kelsa, o‘sha yaxshi narxni oladi, qolganlar alamda. Buning o‘rniga:
+eshik oldida hamma o‘z taklifini qog‘ozga yozadi, keyin bitta **umumiy
+narx** e’lon qilinadi va hamma o‘sha narxda savdo qiladi.
+
+Doimiy savdodan tashqari birjalar **auksion** (call auction) ham o‘tkazadi:
+ochilishda, yopilishda va to‘xtatishdan keyin qayta ochilishda. Bir necha
+daqiqa buyurtmalar faqat **yig‘iladi**, bitim bo‘lmaydi. Keyin bitta narx
+topiladi — **eng ko‘p hajm** bajariladigan narx — va mos buyurtmalar
+hammasi shu narxda bajariladi.
+
+<Deep title="Ochilish auksioni narxi qanday topiladi">
+Har mumkin bo‘lgan narx uchun sanaymiz: shu narxda qancha xaridor tayyor
+(narxi shu yoki yuqori bo‘lganlar) va qancha sotuvchi tayyor (narxi shu yoki
+past bo‘lganlar). Bajariladigan hajm — ikkalasining kichigi.
+
+```
+narx    xaridga tayyor (>=)   sotuvga tayyor (<=)   bajariladi
+100.60          200                1 400                200
+100.55          600                1 100                600
+100.50        1 000                  900                900   <- eng ko'p
+100.45        1 300                  500                500
+100.40        1 700                  200                200
+
+Auksion narxi: 100.50, hajm: 900
+  xaridorlar 1 000 tayyor, 900 bajariladi -> 100 ta ortiqcha xarid
+  (vaqt ustuvorligi bo'yicha oxirgilari bajarilmay qoladi)
+```
+
+Bir nechta narxda hajm teng bo‘lsa, qo‘shimcha qoidalar ishlaydi: eng kam
+**nomutanosiblik** (ortiqcha qolgan miqdor), keyin bozor bosimi (ortiqcha
+xarid bo‘lsa — yuqoriroq narx), keyin oldingi narxga yaqinlik. Hammasi
+oldindan e’lon qilingan va deterministik.
+
+Yopilish auksionining narxi alohida muhim: u kunning **rasmiy yopilish
+narxi** bo‘ladi, indekslar va fondlar aynan shu narx bo‘yicha hisoblanadi.
+Shuning uchun katta fondlar yopilish auksioniga katta hajm olib keladi —
+va ba’zi birjalarda kunlik hajmning sezilarli qismi aynan shu bir necha
+daqiqaga to‘g‘ri keladi.
+</Deep>
+
+**To‘xtatish mexanizmlari.** Narx qisqa vaqtda juda keskin o‘zgarsa,
+savdo avtomatik to‘xtatiladi. AQSh’da bitta aksiya uchun “limit up — limit
+down” (LULD) chegaralari bor: ruxsat etilgan narx yo‘lagi oxirgi 5 daqiqa
+o‘rtacha narxidan belgilangan foizda hisoblanadi; narx yo‘lak chetiga
+yetib, 15 soniya ichida qaytmasa, savdo 5 daqiqaga to‘xtaydi va auksion
+bilan qayta ochiladi. Butun bozor uchun — S&P 500 indeksi kun ichida 7%, 13% va 20%
+tushganda ishlaydigan “o‘chirgichlar” (circuit breakers). Yevropada
+o‘xshash mexanizm — “volatillik uzilishi”.
+
+Narxi — **ikkinchi algoritm va munozara**. Auksion — boshqa matching
+mantiqi, o‘z xatolari bilan. To‘xtatish chegaralari esa doim munozarali:
+juda tor — bozor bejiz to‘xtaydi, juda keng — halokatli tushishga ruxsat
+beradi (10.2).
+</Step>
+
+<Step n={12} title="Adolat: kolokatsiya, vaqt va 'tezlik to'siqlari'" gain="Hamma qatnashchi bir xil shartlarda; tezlik ustunligi ochiq va sotib olinadigan, yashirin emas" cost="Tezlik 'poygasi' qimmat; mutlaq tenglik fizik jihatdan mumkin emas">
+
+Oddiy tilda: yugurish musobaqasida hamma bir xil start chizig‘ida. Birjada
+“start chizig‘i” — birjaning serverlariga masofa. Birja buni yashira olmaydi,
+lekin **hammaga bir xil** qilib sotishi mumkin.
+
+**Kolokatsiya.** Treyderlar o‘z serverlarini birjaning ma’lumot markaziga
+qo‘yadi (pullik). Adolat uchun birja hamma ijarachiga **bir xil uzunlikdagi
+kabel** beradi: yaqinroq javondagi mijoz ham uzun, o‘ralgan kabel oladi.
+
+**Aniq vaqt.** Kim birinchi ekanini isbotlash uchun hamma soatlar
+sinxron bo‘lishi kerak. Yevropa MiFID II qoidalari yuqori chastotali
+savdo bilan ishlaydigan joylar uchun UTC dan farqni 100 mikrosekunddan
+oshmasligini talab qiladi. Buning uchun PTP protokoli va GPS qabul
+qiluvchilar ishlatiladi.
+
+**Tezlik to‘siqlari** (speed bumps). IEX birjasi (AQSh, 2016-yildan)
+hamma kiruvchi va chiquvchi xabarlarni ~350 mikrosekundga ushlab turadi —
+buning uchun ~61 km o‘ralgan optik tola ishlatiladi. Maqsad: birja o‘z
+narxlarini boshqa birjalardagi o‘zgarishga moslab ulgurishi, eng tez
+treyderlar esa “eskirgan” narxni ulgurib olmasligi.
+
+<Calc title="Nega mikrosekund pul turadi" result="Narx boshqa joyda o'zgarganidan keyin 'eskirgan' taklifni birinchi bo'lib olgan treyder foyda ko'radi; 5 us ustunlik — kuniga minglab shunday imkoniyat">{`Aksiya ikki birjada savdo qilinadi: X va Y
+X da narx 100.00 -> 100.05 ga ko'tarildi (yangilik)
+Y da hali eski sotuv taklifi: 100.01 dan 1 000 ta
+
+Tez treyder: X dagi o'zgarishni ko'rib, Y da 100.01 dan oladi
+  keyin 100.05 atrofida sotadi -> ~0.04 x 1 000 = 40 $ foyda
+Y dagi bozor qiluvchi taklifini yangilashga ulgurmadi -> 40 $ zarar
+
+Kim yutadi: kim Y ga birinchi yetib borsa (mikrosekundlar farqi)
+Kuniga minglab shunday hodisa -> tezlik infratuzilmasiga millionlab dollar
+
+Tezlik to'sig'i (350 us): Y birja o'z narxlarini ichkarida yangilab ulguradi,
+  tez treyder esa to'siqdan o'tib kelguncha taklif allaqachon yangi`}</Calc>
+
+Narxi — **poyga va munozara**. Kolokatsiya va tezkor tarmoqlar qimmat, va
+kichik qatnashchilar ular bilan raqobatlasha olmaydi. Tezlik to‘siqlari
+esa ba’zilar uchun “adolat”, boshqalar uchun “sun’iy sekinlik”. Muqobil
+g‘oya — tez-tez o‘tkaziladigan to‘plam auksionlari (16-bo‘lim Deep).
+</Step>
+
+<Step n={13} title="Kliring va hisob-kitob" gain="Qatnashchilar bir-birining ishonchliligini tekshirmaydi; kun davomidagi minglab bitim bitta to'lovga aylanadi" cost="Markaziy kontragent — tizimli muhim tashkilot; garov talablari; hisob-kitob muddati davomida xavf">
+
+Oddiy tilda: siz bozorda noma’lum odamga pul berdingiz — u tovarni
+beradimi? Birjada bu savolni **markaziy kontragent** (CCP) hal qiladi:
+har bitimda u xaridor uchun sotuvchi, sotuvchi uchun xaridor bo‘ladi.
+Siz faqat unga ishonishingiz kerak.
+
+Bitim — hali pul va aksiyaning o‘tishi emas. Keyin ikki bosqich:
+
+**Kliring** — kim kimga nima qarzdor ekanini hisoblash, **netting** bilan:
+kun davomida bir aksiyani 500 marta olib-sotgan firma uchun faqat kun
+oxiridagi **sof** farq muhim.
+
+**Hisob-kitob** (settlement) — pul va qimmatli qog‘ozlarning haqiqiy
+o‘tishi, “to‘lovga qarshi yetkazib berish” (DvP) tamoyili bilan: biri
+bo‘lmasa, ikkinchisi ham bo‘lmaydi. AQSh’da 2024-yil maydan bu bitimdan
+bir ish kuni keyin (T+1), undan oldin — ikki kun (T+2).
+
+<Calc title="Netting: 500 bitim — bitta o'tkazma" result="Kun davomida 250 ta xarid va 250 ta sotuv, sof natija +2 000 aksiya: 500 ta o'tkazma o'rniga bitta; pul oqimi ham bitta sof summaga">{`Firma F, aksiya A, bir kun:
+  250 ta xarid bitimi: jami 120 000 aksiya, 12 004 000.00 $
+  250 ta sotuv bitimi: jami 118 000 aksiya, 11 806 500.00 $
+
+Nettingsiz: 500 ta aksiya o'tkazmasi va 500 ta pul o'tkazmasi
+Netting bilan:
+  aksiya: +120 000 - 118 000 = +2 000 (F oladi)
+  pul:    -12 004 000 + 11 806 500 = -197 500.00 $ (F to'laydi)
+  -> 1 ta aksiya o'tkazmasi, 1 ta pul o'tkazmasi
+
+Butun bozor bo'ylab netting o'tkazmalar sonini va hajmini
+  o'nlab barobar kamaytiradi`}</Calc>
+
+Narxi — **xavf markazlashadi**. CCP bankrot bo‘lsa — butun bozor xavf
+ostida, shuning uchun u qattiq tartibga solinadi va qatnashchilardan
+**garov** (margin) talab qiladi. Hisob-kitob kunigacha narx o‘zgarishi
+mumkin — shuning uchun muddatni qisqartirish (T+2 dan T+1 ga) xavfni va
+garov hajmini kamaytiradi.
+</Step>
+
+<Step n={14} title="Zaxira sayt va bulut" gain="Butun ma'lumot markazi ishdan chiqsa ham birja bir necha daqiqada tiklanadi" cost="Uzoq masofadagi zaxira sinxron bo'la olmaydi — tanlov: tezlik yoki 'nol yo'qotish'; zaxirani muntazam sinash qimmat">
+
+Oddiy tilda: uyning kalitini qo‘shningizda ham saqlaysiz. Uy yonsa, kalit
+yordam bermaydi — lekin **boshqa shahar**dagi qarindoshingizda hujjatlaringiz
+nusxasi bo‘lsa, hayot davom etadi.
+
+Asosiy va zaxira engine (6-qadam) odatda **bitta** ma’lumot markazida —
+mikrosekundlik replikatsiya uchun. Butun bino ishdan chiqsa (elektr, suv
+toshqini, tarmoq)? Birjalar boshqa shaharda **zaxira sayt** (disaster
+recovery) saqlaydi. Muammo — masofa: 100 km da yorug‘lik bir tomonga
+0.5 ms yo‘l bosadi. Har bitimni zaxira saytdan tasdiq olib yakunlash
+kechikishni 20 µs dan ~1 ms ga oshiradi.
+
+<Calc title="Zaxira sayt: sinxron yoki asinxron" result="100 km uzoqdagi sayt bilan sinxron tasdiq ~1 ms qo'shadi (50 barobar sekin); asinxron — tez, lekin avariyada oxirgi millisekundlar yo'qolishi mumkin">{`Asosiy sayt ichida (asosiy + zaxira engine): tasdiq ~5-10 us
+
+Zaxira sayt 100 km uzoqda:
+  bir tomonga: 100 x 5 us = 500 us; borish-kelish: ~1 ms
+  sinxron: har bitim tasdig'i +1 ms -> 20 us dan ~1 000 us ga
+  asinxron: kechikish o'zgarmaydi, lekin avariya paytida
+    oxirgi ~1 ms dagi xabarlar zaxiraga yetmagan bo'lishi mumkin
+
+1 ms da cho'qqida: 1 000 000 xabar/s x 0.001 = ~1 000 xabar
+  -> bular "tasdiqlangan, lekin zaxirada yo'q" bo'lishi mumkin
+
+Amaliy tanlov: sayt ichida sinxron (ikki mustaqil server),
+  saytlar orasida asinxron + avariyadan keyin qatnashchilar bilan
+  "oxirgi bitimlar"ni solishtirish tartibi`}</Calc>
+
+**Bulut.** Uzoq yillar birjalar faqat o‘z ma’lumot markazlarida ishlagan.
+2022-yil oxirida Nasdaq o‘z optsion bozorlaridan birini (MRX) AWS
+infratuzilmasiga ko‘chirdi — lekin AWS uskunasi Nasdaq’ning o‘z ma’lumot
+markazida (Outposts) o‘rnatilgan holda, kolokatsiya va kechikish
+saqlanib qoldi. Bu yo‘nalish hali boshlanishda: mikrosekundlar va adolat
+talabi “umumiy bulut”ni murakkab qiladi.
+
+Narxi — **tanlov va sinov**. “Nol yo‘qotish” va “mikrosekundlar” uzoq
+masofada birga bo‘lmaydi. Zaxira saytni esa muntazam **haqiqatda**
+ishga tushirib ko‘rish kerak — aks holda eng kerakli kunda ishlamaydi.
+Ko‘p birjalar yiliga bir necha marta dam olish kunlari zaxira saytda
+sinov savdosini o‘tkazadi.
+</Step>
+
+## 6. Bitta buyurtmaning hayoti
+
+### 6.1 Qadam-baqadam
+
+Kirish qismidagi misolga qaytamiz: 10 ta aksiya, 100.50 gacha. Mijozning
+bosishidan “bajarildi” yozuvigacha bo‘lgan yo‘l:
+
+<Flow nodes={["Ilova: buyurtma", "Broker: mijoz limiti, risk", "Birja shlyuzi: sessiya, ClOrdID, yoqa", "Sekvenser: raqam 81 402 117", "Zaxira: xabar olindi (tasdiq)", "Matching: bitim 10 @ 100.48", "Javob: 'bajarildi' + bozor ma'lumotlari", "Kliring: T+1 da pul va aksiya"]} caption="Birja ichidagi qism (shlyuzdan javobgacha) — o'nlab mikrosekund; ilova va broker bilan birga — millisekundlar va undan ko'p" />
+
+1. **Ilova** buyurtmani brokerga yuboradi (internet orqali — o‘nlab ms).
+2. **Broker** mijozning pulini va o‘z risk qoidalarini tekshiradi, keyin
+   buyurtmani birja bilan doimiy sessiya orqali yuboradi.
+3. **Shlyuz** sessiya tartib raqamini, ClOrdID takrorini, narx yoqasini va
+   limitlarni tekshiradi (7-qadam). Rad etilsa — javob shu yerdan qaytadi,
+   engine’gacha yetmaydi.
+4. **Sekvenser** xabarga global raqam va vaqt belgisini beradi (5-qadam).
+5. **Replikatsiya**: xabar zaxira engine’ga (yoki jurnalga) yetadi va
+   tasdiqlanadi (6-qadam).
+6. **Matching engine** kitob bo‘yicha juftlaydi: 100.48 dagi sotuv
+   buyurtmasi bilan bitim.
+7. **Javoblar**: ikkala tomonga “ijro hisoboti” (execution report) va
+   bozorga — yangilangan kitob va bitim haqida xabar (8-qadam).
+8. **Kliring** kun oxirida bitimni yig‘adi, keyingi ish kuni pul va aksiya
+   o‘tadi (13-qadam).
+
+Muhim tartib: 5-qadam 6-qadamdan **oldin** yoki kamida javob yuborishdan
+oldin. Birja “bajarildi” deb aytgan hamma narsa zaxirada bo‘lishi kerak —
+aks holda asosiy server o‘lganda zaxira bu bitimni bilmaydi.
+
+<Calc title="Uch xil 'kechikish' — kim nimani o'lchaydi" result="Ilovadagi foydalanuvchi ~50-300 ms ko'radi; broker serveri birjagacha ~0.1-5 ms; birja ichida ~20 us. Uchalasi har xil muammo va har xil yechim">{`Foydalanuvchi (telefon -> broker -> birja -> qaytish):
+  mobil tarmoq:        20-100 ms
+  broker ichidagi ish: 1-50 ms
+  birja:               0.02 ms
+  -> 50-300 ms: birja ulushi 0.01% dan kam
+
+Broker yoki treyder serveri (birja bilan bir shaharda):
+  tarmoq:              0.1-5 ms
+  -> birja ulushi hali ham kichik
+
+Kolokatsiyadagi treyder:
+  tarmoq:              ~1-5 us (bino ichida)
+  birja:               ~20 us
+  -> endi birja kechikishi ASOSIY ulush
+
+Xulosa: birja mikrosekundlari eng tez qatnashchilar uchun hal qiluvchi;
+  oddiy foydalanuvchi uchun esa broker va mobil tarmoq muhimroq`}</Calc>
+
+### 6.2 Buyurtmaning holatlari
+
+Har buyurtma aniq **holatlar mashinasi** bo‘yicha yashaydi, va har o‘tish
+mijozga ijro hisoboti bilan xabar qilinadi:
+
+```
+                  +--> RAD ETILDI (tekshiruvdan o'tmadi)
+                  |
+YUBORILDI --> QABUL QILINDI --> QISMAN BAJARILDI --> TO'LIQ BAJARILDI
+                  |                    |
+                  +--> BEKOR QILINDI <-+   (mijoz, IOC/FOK qoldig'i, STP,
+                                            kun tugashi, kill switch)
+```
+
+Qoida: har buyurtma uchun **bajarilgan + bekor qilingan + kitobdagi
+qoldiq = boshlang‘ich miqdor**. Bu tenglik birjaning eng muhim ichki
+invariantlaridan biri: uni har kun oxirida (va testlarda — har qadamda)
+tekshirish mumkin.
+
+### 6.3 Nega bitta ip ko‘p ipdan tez
+
+<Deep title="Protsessor keshi, qulflar va 'mexanik hamdardlik'">
+Intuitsiya: ko‘p yadro — ko‘p ish. Lekin matching engine’ning ishi
+**bitta umumiy holat** (kitob) atrofida. Ko‘p ip bir kitobga tegsa:
+
+```
+Ip 1 (yadro 1): kitobning 100.51 darajasini o'zgartirdi
+   -> bu xotira qatori yadro 1 ning keshida "o'zgartirilgan"
+Ip 2 (yadro 2): shu darajani o'qimoqchi
+   -> protsessorlar kesh qatorini "ko'chiradi": ~50-100 ns
+   -> qulf ham kerak: yana o'nlab ns, raqobatda — mikrosekundlar
+```
+
+Bitta ip bilan esa kitob **doim bitta yadroning keshida** yashaydi. Har
+amal L1/L2 keshga tushadi (1–5 ns). Martin Fowler LMAX maqolasida buni
+“mexanik hamdardlik” (mechanical sympathy) deb ataydi — poyga haydovchisi
+Jeki Styuartning iborasi, dasturlashga uni Martin Tompson olib kirgan:
+dasturni uskuna qanday ishlashini hisobga olib yozish.
+
+Ikkinchi afzallik — **oddiylik**. Qulfsiz bitta ipli kodda poyga holatlari
+(race conditions) umuman yo‘q. Xato topilsa — jurnalni qayta o‘ynab,
+aynan takrorlash mumkin (6-qadam). Ko‘p ipli kodda esa xato million
+marta ishga tushirishda bir marta ko‘rinadi.
+
+Uchinchisi — **barqaror kechikish**. Qulf kutish, ip almashish va kesh
+“ko‘chishlari” tasodifiy, ular p99.99 ni buzadi. Bitta ip bilan har
+xabar deyarli bir xil vaqtda ishlanadi.
+
+Ko‘p yadrodan esa **boshqa** ishlar uchun foydalaniladi: tarmoqni o‘qish,
+dekodlash, risk, jurnal, bozor ma’lumotlarini tarqatish — har biri o‘z
+ipida, halqali buferlar orqali (4-qadam Deep). Va turli instrumentlar —
+turli yadrolarda (9-qadam).
+</Deep>
+
+<Check q="Nega birja mijozga 'bajarildi' deb javob berishdan oldin xabar zaxiraga yetganini kutadi, garchi bu bir necha mikrosekund qo'shsa ham?">
+Chunki “bajarildi” — **va’da**: mijoz shu javobga tayanib keyingi qarorlarni
+qiladi (boshqa birjada sotadi, xavfini qoplaydi). Agar asosiy server
+javob yuborganidan keyin, lekin xabar zaxiraga yetmasdan o‘lsa, zaxira bu
+bitimni **bilmaydi**: u buyurtmani hali kitobda turgan deb hisoblaydi va
+uni boshqa kimgadir sotishi mumkin. Mijoz esa bitim bo‘lgan deb
+hisoblaydi. Ikkita “haqiqat” — birjaning eng yomon holati (4.3).
+
+Kutish narxi — replikatsiya vaqti, bitta ma’lumot markazi ichida bir necha
+mikrosekund (10-qadam budjeti). Bu narx “server o‘lsa ham hech bir va’da
+buzilmaydi” degan kafolatga arziydi. Kafka darsidagi `acks=all` bilan
+bir xil tamoyil: tasdiq faqat ma’lumot bir nechta mustaqil joyda
+bo‘lgandan keyin.
+</Check>
+
+## 7. Bozor ma’lumotlari: millionlab nusxa bitta kitobdan
+
+### 7.1 Kitob nusxasi qanday quriladi
+
+Kitob **birjada** — bittagina. Lekin minglab treyder, broker va
+algoritm o‘z ekranida va xotirasida uning **nusxasini** ushlab turadi.
+Nusxa birjaning e’lon qilgan xabarlaridan quriladi: “100.51 darajasi endi
+700” (L2) yoki “#44 buyurtma 500 ta bilan 100.51 ga qo‘shildi” (L3).
+
+L3 oqimda xabarlar turi kam, lekin har biri aniq ma’noli:
+
+```
+QO'SHILDI   oid=44  tomon=S  narx=100.51  miqdor=500
+BAJARILDI   oid=12  miqdor=200  (bitim raqami 9 912 004)
+BEKOR       oid=57  miqdor=400
+O'ZGARDI    oid=44  yangi_miqdor=300
+SAVDO_HOLATI  "to'xtatildi" / "auksion" / "ochiq"
+```
+
+Mijoz shu xabarlarni o‘z kitobiga qo‘llaydi — xuddi birja kabi, lekin
+juftlashsiz: u faqat natijalarni takrorlaydi.
+
+### 7.2 Yo‘qolgan xabar: aniqlash va tiklash
+
+<Flow nodes={["Oqim A: 5 001, 5 003", "Oqim B: 5 001, 5 002, 5 003", "Mijoz: 5 002 ni B dan oladi", "Ikkalasida ham yo'q: 5 004", "Nusxa ishonchsiz: buferlash, surat so'rash", "Surat: seq 5 010", "Buferdan 5 011+ qo'llash", "Sinxron"]} caption="A va B oqimlar birini ikkinchisi to'ldiradi; ikkalasida ham yo'qolgan xabar — surat bilan tiklanadi" />
+
+Tiklash qoidalari (amaliyotdagi `feed.py`):
+
+1. Keyingi kutilgan raqam kelsa — qo‘llash.
+2. Eski yoki takror raqam — tashlash (qiymat absolyut, eskisi zararli).
+3. Bo‘shliq — nusxa endi ishonchsiz: kutish holatiga o‘tish, hamma kelgan
+   xabarlarni buferga yig‘ish, surat so‘rash.
+4. Surat keldi — nusxani almashtirish, buferdan suratdan **keyingi**
+   xabarlarni tartib bilan qo‘llash; yana bo‘shliq bo‘lsa — yana surat.
+
+<Calc title="Yo'qolish qanchalik tez-tez va tiklash qancha turadi" result="0.001% yo'qolish va sekundiga 1 M xabarda har soniyada ~10 bo'shliq; A/B bilan ikkalasida ham yo'qolish ~10^-10 — kuniga bir-ikki marta; surat bilan tiklash ~10-100 ms">{`UDP paket yo'qolishi (yaxshi tarmoqda, cho'qqida): ~0.001% (faraz)
+Oqim: 1 000 000 xabar/s -> ~10 yo'qolgan xabar/s bitta oqimda
+
+A va B (turli yo'llar, mustaqil):
+  ikkalasida ham yo'qolish: 10^-5 x 10^-5 = 10^-10
+  kuniga ~2.3 x 10^10 xabar (6.5 soat x 1 M/s) -> ~2 marta kuniga
+
+Surat bilan tiklash:
+  so'rov va javob (TCP): ~1-10 ms
+  surat hajmi: 5 000 aksiya x ~20 daraja x 16 bayt = ~1.6 MB -> ~1-10 ms
+  buferni qo'llash: ~1 ms
+  -> 10-100 ms nusxa "ko'r" bo'ladi
+
+Muhim: faqat bitta instrument (yoki guruh) uchun surat — tezroq`}</Calc>
+
+### 7.3 Kim birinchi ko‘radi
+
+<Deep title="To'g'ridan-to'g'ri oqim va konsolidatsiyalangan oqim">
+AQSh’da bitta aksiya o‘ndan ortiq birjada savdo qilinadi. Qonun (Reg NMS,
+2005-yil qabul qilingan) bo‘yicha brokerlar mijozga **butun bozor** bo‘yicha
+eng yaxshi narxni ta’minlashi kerak. Buning uchun barcha birjalarning eng
+yaxshi narxlarini yig‘adigan **konsolidatsiyalangan oqim** (SIP) bor.
+
+Muammo: SIP ma’lumotni birjalardan olib, bir joyda birlashtirib, keyin
+tarqatadi — bu qo‘shimcha masofa va ishlov. Birjalar esa o‘z **to‘g‘ridan-to‘g‘ri**
+oqimlarini (direct feeds) ham sotadi, va ular SIP dan tezroq yetib keladi:
+
+```
+Birja X ---- to'g'ridan-to'g'ri oqim ----------------> Tez treyder  (t + 5 us)
+     \
+      \---> SIP (yig'ish, birlashtirish) ---------> Broker, SIP orqali (t + 20-500 us)
+```
+
+Natijada tez treyder “bozorning kelajagi”ni bir necha o‘n–yuz mikrosekund
+oldin ko‘radi va 12-qadamdagi “eskirgan narx” imkoniyatlaridan
+foydalanadi. Bu qonuniy (oqimni har kim sotib olishi mumkin), lekin
+munozarali. Yangi qoidalar SIP ni tezlashtirish va ma’lumot tarkibini
+kengaytirishga qaratilgan.
+
+Dizayn saboqi: bozor ma’lumotlarida **adolat — bir xil vaqtda yuborish**.
+Birja ichida hamma obunachiga bir xil paket bir vaqtda ketadi (multicast,
+bir xil kabellar). Tashqi dunyoda esa masofa va infratuzilma farqlari
+qoladi — ularni birja boshqara olmaydi, faqat ochiq qila oladi.
+</Deep>
+
+<Check q="Mijoz L2 oqimida 7 001 gacha oldi, keyin 7 004 keldi. U nima qilishi kerak va nega shunchaki 7 004 ni qo'llab davom eta olmaydi?">
+7 004 kelishi **bo‘shliqni** ko‘rsatadi: 7 002 va 7 003 yo‘qolgan. Ular
+qaysi darajalarni o‘zgartirganini bilmaymiz — masalan, 7 002 “100.51
+darajasi endi 0” (daraja yo‘qoldi) bo‘lgan bo‘lishi mumkin. 7 004 ni
+qo‘llab davom etsak, nusxamizda yo‘q taklif **abadiy** qolib ketadi —
+keyingi xabarlar u darajaga tegmasa, xato hech qachon tuzalmaydi.
+
+To‘g‘ri harakat: (1) nusxani ishonchsiz deb belgilash (bu paytda undan
+savdo qarori qilmaslik); (2) 7 004 va keyin keladiganlarni buferga yig‘ish;
+(3) B oqimdan 7 002–7 003 ni kutish yoki surat so‘rash; (4) surat kelgach
+(masalan, 7 010 holati) — uni o‘rnatish, buferdan 7 010 gacha bo‘lganlarni
+**tashlash**, 7 011 dan boshlab tartib bilan qo‘llash.
+
+Buferdagi eski xabarlarni suratdan keyin qo‘llash eng xavfli xato: ular
+absolyut qiymatli, va suratdagi yangi holatni eskisiga qaytaradi.
+</Check>
+
+## 8. Nosozliklarga chidamlilik
+
+### 8.1 Asosiy server o‘ldi
+
+<Flow nodes={["Asosiy engine: 81 402 117 gacha", "Zaxira: 81 402 117 gacha (javob bermaydi)", "Asosiy jim (yurak urishi yo'q, 2 ms)", "Nazoratchi: asosiyni 'o'chiradi' (fencing)", "Zaxira: asosiy bo'ladi, 81 402 118 dan", "Shlyuzlar va oqim yangi asosiyga", "Mijozlar: sessiya raqamlari bo'yicha tiklanadi"]} caption="Zaxira hamma narsani hisoblab turgani uchun 'o'tish' — faqat javob berishni boshlash; millisekundlar" />
+
+Zaxira engine (6-qadam) doim asosiy bilan bir xil holatda: bir xil
+xabarlarni, bir xil tartibda ishlagan. Asosiy o‘lsa, zaxiraga faqat
+**javob berishni boshlash** qoladi. Qiyin qismi — “asosiy haqiqatan
+o‘ldimi?” degan savol.
+
+<Calc title="O'tish vaqti: nima qancha oladi" result="Nosozlikni aniqlash ~1-5 ms, fencing ~1 ms, marshrutni almashtirish ~1-10 ms: jami ~10 ms atrofida — bu paytda ~10 000 xabar navbatda kutadi">{`Yurak urishi (heartbeat): har 100-500 us
+Nosozlik qarori: 3-10 ta urish o'tkazib yuborilsa -> ~1-5 ms
+  (juda qisqa: soxta signallar; juda uzun: uzoq to'xtash)
+
+Fencing: eski asosiyni tarmoqdan uzish yoki uning
+  "yozish huquqi"ni bekor qilish: ~1 ms
+
+Zaxira: oxirgi qayta ishlangan raqamdan davom etadi: ~0
+Shlyuzlar va bozor oqimi yangi manzilga: ~1-10 ms
+
+Jami: ~5-15 ms
+Cho'qqida: 1 000 000 xabar/s x 0.01 s = ~10 000 xabar navbatda
+  -> ular YO'QOLMAYDI (sekvenser/shlyuzlarda kutadi), faqat kechikadi`}</Calc>
+
+### 8.2 Ikki “asosiy” — eng yomon holat
+
+Tarmoq uzildi: zaxira asosiyni ko‘rmayapti va o‘zini asosiy deb e’lon
+qildi. Lekin asosiy aslida tirik va mijozlarga javob berishda davom
+etmoqda. Endi **ikkita** matching engine turli bitimlar qilmoqda — “bo‘lingan
+miya” (split brain). Bu, sekin ishlashdan ancha yomon.
+
+Himoya — **fencing**: yangi asosiy ishga tushishdan oldin eskisi aniq
+to‘xtatilgan bo‘lishi kerak. Usullar: uchinchi “hakam” komponent
+(nazoratchi) qaror qiladi; sekvenserda “davr raqami” (epoch) bor va eski
+davrning xabarlari rad etiladi (Kafka darsidagi leader epoch kabi);
+tarmoq kalitida eski serverning portini o‘chirish.
+
+<Callout type="ogoh" title="Avtomatik o'tish — ikki tomonlama qilich">
+Juda sezgir avtomatika soxta signalda ham zaxiraga o‘tadi — va har o‘tish
+mijozlar uchun bir necha millisekundlik noaniqlik. Juda sust avtomatika
+esa haqiqiy nosozlikda soniyalar yo‘qotadi. Ko‘p birjalar uchun murosa:
+bir ma’lumot markazi ichida avtomatik o‘tish (millisekundlar), boshqa
+saytga o‘tish esa — odam qarori bilan (daqiqalar), chunki u kamdan-kam va
+xato qarorning narxi juda katta.
+</Callout>
+
+### 8.3 Determinizmni nima buzadi
+
+<Deep title="Zaxira asosiydan 'boshqacha o'ylay' boshlasa">
+6-qadamning butun g‘oyasi bitta farazga tayanadi: bir xil kirish — bir xil
+natija. Bu faraz sezilmasdan buzilishi mumkin:
+
+```
+Buzuvchi                      Misol                                   Himoya
+soat                          "agar hozir 16:00 dan keyin bo'lsa"     vaqtni faqat xabardan olish
+tasodifiy sonlar              tasodifiy tanlov, UUID                  engine ichida taqiqlangan
+hash jadval tartibi           dict/set bo'yicha aylanish              tartiblangan tuzilmalar
+float                         turli protsessor/kompilyator yaxlitlashi butun sonlar (2-qadam)
+iplar                         "qaysi ip oldin tugadi"                 bitta ip (4-qadam)
+tashqi so'rovlar              bazadan narx o'qish                     hamma kirish — sekvenserdan
+kod versiyasi                 asosiy yangilandi, zaxira yo'q          bir xil versiya, kun boshida
+xotira manzillari             obyekt manzili bo'yicha saralash        faqat ma'lumot bo'yicha saralash
+```
+
+Buzilish qanday aniqlanadi? Asosiy va zaxira har N xabardan keyin
+kitob holatining **nazorat summasini** (hash) hisoblab, solishtiradi. Farq —
+darhol signal: zaxira endi ishonchsiz, uni surat va jurnaldan qayta
+tiklash kerak.
+
+Amaliyotdagi `book.py` uchun ham shu qoida: Python’da `dict` kiritish
+tartibini saqlaydi (3.7 dan), lekin `set` — yo‘q, satrlar xeshi esa har
+jarayonda boshqacha (`PYTHONHASHSEED`). Kitob mantiqini `set` bo‘yicha
+aylanishga bog‘lasangiz, natija ishga tushirishdan-ishga tushirishga farq
+qilishi mumkin. Eng yomoni — bitta jarayon ichidagi qayta o‘ynash testi
+buni **ushlamasligi** mumkin: ikkala nusxa bir xil xesh bilan ishlaydi.
+Shuning uchun bunday tuzilmalardan engine ichida umuman qochiladi, va
+jiddiy tizimlarda qayta o‘ynash boshqa jarayonda, boshqa serverda
+tekshiriladi.
+</Deep>
+
+<Check q="Zaxira engine asosiy bilan bir xil xabarlarni ishlaydi. Qanday qilib u baribir boshqa holatga kelib qolishi mumkin va buni qanday tezda bilish mumkin?">
+Agar engine ichida **deterministik bo‘lmagan** narsa bo‘lsa: tizim soatini
+o‘qish (asosiy va zaxirada bir xil xabar turli vaqtda ishlanadi), tasodifiy
+son, hash jadval yoki to‘plam bo‘yicha aylanish tartibi, float
+yaxlitlashi, iplar orasidagi poyga, bazadan yoki tarmoqdan qo‘shimcha
+ma’lumot o‘qish, yoki ikki serverda turli kod versiyasi. Bitta shunday
+joy bitta bitimni boshqacha qiladi — va keyingi hamma narsa ajralib ketadi.
+
+Tez aniqlash: har N xabardan (yoki har millisekundda) ikkala server kitob
+holatidan **nazorat summasi** hisoblaydi va solishtiradi; bundan
+tashqari, chiqish xabarlari (bitimlar, ijro hisobotlari) oqimi ham
+solishtiriladi. Birinchi farq — zaxira “ifloslangan” deb belgilanadi va
+suratdan qayta tiklanadi, asosiy esa ishlashda davom etadi. Yaxshisi —
+buni savdodan oldin topish: har kechasi kun jurnalini ikki marta qayta
+o‘ynab, natijalarni solishtirish.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="Zamonaviy birja: shlyuzdan kliringgacha"
+  layers={[
+    { name: "Qatnashchilar", boxes: ["Brokerlar", "Bozor qiluvchilar", "Kolokatsiyadagi serverlar"], note: "Doimiy sessiyalar; bir xil uzunlikdagi kabellar (12-qadam)." },
+    { name: "Kirish", boxes: ["Buyurtma shlyuzlari", "Risk va limitlar", "Kill switch"], note: "Sessiya raqamlari, ClOrdID, narx yoqasi (7-qadam)." },
+    { name: "Yadro", boxes: ["Sekvenser", "Matching engine (instrument guruhlari)", "Zaxira engine'lar"], note: "Bitta ipli, deterministik; har xabar raqamlangan va replikatsiya qilingan (4-6, 9-qadamlar)." },
+    { name: "Chiqish", boxes: ["Ijro hisobotlari", "L1/L2/L3 multicast (A/B)", "Surat serverlari"], note: "Tartib raqamlari; tiklash — surat va buferdan (8-qadam)." },
+    { name: "Savdodan keyin", boxes: ["Jurnal arxivi va audit", "Kliring (CCP)", "Hisob-kitob (T+1)", "Nazorat (surveillance)"], note: "Jurnal — yagona haqiqat manbai; zaxira sayt boshqa shaharda (13-14-qadamlar)." },
+  ]}
+/>
+
+Rasmning markazida — **raqamlangan xabarlar ketma-ketligi**. Hamma narsa
+undan kelib chiqadi: kitob (engine), zaxira (bir xil ketma-ketlikni
+o‘ynaydi), bozor ma’lumotlari (natijalar raqamlangan oqimi), audit (jurnal
+arxivi). Birjani “jurnal + deterministik funksiya” deb tasvirlash mumkin —
+Kafka darsidagi g‘oyaning eng qat’iy ko‘rinishi.
+
+<Timeline
+  rows={[
+    { when: "1792", what: "Nyu-Yorkda Buttonwood kelishuvi", why: "24 broker o'zaro savdo qoidalari va komissiyaga kelishdi — NYSE ning boshlanishi." },
+    { when: "1971", what: "Nasdaq — elektron kotirovkalar", why: "Dunyodagi birinchi elektron fond bozori: narxlar ekranda, savdo hali telefonda." },
+    { when: "1990-yillar", what: "Elektron savdo tizimlari (ECN)", why: "Island va boshqalar: to'liq avtomatik kitob va matching, millisekundlar." },
+    { when: "2005-2007", what: "Reg NMS (AQSh) va MiFID (Yevropa)", why: "Raqobat va eng yaxshi narx qoidalari: bitta aksiya ko'p birjada, tezlik poygasi boshlanadi." },
+    { when: "2010", what: "6-may 'Flash Crash'; LMAX arxitekturasi e'lon qilinadi", why: "Daqiqalarda keskin tushish va tiklanish; bitta ipli deterministik engine g'oyasi ommalashadi." },
+    { when: "2012-2016", what: "Knight Capital hodisasi; LULD; IEX birja bo'ladi", why: "Risk nazorati kuchaytiriladi; tezlik to'siqlari va adolat munozarasi (10.2, 12-qadam)." },
+    { when: "2018-2024", what: "MiFID II (vaqt sinxronizatsiyasi), birjalar bulutga, AQSh'da T+1", why: "Mikrosekundlik audit; Nasdaq MRX AWS da (2022); hisob-kitob bir kunga qisqardi." },
+  ]}
+/>
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Qanchalik tez-tez | Oqibat | Himoya |
+| --- | --- | --- | --- |
+| Bitta server yoki tarmoq kartasi | Yiliga bir necha marta | Millisekundlik o‘tish | Asosiy-zaxira juftligi, fencing (8-bo‘lim) |
+| Bozor oqimi paketlari yo‘qolishi | Har kuni | Mijoz nusxasi vaqtincha ishonchsiz | A/B oqimlar, suratlar (7.2) |
+| Mijoz ulanishi uzilishi | Har kuni | Takror yoki “yo‘qolgan” buyurtmalar | Sessiya raqamlari, ClOrdID (7-qadam) |
+| Qatnashchining xato algoritmi | Yiliga bir necha marta | Katta zarar, narx buzilishi | Risk limitlari, kill switch, yoqalar |
+| Engine dasturiy xatosi | Kamdan-kam, lekin og‘ir | Noto‘g‘ri bitimlar | Qayta o‘ynash testlari, nazorat summalari |
+| Yangilanish va sozlama xatosi | Eng ko‘p tarixiy uzilishlar sababi | Butun birja to‘xtashi | Bosqichma-bosqich chiqarish, orqaga qaytish rejasi |
+| Butun ma’lumot markazi | O‘n yillarda bir marta | Soatlar | Zaxira sayt (14-qadam) |
+
+Oltinchi qator ko‘pchilikni ajablantiradi: birjalarning eng mashhur
+uzilishlari uskuna emas, **o‘zgarishlar** sababli bo‘lgan. Masalan,
+2015-yil 8-iyulda NYSE yangi dastur versiyasi bilan bog‘liq muammo sababli
+3.5 soatga yaqin savdoni to‘xtatgan. Kod va sozlamani chiqarish — birja
+uchun eng xavfli kundalik amal.
+
+### 10.2 Bitta hodisa: 45 daqiqa va 460 million dollar
+
+2012-yil 1-avgustda AQSh’ning yirik bozor qiluvchilaridan biri Knight
+Capital o‘z savdo tizimidagi xato tufayli 45 daqiqada 460 million
+dollardan ortiq zarar ko‘rdi. Bu birja emas, qatnashchining xatosi — lekin
+u birjalar va qatnashchilarning risk nazoratini tubdan o‘zgartirdi. Voqealar
+(AQSh qimmatli qog‘ozlar komissiyasi — SEC hisobotiga ko‘ra):
+
+<Timeline
+  rows={[
+    { when: "Iyul oxiri", what: "Yangi kod 8 ta serverga qo'lda o'rnatiladi", why: "Yangi dastur uchun eski, 2003-yildan ishlatilmagan 'Power Peg' funksiyasining bayrog'i qayta ishlatildi. 8-serverga yangi kod o'rnatilmay qoldi — buni hech kim tekshirmadi." },
+    { when: "1-avgust, 08:01", what: "Tizim 97 ta avtomatik xat yuboradi", why: "Xatlarda 'Power Peg disabled' xatosi bor edi, lekin ular ogohlantirish sifatida qabul qilinmadi." },
+    { when: "09:30", what: "Savdo ochiladi", why: "Yangi bayroqli buyurtmalar 8-serverga yetadi — u yerda bayroq eski Power Peg kodini yoqadi. Kod bajarilganlarni hisobga olmay, cheksiz buyurtma yuboradi." },
+    { when: "09:30-10:15", what: "~4 million bitim, 154 aksiya, 397 M+ aksiya", why: "Buyurtmalarni to'xtatuvchi aniq kill switch yo'q edi; muammo manbasi topilmay turardi." },
+    { when: "Tuzatish urinishi", what: "Yangi kod 7 ta 'to'g'ri' serverdan olib tashlanadi", why: "Endi 8 ta serverning hammasida eski yo'l ishladi — vaziyat yomonlashdi." },
+    { when: "~10:15", what: "Tizim to'xtatiladi", why: "Qolgan pozitsiyalar: ~3.5 mlrd $ uzun, ~3.15 mlrd $ qisqa. Yopishdagi zarar — 460 M $ dan ortiq; kompaniya mustaqilligini yo'qotdi." },
+  ]}
+/>
+
+<Calc title="Nazoratsiz algoritmning tezligi" result="45 daqiqada ~4 M bitim — sekundiga ~1 500; har daqiqa kechikish ~10 M $ zarar. Kill switch bir necha soniyada bo'lsa, zarar yuzlab barobar kam bo'lardi">{`~4 000 000 bitim / (45 x 60 s) = ~1 480 bitim/s
+Zarar: ~460 M $ / 45 daqiqa = ~10 M $ daqiqasiga
+
+Agar:
+  risk limiti: "bitta aksiyada pozitsiya 50 M $ dan oshmasin"
+    -> 154 aksiya bo'yicha avtomatik to'xtash, daqiqalar ichida
+  kill switch: bitta buyruq bilan hamma buyurtmalarni bekor qilish
+    -> 1-2 daqiqada to'xtash = ~10-20 M $ (hali ham og'ir, lekin omon qolinadi)
+  chiqarishdan oldingi tekshiruv: "8 serverda ham bir xil versiya?"
+    -> hodisa umuman bo'lmasdi`}</Calc>
+
+Saboqlar birjalar uchun ham to‘g‘ridan-to‘g‘ri: **eski kodni o‘chiring**,
+ishlatilmayotgan bayroqni qayta ishlatmang; chiqarishni avtomatlashtiring
+va hamma serverda versiyani tekshiring; ogohlantirish — faqat odam uni
+ko‘rsa va nima qilishni bilsa ogohlantirish; har qatnashchi uchun **kill
+switch** va avtomatik limitlar birja tomonida ham bo‘lsin (7-qadam).
+
+<Callout type="maslahat" title="Chiqarish — eng xavfli kundalik amal">
+Birjalar yangi versiyani savdo soatlarida chiqarmaydi. Tartib odatda:
+kechasi yoki dam olish kunlari o‘rnatish; bir necha oldingi kun
+jurnallarini yangi versiyada qayta o‘ynab, bitimlar eski versiya
+natijalari bilan **bayt-baqayt** mos ekanini tekshirish (6-qadam); sinov
+muhitida qatnashchilar bilan sinov; har serverda versiyani avtomatik
+tasdiqlash; va orqaga qaytish rejasi — oldindan yozilgan va mashq qilingan.
+</Callout>
+
+<Check q="Knight Capital hodisasida qaysi uchta himoya qatlami bo'lmagan yoki ishlamagan?">
+**1. Chiqarishni tekshirish.** Yangi kod sakkizta serverning faqat yettitasiga
+o‘rnatilgan va buni hech kim avtomatik tekshirmagan. Barcha serverlarda
+bir xil versiyani tasdiqlash — oddiy, lekin hal qiluvchi tekshiruv.
+
+**2. Eski kod va bayroqlarni tozalash.** Yillar davomida ishlatilmagan
+funksiya kodda qolgan, va uning bayrog‘i yangi ma’noda qayta ishlatilgan.
+Ishlatilmayotgan kod — “uxlab yotgan mina”: bir kun kimdir uni tasodifan
+yoqadi.
+
+**3. Avtomatik to‘xtatish.** Tizim 45 daqiqa davomida pozitsiyasini
+milliardlab dollarga oshirdi, va uni avtomatik to‘xtatadigan limit yoki
+tezkor kill switch bo‘lmagan. Ogohlantirish xatlari esa savdodan oldin
+kelgan, lekin hech kim ularni signal sifatida ko‘rmagan.
+
+Umumiy saboq: bitta xato qochib qutulmaydi — lekin **qatlamli** himoya
+(tekshirilgan chiqarish, toza kod, limitlar, kill switch) uni kichik
+hodisaga aylantiradi.
+</Check>
+
+## 11. Xavfsizlik va bozor yaxlitligi
+
+### 11.1 Kim nimaga ulanadi
+
+Birjaning savdo tarmog‘i internetdan ajratilgan: qatnashchilar maxsus
+liniyalar yoki kolokatsiya orqali ulanadi. Har sessiya — ma’lum a’zo, ma’lum
+IP va sertifikat bilan; har a’zoning huquqlari aniq (qaysi instrumentlar,
+qaysi buyurtma turlari, qancha xabar). Ichkarida esa **vazifalar
+ajratilgan**: savdo tarmog‘i, boshqaruv tarmog‘i va ofis tarmog‘i bir-biriga
+bog‘liq emas. Matching engine serveriga “SSH qilib, tezda tuzatish” —
+savdo soatlarida umuman mumkin emas.
+
+### 11.2 Bozor manipulyatsiyasi va nazorat
+
+Birja nafaqat buyurtmalarni juftlaydi, balki **bozorning halolligini**
+kuzatadi. Jurnalda har xabar bor, shuning uchun manipulyatsiyani keyin
+aniq ko‘rish mumkin.
+
+<Deep title="Spoofing: bajarish niyati bo'lmagan buyurtmalar">
+**Spoofing** (aldash) — bajarish niyatisiz katta buyurtmalar qo‘yib, boshqalarni
+narx “ko‘tarilyapti” yoki “tushyapti” deb ishontirish. Tipik ssenariy:
+
+```
+1. Treyder sotmoqchi, lekin qimmatroq.
+2. Xarid tomoniga katta buyurtmalar qo'yadi: 100.47 da 50 000, 100.46 da 80 000
+   ("layering" — bir necha qatlam) -> kitob "xaridorlar ko'p" ko'rinadi
+3. Boshqa algoritmlar narxni ko'taradi; treyder o'zining kichik sotuv
+   buyurtmasini yuqoriroq narxda bajaradi
+4. Katta xarid buyurtmalarini millisekundlarda BEKOR qiladi — ular hech
+   qachon bajarilmagan
+```
+
+Nazorat tizimi (surveillance) jurnaldan naqshlarni qidiradi: katta
+buyurtmalar qarama-qarshi tomondagi bajarilishdan keyin darhol bekor
+qilinadimi; bitta qatnashchining bekor qilish ulushi va “yashash vaqti”
+g‘ayritabiiymi; buyurtmalar va bajarilishlar vaqt jihatdan bog‘liqmi.
+AQSh’da 2010-yilgi Dodd–Frank qonuni fyuchers va tovar bozorlarida
+spoofing’ni aniq taqiqladi (aksiyalar bozorida u umumiy firibgarlik
+qoidalari bilan jazolanadi), va keyingi yillarda bir necha jinoiy ish
+bo‘ldi.
+
+Qiyinligi — **niyat**. Bozor qiluvchilar ham buyurtmalarini tez-tez bekor
+qiladi (1.3): bu normal. Farqni faqat statistika va kontekst ko‘rsatadi —
+shuning uchun nazorat avtomatik signal beradi, qarorni esa odam qiladi.
+</Deep>
+
+<Calc title="Nazorat uchun ma'lumot hajmi" result="Kuniga 500 M xabar x ~100 bayt (to'liq tafsilot bilan) = ~50 GB; yiliga ~12 TB — va buni yillar davomida saqlash va tezkor qidirish kerak">{`Kuniga: 500 M xabar (buyurtma, bekor, o'zgartirish, bitim)
+To'liq yozuv (kim, qachon, qaysi sessiya, nano-vaqt, barcha maydonlar):
+  ~100 bayt -> ~50 GB/kun (siqishsiz)
+Yiliga (~250 savdo kuni): ~12.5 TB; siqish bilan ~3-4 TB
+
+Talab: odatda kamida 5-7 yil saqlash, regulyator so'rovi bilan
+  "shu qatnashchining 2021-yil 14-martdagi hamma buyurtmalari" —
+  daqiqalarda topilishi kerak
+
+Kun oxiridagi qayta o'ynash: jurnaldan har daqiqa uchun kitobni
+  tiklab, naqshlarni qidirish (8-bo'lim determinizm bu yerda ham kerak)`}</Calc>
+
+<Check q="Nega birja jurnalni nafaqat tiklash, balki bozor nazorati uchun ham kalit deb hisoblaydi?">
+Chunki jurnal — **to‘liq va o‘zgarmas tarix**: har buyurtma, har bekor
+qilish, har bitim, aniq tartib raqami va vaqti bilan. Deterministik
+engine bilan jurnaldan **istalgan lahzadagi** kitobni aynan tiklash
+mumkin: “14:03:07.123456 da 100.47 darajasida kim, qancha, qaysi tartibda
+turgan edi?”
+
+Manipulyatsiya (spoofing, layering, soxta hajm) bitta xabarda emas,
+**xabarlar orasidagi bog‘liqlikda** ko‘rinadi: katta buyurtma qo‘yildi →
+qarama-qarshi tomonda bajarilish → katta buyurtma bekor qilindi. Buni
+faqat to‘liq tartiblangan tarixdan ko‘rish mumkin. Jurnal bo‘lmasa (yoki
+tartib noaniq bo‘lsa), “kim birinchi edi” degan savolga javob yo‘q — na
+tergovchi, na sud uchun.
+</Check>
+
+## 12. Iqtisod: birja nimadan pul topadi
+
+### 12.1 Uch daromad manbai
+
+Birja daromadi uch qismdan: **savdo komissiyalari** (har bitimdan),
+**bozor ma’lumotlari** (oqimlarni sotish) va **ulanish** (kolokatsiya,
+portlar, liniyalar). Yirik birja guruhlarida so‘nggi ikki manba ko‘pincha
+savdo komissiyalaridan kam emas — texnologiya va ma’lumot biznesi.
+
+<Calc title="Maker-taker: kim to'laydi, kim oladi" result="Taker 1 000 aksiyaga 3.00 $ to'laydi, maker 2.00 $ chegirma oladi, birjaga 1.00 $ qoladi. Bozor qiluvchi kuniga 10 M aksiya bilan 20 000 $ chegirma oladi">{`Maker-taker modeli (AQSh aksiyalari, taxminiy darajalar):
+  taker komissiyasi:  0.0030 $ / aksiya  (uzoq yillar qonuniy chegara)
+  maker chegirmasi:   0.0020 $ / aksiya  (kitobga taklif qo'yganga "rahmat")
+  birja sof daromadi: 0.0010 $ / aksiya
+
+Bitim: 1 000 aksiya
+  taker to'laydi:   3.00 $
+  maker oladi:      2.00 $
+  birja:            1.00 $
+
+Bozor qiluvchi (asosan maker): kuniga 10 M aksiya
+  chegirma: 10 M x 0.002 = 20 000 $ kuniga
+  -> post-only buyurtmalar muhimligi (3-qadam): tasodifan taker
+     bo'lib qolish chegirma o'rniga komissiya degani`}</Calc>
+
+<Deep title="Maker-taker, teskari model va 'buyurtma oqimi uchun to'lov'">
+Maker-taker modeli likvidlikni rag‘batlantiradi: kitobga taklif qo‘yganlar
+chegirma oladi, shuning uchun kitob qalinroq, spred torroq. Lekin tanqid
+ham bor: broker mijoz buyurtmasini **eng ko‘p chegirma beradigan** birjaga
+yo‘naltirishga qiziqadi, eng yaxshi bajarilish beradigan birjaga emas.
+
+Ba’zi birjalar **teskari** (inverted, taker-maker) model ishlatadi: taker
+chegirma oladi, maker to‘laydi. Nega? Bu birjada navbat qisqaroq va
+bajarilish tezroq bo‘lishi mumkin — kutishni xohlamaydiganlar uchun.
+Bitta aksiya ko‘p birjada bo‘lgani uchun, komissiya modeli ham raqobat
+vositasi.
+
+Uchinchi mexanizm — **buyurtma oqimi uchun to‘lov** (payment for order
+flow): ba’zi mamlakatlarda chakana brokerlar mijoz buyurtmalarini birjaga
+emas, katta bozor qiluvchilarga yo‘naltiradi va buning uchun haq oladi.
+Bu “bepul” savdo ilovalarining iqtisodi, va regulyatorlar uchun doimiy
+munozara mavzusi. Muhandislik nuqtai nazaridan: buyurtmaning qaysi
+birjaga borishini **yo‘naltirish** (routing) tizimi hal qiladi, va u ham
+eng yaxshi narx qoidalariga bo‘ysunishi kerak (7.3 Deep).
+</Deep>
+
+<Calc title="Texnologiya xarajati va daromad" result="Matching yadrosining uskunasi yiliga bir necha million dollar — bitta katta birja daromadining kichik ulushi; asosiy xarajat — odamlar, tarmoq, zaxira va nazorat">{`Yadro (faraz, bitta birja):
+  16 ta engine server (asosiy + zaxira, 8 guruh) x 50 000 $ = 800 000 $
+  sekvenser, shlyuzlar, oqim serverlari: ~1 M $
+  tarmoq uskunasi (past kechikishli kalitlar, FPGA kartalar): ~2 M $
+  -> ~4 M $, 4-5 yilga amortizatsiya -> ~1 M $ yiliga
+
+Qo'shimcha:
+  zaxira sayt (xuddi shunday) -> x2
+  ma'lumot markazi, elektr, liniyalar: ~2-5 M $ yiliga
+  muhandislar, sinov, nazorat va audit jamoalari: eng katta qism
+
+Daromad (faraz, o'rta birja): savdo 1 mlrd aksiya/kun x 0.001 $ x 250 kun
+  = 250 M $ yiliga + ma'lumot + ulanish
+-> uskunaning o'zi — foizlar ulushi; ishonch va regulyatsiya — asosiy narx`}</Calc>
+
+## 13. Sig‘im rejalashtirish
+
+### 13.1 Cho‘qqi — bir necha soniya
+
+Birja yuklamasi tekis emas: kunning boshida va oxirida, va har muhim
+yangilikda soniyalar ichida o‘n barobar oshadi. Sig‘im **eng yomon
+soniya** uchun rejalashtiriladi, va ko‘p birjalar kuzatilgan eng katta
+cho‘qqining bir necha barobari zaxirasini talab qiladi.
+
+<Calc title="Yangilik bo'roni: navbat qanchaga o'sadi" result="Sig'im 2 M/s, 3 soniya davomida 3 M/s kelsa: navbatda 3 M xabar, oxirgisi ~1.5 s kutadi. Sig'im 4 M/s bo'lsa — navbat yo'q">{`Engine guruhi sig'imi: 2 000 000 xabar/s (faraz)
+Oddiy yuk: 200 000/s (10%)
+
+Yangilik: 3 soniya davomida 3 000 000 xabar/s keladi
+  har soniyada navbat o'sadi: 3 M - 2 M = 1 M
+  3 soniyadan keyin navbatda: 3 M xabar
+  oxirgi xabar kutadi: 3 M / 2 M = 1.5 s  <- mikrosekundlik birja uchun halokat
+
+Sig'im 4 M/s bo'lsa: 3 M < 4 M -> navbat yo'q, kechikish o'zgarmaydi
+
+Qoida: o'rtacha yuk sig'imning 5-10% i, kuzatilgan eng katta cho'qqi —
+  50% idan oshmasin. "90% band" server — birja uchun allaqachon muammo`}</Calc>
+
+### 13.2 Qayerda cheklov
+
+Har komponentning o‘z chegarasi bor: shlyuz (sessiyalar soni va dekodlash),
+sekvenser (xabar/s), engine guruhi (eng faol instrumentlar), replikatsiya
+(tarmoq kechikishi), bozor oqimi (Mbit/s va mijozlarning qabul qilish
+tezligi). Eng zaif bo‘g‘in butun birjaning sig‘imi.
+
+<Calc title="Bozor oqimi: mijozlar ham ulgurishi kerak" result="1 M xabar/s oqimni qabul qilish uchun mijoz har xabarni 1 us dan tez ishlashi kerak; sekin mijoz orqada qoladi va paketlarni yo'qotadi — muammo birjada emas, lekin birja buni hisobga oladi">{`Cho'qqi oqim: 1 000 000 L3 xabar/s bitta kanalda
+Mijoz har xabarga: dekodlash + kitobini yangilash + strategiya
+  -> 1 us dan kam bo'lishi kerak, aks holda orqada qoladi
+
+Mijozning tarmoq kartasi buferi (masalan, 4 MB) to'lsa -> paketlar yo'qoladi
+  -> bo'shliq -> surat so'rash (7.2) -> yana orqada qolish
+
+Birja yechimi: oqimni ko'p kanallarga bo'lish (instrument guruhlari
+  bo'yicha): mijoz faqat kerakli kanallarga obuna bo'ladi
+  8 kanal -> har biri ~125 000 xabar/s`}</Calc>
+
+<Deep title="Issiq instrument: bo'lib bo'lmaydigan yuk">
+9-qadamda instrumentlar guruhlarga bo‘lindi. Lekin bitta aksiya kitobini
+ikkiga bo‘lib bo‘lmaydi: narx-vaqt ustuvorligi **yagona** navbatni talab
+qiladi. Yirik kompaniya haqida kutilmagan yangilik chiqsa, shu bitta aksiya
+bo‘yicha oqim yuz barobar oshishi mumkin.
+
+Nima qilinadi:
+
+```
+1. Oldindan: eng faol instrumentlar turli guruhlarda, har biri
+   "o'z" yadrosida — issiq aksiya faqat o'z guruhini sekinlashtiradi
+2. Engine'ni shu yuk uchun sinash: bitta instrumentga 1-2 M xabar/s
+   (sintetik yuk, qayta o'ynalgan eng og'ir kunlar)
+3. Qatnashchi limitlari: bitta sessiyadan sekundiga N xabardan ko'p emas
+   (7-qadam) — bitta "shovqinli" algoritm hammani to'xtatmasin
+4. Oxirgi chora: volatillik to'xtatishi (11-qadam) — auksion rejimida
+   buyurtmalar faqat yig'iladi, juftlash yuki yo'q
+```
+
+Qizig‘i, to‘xtatish mexanizmlari nafaqat bozorni “tinchlantiradi”, balki
+texnik jihatdan ham yordam beradi: auksionda kitob o‘zgaradi, lekin har
+xabar uchun juftlash va bozor oqimiga bitim xabarlari yo‘q.
+</Deep>
+
+<Check q="Nega birja uchun 'serverlar 90% band — yaxshi foydalanilyapti' degan fikr xavfli?">
+Chunki navbat nazariyasiga ko‘ra, yuk sig‘imga yaqinlashganda kutish vaqti
+**chiziqli emas, portlovchi** o‘sadi: 50% bandlikda navbat deyarli yo‘q,
+90% da o‘rtacha kutish bir necha barobar, 99% da — o‘nlab barobar. Birja
+esa o‘rtacha emas, **dum** kechikishni (p99.99) va cho‘qqilarni hisobga
+olishi kerak.
+
+Bundan tashqari, birja yuklamasi **portlovchi**: bir soniyada o‘n barobar
+oshadi (13.1). Agar oddiy vaqtda 90% band bo‘lsa, birinchi yangilikda
+navbat soniyalarga o‘sadi — mikrosekundlik birja millisekund va
+soniyalarda javob bera boshlaydi, va aynan eng muhim paytda.
+
+Shuning uchun birjalar ataylab **ko‘p bo‘sh sig‘im** ushlaydi: odatiy yuk
+sig‘imning bir necha foizi, eng katta kuzatilgan cho‘qqi — yarmidan kam.
+Bu “isrof” emas, mahsulotning o‘zi: barqaror kechikish.
+</Check>
+
+## 14. Kuzatuv
+
+### 14.1 Nima o‘lchanadi
+
+| Metrika | Nima ko‘rsatadi | Ogohlantirish (misol) |
+| --- | --- | --- |
+| Birja ichidagi kechikish: p50, p99, p99.99, maksimum | Barqarorlik | p99.99 > 100 µs 1 daqiqa davomida |
+| Navbat chuqurligi (har bosqichda) | Sig‘im chegarasiga yaqinlik | > 10 000 xabar |
+| Sekvenser raqamlari uzluksizligi | Yo‘qolgan yoki takror xabar | Har qanday bo‘shliq — darhol |
+| Asosiy va zaxira nazorat summalari | Determinizm | Har qanday farq — darhol |
+| Replikatsiya kechikishi | “Bajarildi”ning xavfsizligi | > 50 µs |
+| Soatlar sinxronligi (PTP) | Vaqt belgilarining to‘g‘riligi | UTC dan > 50 µs farq |
+| Rad etishlar ulushi (sabab bo‘yicha) | Qatnashchi muammolari | Bir sessiyada keskin o‘sish |
+| Kill switch va to‘xtatishlar soni | Bozor holati | Har biri — jurnal va xabar |
+
+O‘rtacha kechikish birja uchun deyarli foydasiz: u “hammasi yaxshi”
+ko‘rsatadi, hatto har 10 000-xabar 5 ms kutsa ham. Shuning uchun
+**gistogrammalar** — har bir xabarning kechikishi yozib boriladi va
+foizliklar (percentile) aniq hisoblanadi.
+
+<Calc title="Dum kechikish: o'rtacha nimani yashiradi" result="99.99% xabar 20 us, 0.01% i 5 ms: o'rtacha ~20.5 us — 'yaxshi', lekin sekundiga 100 ta xabar 250 barobar sekin. p99.99 buni ko'rsatadi">{`1 000 000 xabar/s:
+  999 900 ta: 20 us
+  100 ta:     5 000 us (GC pauzasi, kesh, uyg'onish)
+
+O'rtacha: (999 900 x 20 + 100 x 5 000) / 1 000 000 = ~20.5 us  -> "a'lo"
+p99:      20 us    -> "a'lo"
+p99.99:   5 000 us -> MUAMMO
+maksimum: 5 000 us
+
+Sekundiga 100 ta mijoz 250 barobar sekin javob oladi —
+  va bu tasodifiy emas: GC pauzalari cho'qqida ko'payadi`}</Calc>
+
+### 14.2 Uchidan-uchiga tekshiruv
+
+Ichki metrikalardan tashqari birjalar **sintetik qatnashchi** ishlatadi:
+kolokatsiyadagi sinov serveri har soniyada kichik, bajarilmaydigan
+buyurtma yuboradi va bekor qiladi, javob va bozor oqimidagi aks sadosini
+o‘lchaydi. Bu tashqi mijoz ko‘radigan haqiqiy tajriba: shlyuz, sekvenser,
+engine, oqim — hammasi birga.
+
+Bundan tashqari, **passiv o‘lchash**: tarmoq kalitlarida paketlar nusxasi
+aniq vaqt belgilari bilan yoziladi (maxsus kartalar, nanosekund aniqlikda),
+va har buyurtma paketi hamda unga javob paketi juftlanadi. Bu dasturiy
+ta’minotga tegmasdan, “simdan” o‘lchangan haqiqiy kechikish.
+
+<Callout type="maslahat" title="Vaqtni o'lchashning o'zi ham o'lchanadi">
+Mikrosekundlik metrikalar faqat soatlar sinxron bo‘lsagina ma’noli.
+Soat 200 µs “surilsa”, kechikish grafiklari ham, “kim birinchi” degan
+audit ham yolg‘on gapiradi. Shuning uchun PTP sinxronizatsiyasining
+o‘zi — alohida metrika va alohida ogohlantirish, va har vaqt belgisi
+yonida uning manbasi va aniqligi saqlanadi.
+</Callout>
+
+<Check q="Birja o'rtacha kechikishi 20 us va barqaror. Nega bu 'hammasi yaxshi' degani emas va qaysi metrikaga qarash kerak?">
+O‘rtacha **dumni yashiradi**. Million xabardan yuztasi 5 ms kutsa ham,
+o‘rtacha deyarli o‘zgarmaydi (14.1 hisobi). Lekin o‘sha yuzta xabar —
+kimningdir bajarilmagan yoki yomon narxda bajarilgan buyurtmasi, va ular
+ko‘pincha eng muhim paytlarda (cho‘qqi, yangilik) to‘planadi.
+
+Qarash kerak: **p99.9, p99.99 va maksimum** — kechikish gistogrammasidan,
+har daqiqa uchun alohida (butun kun bo‘yicha emas, aks holda cho‘qqi
+daqiqasi erib ketadi). Qo‘shimcha — **navbat chuqurligi** (kechikish
+oshishidan oldin o‘sadi) va **tashqi o‘lchov** (sintetik qatnashchi yoki
+simdan o‘lchash), chunki ichki metrikalar shlyuz oldidagi navbatlarni
+ko‘rmasligi mumkin.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Narx va summa uchun float", pro: "Kodda qulay, 'hamma tillarda bor'", con: "Yaxlitlash xatolari; asosiy va zaxira turlicha natija berishi mumkin (4.2, 8.3)" },
+    { choice: "Kitob ustida ko'p ip va qulflar", pro: "'Ko'p yadroni ishlatamiz'", con: "Tasodifiy tartib, determinizm yo'q, kechikish dumi o'sadi (4.4, 6.3)" },
+    { choice: "Engine ichida tizim soatini o'qish", pro: "Oddiy: 'hozir soat nechchi?'", con: "Qayta o'ynash boshqa natija beradi; zaxira ajralib ketadi (5-qadam Callout)" },
+    { choice: "Asosiy ipda disk yoki tarmoqni kutish", pro: "Kod ketma-ket va tushunarli", con: "Har fsync — millisekund; p99.99 halokatli (4-qadam)" },
+    { choice: "Javobni zaxira tasdig'idan oldin yuborish", pro: "Bir necha mikrosekund tezroq", con: "Server o'lsa, mijoz biladigan bitim tizimda yo'q (6.1 Check)" },
+    { choice: "Risk tekshiruvlarini 'keyinroq' qo'shish", pro: "Tezroq ishga tushirish", con: "Bitta xato algoritm daqiqalarda katta zarar keltiradi (10.2)" },
+  ]}
+/>
+
+<Deep title="Nega birja ma'lumotlar bazasi ustida qurilmaydi">
+Birinchi qarashda birja — oddiy tranzaksion tizim: buyurtmalar jadvali,
+bitimlar jadvali, har bitim — tranzaksiya. Nega PostgreSQL ustida
+qurmaslik kerak?
+
+```
+Talab                         SQL baza                      Birja yadrosi
+bitta xabar                   ~100 us - 1 ms (disk, qulf)   ~1 us (xotira)
+tartib                        tranzaksiyalar izolyatsiyasi   yagona raqamlangan ketma-ketlik
+                              (parallel, qulflar bilan)
+kechikish dumi                qulf kutish, vakuum, checkpoint barqaror
+saqlanish                     WAL + fsync                    replikatsiya + jurnal
+qayta o'ynash                 mumkin, lekin tartib murakkab  tabiiy: holat = f(jurnal)
+```
+
+Asosiy farq — **parallellik modeli**. Baza ko‘p tranzaksiyani parallel
+bajarish va ularni qulflar bilan izolyatsiya qilish uchun qurilgan. Birja
+yadrosi aksincha: hamma narsa **bitta ketma-ketlikda**, parallellik yo‘q,
+shuning uchun qulf ham, izolyatsiya darajalari ham kerak emas.
+
+Bu bazalar birjada umuman yo‘q degani emas. Ular yadro **atrofida**:
+a’zolar va hisoblar ma’lumotnomasi, kun oxiridagi hisobotlar, kliring
+hisoblari, nazorat uchun tarix. Ular jurnalni o‘qiydi va o‘z jadvallarini
+to‘ldiradi — Kafka darsidagi “jurnal — haqiqat, jadval — hosila” tamoyili.
+</Deep>
+
+<Callout type="xato" title="Oltinchi antinaqsh: 'sinov muhitida ishladi'">
+Birja sinovi faqat funksional testlar emas. Kerak bo‘lgan uch narsa:
+**haqiqiy yuk** (eng og‘ir kunlarning jurnallarini qayta o‘ynash, cho‘qqining
+bir necha barobari bilan), **haqiqiy nosozliklar** (asosiy serverni
+savdo o‘rtasida o‘chirish, tarmoqni uzish, paketlarni tashlash) va
+**solishtirish** (yangi versiya natijalari eski versiya bilan bayt-baqayt).
+“Sinov muhitida ishladi” — faqat birinchi qadam.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Bitta ipli engine", pro: "Deterministik, qulfsiz, barqaror kechikish", con: "Bitta instrument bitta yadro tezligidan oshmaydi (9-qadam)" },
+    { choice: "Zaxira tasdig'ini kutib javob berish", pro: "Hech bir 'bajarildi' yo'qolmaydi", con: "Har javobga bir necha mikrosekund" },
+    { choice: "Saytlararo sinxron replikatsiya", pro: "Butun sayt yonsa ham nol yo'qotish", con: "Har bitimga ~1 ms — 50 barobar sekin (14-qadam)" },
+    { choice: "Qattiq narx yoqalari va to'xtatishlar", pro: "Xato buyurtmalar va halokatli tushishlardan himoya", con: "Haqiqiy keskin harakatda ham savdo to'xtaydi" },
+    { choice: "Tezlik to'sig'i", pro: "Eskirgan narxni 'tortib olish' qiyinlashadi", con: "Hamma uchun sekinroq; murakkab qoidalar (12-qadam)" },
+    { choice: "L3 (har buyurtma) oqimini hammaga berish", pro: "To'liq shaffoflik", con: "Katta hajm; ba'zilar bu ma'lumotdan boshqalarning strategiyasini taxmin qiladi" },
+  ]}
+/>
+
+<Versus
+  left={{ title: "Narx-vaqt (FIFO)", points: [
+    "Bir narxda — kim oldin kelgan",
+    "Erta taklif qo'yish rag'batlantiriladi",
+    "Navbatda birinchi bo'lish uchun tezlik poygasi",
+    "Oddiy va deterministik",
+    "Aksiyalar birjalarida asosiy qoida",
+  ] }}
+  right={{ title: "Hajmga mutanosib (pro-rata)", points: [
+    "Bir narxda — hajmga qarab bo'linadi",
+    "Katta taklif qo'yish rag'batlantiriladi",
+    "Tezlik kamroq muhim, hajm ko'proq",
+    "Qatnashchilar hajmni 'oshirib' ko'rsatishi mumkin",
+    "Ba'zi fyuchers va obligatsiya bozorlarida",
+  ] }}
+/>
+
+<Versus
+  left={{ title: "Doimiy savdo", points: [
+    "Har buyurtma kelishi bilan juftlanadi",
+    "Mikrosekundlar farqi hal qiluvchi",
+    "Narx har lahzada yangilanadi",
+    "Bugungi birjalarning asosiy rejimi",
+  ] }}
+  right={{ title: "Tez-tez to'plam auksionlari", points: [
+    "Buyurtmalar qisqa oraliqda (masalan, 100 ms) yig'iladi",
+    "Oraliq ichida vaqt farqi ahamiyatsiz",
+    "Har oraliq oxirida bitta narx",
+    "Nazariy taklif; amalda cheklangan tajribalar",
+  ] }}
+/>
+
+<Deep title="Tez-tez to'plam auksionlari: tezlik poygasini to'xtatish g'oyasi">
+Budish, Kramton va Shim 2015-yilgi maqolasida (“The High-Frequency Trading
+Arms Race”) shunday dalil keltirdi: doimiy savdoda narx boshqa joyda
+o‘zgarganda, eskirgan taklifni birinchi bo‘lib olish uchun **mexanik**
+poyga bo‘ladi (12-qadam hisobi). Bu poyga ijtimoiy foydasiz: milliardlab
+dollar tezroq kabel va antennalarga ketadi, spred esa tor bo‘lmaydi —
+bozor qiluvchilar “tortib olinish” xavfini narxga qo‘shadi.
+
+Taklif: savdoni diskret qilish. Har, masalan, 100 ms da bitta auksion
+(11-qadamdagi algoritm). Oraliq ichida kelgan buyurtmalar orasida tartib
+**yo‘q** — hammasi teng. Bir mikrosekund tezroq bo‘lish endi hech narsa
+bermaydi; raqobat tezlikdan **narxga** ko‘chadi.
+
+Muhandislik nuqtai nazaridan bu hatto soddaroq: har oraliqda bitta
+deterministik hisob. Qiyinliklari — boshqa birjalar doimiy ishlaganda
+o‘tish, qatnashchilarning qarshiligi va qonunchilik. Ba’zi Yevropa
+platformalari va valyuta bozorlarida o‘xshash “to‘plam” mexanizmlari
+sinab ko‘rilgan, lekin asosiy aksiya bozorlari hali doimiy savdoda.
+Dizayn saboqi: “kim birinchi” qoidasi — qonun emas, **tanlov**, va
+uning o‘z narxi bor.
+</Deep>
+
+### Butun dars o‘nta gapda
+
+1. **Birja — buyurtmalar kitobi va qat’iy qoida**: eng yaxshi narx
+   birinchi, bir narxda — kim oldin kelgan, bitim — maker narxida (2-bo‘lim).
+2. **Kitob — narx darajalari, FIFO navbatlar va indeks**: eng yaxshi
+   narx va bekor qilish — O(1), har xabar yuzlab nanosekund (1-qadam).
+3. **Pul — faqat butun sonlarda**: narx tick’larda, float yo‘q; aks holda
+   noto‘g‘ri summa va ajralgan zaxira (2-qadam, 4.2).
+4. **Bitta ip — tezlik va adolat**: qulfsiz, keshda yashaydigan kitob,
+   aniq tartib; ko‘p yadro — atrofdagi ishlar va instrument guruhlari
+   uchun (4, 9-qadamlar).
+5. **Sekvenser tartibni beradi, soat emas**: har xabar raqam oladi, va
+   butun tizim bitta tarixni ko‘radi (5-qadam).
+6. **Holat = f(jurnal)**: deterministik engine bilan zaxira, tiklash,
+   audit va sinov — bitta mexanizm (6-qadam, 8-bo‘lim).
+7. **“Bajarildi” — va’da**: javobdan oldin xabar kamida ikki mustaqil
+   joyda bo‘lishi kerak (6.1).
+8. **Bozor ma’lumotlari — raqamlangan multicast oqim**: bo‘shliqni
+   sezish, buferlash, suratdan tiklash; eski xabar — eng xavfli (8-qadam, 7-bo‘lim).
+9. **Himoya qatlamlari**: sessiya va idempotentlik, risk limitlari,
+   yoqalar, kill switch, to‘xtatish mexanizmlari — xato bir kun baribir
+   bo‘ladi (7, 11-qadamlar, 10.2).
+10. **Dum kechikish va bo‘sh sig‘im — mahsulotning o‘zi**: o‘rtacha emas,
+    p99.99 va cho‘qqi; 90% band birja — muammo (13–14-bo‘limlar).
+
+## 17. Intervyu savollari
+
+<Callout type="info" title="'Birja loyihalang' savoliga qanday yondashish">
+Birinchi daqiqalarni uch narsaga bering: (1) **kitob va qoida** — narx-vaqt
+ustuvorligi, maker narxi, buyurtma turlari; (2) **tartib va determinizm** —
+sekvenser, bitta ipli engine, jurnal va zaxira; (3) **tashqi dunyo** —
+shlyuz (idempotentlik, risk), bozor ma’lumotlari (multicast, tiklash).
+Keyin raqamlar: cho‘qqi xabar/s, kechikish budjeti, kitob hajmi. Adolat,
+auksionlar va kliring — oxirida, chunki ular yuqoridagilarga tayanadi.
+</Callout>
+
+### 17.1 Kitob va juftlash
+
+<QA q="Buyurtmalar kitobi nima va unda qanday ma'lumot tuzilmalari ishlatiladi?">
+Kitob — kutib turgan limit buyurtmalar: xarid (bid) va sotuv (ask)
+tomonlari. Har tomon — narx darajalari, har daraja — kelish tartibidagi
+FIFO navbat. Tuzilmalar: tartiblangan narxlar (massiv, daraxt yoki
+saralangan ro‘yxat), har daraja uchun ikki tomonlama bog‘langan ro‘yxat
+(boshidan olish, oxiriga qo‘shish, o‘rtasidan o‘chirish — O(1)), va
+buyurtma raqami bo‘yicha indeks (bekor qilish uchun). Darajada jami miqdor
+alohida saqlanadi (L2 uchun).
+</QA>
+
+<QA q="Narx-vaqt ustuvorligini tushuntiring. Bitim narxi qanday aniqlanadi?">
+Kelgan buyurtma avval eng yaxshi narxdagi qarshi buyurtmalar bilan,
+bir narxda esa eng oldin kelganlari bilan juftlanadi. Bitim narxi —
+kitobda turgan (maker) buyurtmaning narxi: u o‘z narxini oldin e’lon
+qilgan. Taker limiti faqat “qayergacha borish mumkin”ni belgilaydi.
+</QA>
+
+<QA q="Kesishgan kitob nima va nega u hech qachon bo'lmasligi kerak?">
+Eng yaxshi bid eng yaxshi ask dan katta yoki teng bo‘lsa — kitob
+“kesishgan”: kimdir qimmatroq olishga, kimdir arzonroq sotishga tayyor,
+lekin ular juftlanmagan. Doimiy savdoda bu matching xatosi degani:
+kesishuvchi buyurtma kelishi bilan juftlanishi kerak edi. Kitob holati
+invarianti: har xabardan keyin `best_bid < best_ask` (auksion rejimidan
+tashqari, u yerda kesishish normal va auksion oxirida hal qilinadi).
+</QA>
+
+<QA q="IOC, FOK va post-only buyurtmalarni qanday amalga oshirasiz?">
+IOC — odatdagi juftlash, qoldiq kitobga emas, bekor qilinadi. FOK — avval
+qarshi tomonda limit ichida qancha mavjudligini sanash (STP qoidasini
+hisobga olib), yetmasa — kitobga tegmasdan bekor; yetsa — oddiy
+juftlash. Post-only — kitobga qo‘yishdan oldin kesishishni tekshirish:
+kesishsa — rad (yoki ba’zi birjalarda narxni bir tick orqaga surish).
+</QA>
+
+<QA q="Buyurtmani o'zgartirish (modify) navbatdagi o'rnini qachon saqlaydi?">
+Odatiy qoida: faqat **miqdorni kamaytirish** navbat o‘rnini saqlaydi —
+bu boshqalarga zarar qilmaydi. Narxni o‘zgartirish yoki miqdorni oshirish
+— yangi buyurtma kabi, navbat oxiriga. Aks holda qatnashchi kichik
+buyurtma bilan navbatda joy “band qilib”, keyin uni kattalashtirardi.
+Narx o‘zgarib kesishsa — darhol juftlanadi.
+</QA>
+
+<QA q="O'z-o'zi bilan savdoni oldini olish (STP) nima uchun kerak va qanday ishlaydi?">
+Bitta firmaning (yoki bitta hisobning) xarid va sotuv buyurtmalari
+bir-biri bilan juftlansa — soxta hajm paydo bo‘ladi (manipulyatsiya
+belgisi) va komissiya bejiz to‘lanadi. STP: juftlash paytida maker egasi
+taker egasi bilan bir xil bo‘lsa, belgilangan harakat — kelgan
+buyurtmani bekor qilish, kitobdagini bekor qilish yoki ikkalasini. Bu
+FOK hisobiga ham ta’sir qiladi.
+</QA>
+
+<QA q="Narx uchun nega float emas, butun son ishlatiladi?">
+Float ikkilik kasr: 0.1 aniq ifodalanmaydi, yig‘indilarda xato
+to‘planadi, va turli protsessor/kompilyator sozlamalarida natija farq
+qilishi mumkin. Birjada ikkita xavf: noto‘g‘ri summa va asosiy hamda
+zaxira serverlarning **turli** natijasi (determinizm buziladi). Yechim —
+narx tick’larda, miqdor lotlarda, summa eng kichik pul birligida, hammasi
+butun son.
+</QA>
+
+<QA q="Ochilish auksioni narxi qanday topiladi?">
+Har mumkin bo‘lgan narx uchun: shu narxda yoki yuqorida xarid qilishga
+tayyorlar jami va shu narxda yoki pastda sotishga tayyorlar jami;
+bajariladigan hajm — ularning kichigi. Eng katta hajm beradigan narx
+tanlanadi; teng bo‘lsa — eng kam nomutanosiblik, bozor bosimi, oldingi
+narxga yaqinlik. Hamma mos buyurtmalar bitta narxda bajariladi.
+</QA>
+
+### 17.2 Tartib, determinizm va ishonchlilik
+
+<QA q="Nega ko'p birjalarning matching engine'i bitta ipda ishlaydi?">
+Kitob — umumiy holat. Ko‘p ip qulf talab qiladi: kechikish dumi o‘sadi,
+kesh qatorlari yadrolar orasida “sakraydi”, va eng muhimi — tartib
+operatsion tizim rejalashtiruvchisiga bog‘liq bo‘ladi, determinizm
+yo‘qoladi. Bitta ip bilan kitob keshda yashaydi, qulf yo‘q, tartib aniq.
+Masshtab — instrumentlarni guruhlarga bo‘lib, har guruh o‘z ipida; tarmoq,
+dekodlash, jurnal — boshqa iplarda, qulfsiz halqali buferlar orqali.
+</QA>
+
+<QA q="Sekvenser nima va u qanday muammoni hal qiladi?">
+Kiruvchi har xabarga yagona, ketma-ket tartib raqami beradigan komponent.
+Shundan keyin engine, jurnal, zaxira va bozor oqimi — hammasi shu
+tartibni ishlaydi. “Kim birinchi” — raqam bilan aniq; zaxira aynan shu
+ketma-ketlikni o‘ynab, bir xil holatga keladi. Narxi — yagona nuqta:
+sekvenser juda sodda, tez va zaxiralangan bo‘lishi kerak, zaxira raqamlarni
+aynan davom ettiradi.
+</QA>
+
+<QA q="Engine server o'lsa, qanday qilib hech bir bitim yo'qolmaydi?">
+Faol-passiv juftlik: zaxira engine bir xil raqamlangan xabarlarni oladi va
+hammasini hisoblaydi, lekin javob bermaydi. Mijozga “bajarildi” faqat
+xabar zaxirada (yoki jurnalda) tasdiqlangandan keyin yuboriladi. Asosiy
+o‘lsa — fencing bilan aniq to‘xtatiladi, zaxira oxirgi raqamdan davom
+etadi. Engine deterministik bo‘lgani uchun zaxiraning holati asosiyniki
+bilan bir xil.
+</QA>
+
+<QA q="Deterministik engine'ni nima buzishi mumkin?">
+Tizim soatini o‘qish, tasodifiy sonlar, hash jadval yoki to‘plam bo‘yicha
+aylanish tartibi, float yaxlitlashi, ko‘p ip, tashqi so‘rovlar (baza,
+tarmoq), xotira manzillari bo‘yicha saralash, turli kod versiyalari.
+Himoya: hamma kirish — sekvenserdan (vaqt ham xabarda), butun sonlar,
+tartiblangan tuzilmalar, bitta ip; aniqlash — asosiy va zaxiraning
+davriy nazorat summalari va jurnalni qayta o‘ynab solishtirish.
+</QA>
+
+<QA q="'Bo'lingan miya' (split brain) nima va birjada qanday oldi olinadi?">
+Tarmoq uzilishida zaxira asosiyni o‘lgan deb hisoblab, o‘zi asosiy
+bo‘ladi, lekin eski asosiy tirik va javob berishda davom etadi: ikki
+engine turli bitimlar qiladi. Oldini olish: fencing — yangi asosiy
+ishlashdan oldin eskisi aniq to‘xtatiladi (hakam komponent, tarmoq
+portini o‘chirish); davr raqami (epoch) — eski davr xabarlari rad
+etiladi; saytlararo o‘tish — odam qarori bilan.
+</QA>
+
+<QA q="Mijoz buyurtma yubordi va javob olmadi. Qanday qilib takror buyurtma bo'lmasligini ta'minlaysiz?">
+Ikki qatlam. Sessiya darajasida — har yo‘nalishda tartib raqamlari:
+qayta ulanganda mijoz “qaysi raqamgacha oldim” deydi va yo‘qolgan
+javoblar qayta yuboriladi, hech narsa takrorlanmaydi. Buyurtma darajasida —
+mijozning identifikatori (ClOrdID): bir xil ID bilan ikkinchi buyurtma
+takror deb rad etiladi. Mijoz javobni bilmasa, yangi buyurtma emas,
+holat so‘rovi yuboradi.
+</QA>
+
+<QA q="Knight Capital hodisasidan qanday muhandislik saboqlari bor?">
+Chiqarish avtomatik va tekshiriladigan bo‘lishi kerak (8 serverdan biriga
+yangi kod tushmagan); eski, ishlatilmayotgan kod o‘chiriladi, bayroqlar
+qayta ishlatilmaydi; ogohlantirishlar kimdir ko‘radigan va harakat
+qiladigan joyga borsin; har qatnashchi uchun avtomatik limitlar va tezkor
+kill switch; orqaga qaytish rejasi sinalgan bo‘lsin (tuzatish urinishi
+vaziyatni yomonlashtirdi).
+</QA>
+
+<QA q="Zaxira saytni sinxron qilish kerakmi?">
+Masofaga bog‘liq. 100 km da borish-kelish ~1 ms: sinxron replikatsiya har
+bitimni 20 µs dan ~1 ms ga sekinlashtiradi. Amaliy murosa: bitta sayt
+ichida sinxron (ikki mustaqil server), saytlararo asinxron, avariyadan
+keyin qatnashchilar bilan oxirgi bitimlarni solishtirish tartibi bilan.
+Saytlararo o‘tish — odatda odam qarori, va muntazam sinov savdosi bilan
+mashq qilinadi.
+</QA>
+
+### 17.3 Bozor ma’lumotlari, adolat va ekspluatatsiya
+
+<QA q="L1, L2 va L3 bozor ma'lumotlarining farqi nima?">
+L1 — eng yaxshi bid va ask (narx va miqdor) va oxirgi bitim. L2 — har narx
+darajasidagi jami miqdor (kitob chuqurligi). L3 — har bitta buyurtma:
+qo‘shildi, o‘zgardi, bajarildi, bekor qilindi. L3 dan L2 va L1 ni qurish
+mumkin, aksincha — yo‘q. Hajm ham shu tartibda o‘sadi.
+</QA>
+
+<QA q="Nega bozor ma'lumotlari UDP multicast orqali yuboriladi va yo'qolgan paketlar qanday tiklanadi?">
+Multicast — bitta paket tarmoqda hamma obunachiga nusxalanadi: birja
+yuklamasi mijozlar soniga bog‘liq emas va hamma bir vaqtda oladi. UDP
+kafolat bermaydi, shuning uchun: har xabarda tartib raqami; ikkita bir
+xil oqim (A/B) turli yo‘llardan; ikkalasida ham yo‘qolsa — surat kanali:
+mijoz buferlaydi, surat oladi, suratdan eskilarini tashlab, qolganini
+qo‘llaydi.
+</QA>
+
+<QA q="L2 oqimida qiymatlar absolyut ('endi 700') bo'lsa, o'zgarish ('+200') bo'lgandan qanday afzallik va qanday xavf bor?">
+Afzallik: takrorni qo‘llash zararsiz (idempotent), va bitta xabar
+yo‘qolsa ham keyingi shu daraja xabari uni “tuzatadi”. Xavf: **eski**
+xabarni yangi holat ustiga qo‘llash — darajani o‘tgan qiymatga qaytaradi.
+Shuning uchun tartib raqami bo‘yicha qat’iy filtr: faqat keyingi raqam
+qo‘llanadi, eski va takrorlar tashlanadi, suratdan keyin buferdagi
+eskilar ham tashlanadi.
+</QA>
+
+<QA q="Kolokatsiya nima va birja uni qanday adolatli qiladi?">
+Treyderlarning serverlari birja ma’lumot markazida, qisqa masofada —
+mikrosekundlik kechikish uchun. Adolat: hamma ijarachiga bir xil shartlar
+(bir xil uzunlikdagi kabellar, bir xil port tezligi, ochiq narxlar).
+Birja masofa ustunligini yo‘q qila olmaydi, lekin uni hamma uchun bir xil
+sotib olinadigan qila oladi.
+</QA>
+
+<QA q="Tezlik to'sig'i (speed bump) nima va nima uchun kerak?">
+Birjaga kiruvchi va chiquvchi xabarlarni qisqa, bir xil vaqtga (IEX da ~350
+µs, o‘ralgan optik tola bilan) ushlab turish. Bu vaqt ichida birja o‘z
+narxlarini boshqa birjalardagi o‘zgarishga moslab ulguradi, va eng tez
+treyderlar “eskirgan” takliflarni tortib ololmaydi. Tanqid — hamma uchun
+sekinroq va qoidalar murakkab.
+</QA>
+
+<QA q="Birjada qaysi metrikalar eng muhim?">
+Birja ichidagi kechikishning dumlari (p99, p99.99, maksimum) — daqiqa
+bo‘yicha; har bosqichdagi navbat chuqurligi; sekvenser va oqim tartib
+raqamlarining uzluksizligi; asosiy va zaxira nazorat summalari;
+replikatsiya kechikishi; soatlar sinxronligi; rad etishlar va kill
+switch hodisalari. O‘rtacha kechikish deyarli foydasiz — dumni yashiradi.
+</QA>
+
+<QA q="Birjaning sig'imini qanday rejalashtirasiz?">
+Eng yomon soniya uchun: kuzatilgan eng katta cho‘qqi sig‘imning yarmidan
+oshmasin, odatiy yuk — bir necha foiz. Har komponent (shlyuz, sekvenser,
+engine guruhlari, replikatsiya, oqim) alohida o‘lchanadi; eng faol
+instrumentlar turli guruhlarga taqsimlanadi; eng og‘ir kunlar jurnallari
+bir necha barobar tezlikda qayta o‘ynab sinaladi. Mijozlar tomoni ham —
+oqim kanallarga bo‘linadi.
+</QA>
+
+<QA q="Kliring va hisob-kitob matching'dan qanday farq qiladi?">
+Matching — kim bilan qancha narxda bitim, mikrosekundlarda. Kliring —
+kim kimga nima qarzdor (netting bilan sof pozitsiyalar), markaziy
+kontragent orqali: u har bitimda xaridor uchun sotuvchi, sotuvchi uchun
+xaridor. Hisob-kitob — pul va qimmatli qog‘ozlarning haqiqiy o‘tishi,
+to‘lovga qarshi yetkazib berish tamoyili bilan, AQSh’da 2024-yildan T+1.
+</QA>
+
+<QA q="Noldan kichik birja (masalan, 500 ta instrument) loyihalasangiz, nimadan boshlaysiz?">
+Shlyuz (FIX yoki ikkilik protokol, sessiya raqamlari, ClOrdID, risk
+limitlari, kill switch) → sekvenser → bitta ipli deterministik engine
+(narx darajalari, FIFO, butun sonlar, buyurtma turlari, auksion) →
+jurnal va faol-passiv zaxira (javob — tasdiqdan keyin) → bozor oqimi
+(L2/L3 multicast, A/B, suratlar) → kun oxiri: kliringga eksport, nazorat
+uchun jurnal arxivi. Keyin: kechikish gistogrammalari, nazorat summalari,
+chiqarishdan oldin jurnal qayta o‘ynash testlari, zaxira sayt.
+</QA>
+
+<QA q="Birja ichidagi kechikishni 1 ms dan 20 us ga qanday tushirasiz?">
+Avval o‘lchash: har bosqich uchun gistogramma, qayerda vaqt ketyapti.
+Keyin odatiy tartib: asosiy yo‘ldan disk va qulflarni olib tashlash
+(jurnal va replikatsiya — alohida ipda, lekin javobdan oldin tasdiq);
+xotira ajratish va GC ni yo‘qotish (oldindan ajratilgan hovuzlar);
+yadroga bog‘lash va doimiy so‘rash; kernel bypass tarmoq; keshga mos
+tuzilmalar (massivli kitob). Har qadamdan keyin — p99.99 ni qayta o‘lchash.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/stock-exchange/` da:
+`book.py` — buyurtmalar kitobi, to‘qqizta usul TODO; `feed.py` — L2 oqimi
+mijozi, ikkita usul TODO; `model.py` — tayyor buyurtma va hodisa turlari;
+`exchange.py` — tayyor sekvenser, jurnal va L2 oqimi; `check.py` — 21 ta
+tekshiruv, taxminan 6 soniya. Faqat Python standart kutubxonasi.
+
+<Deep title="check.py qanday tekshiradi: sodda model — hakam">
+Tez kitobni tekshirishning eng ishonchli yo‘li — uni **sekin, lekin
+shubhasiz to‘g‘ri** model bilan solishtirish. `check.py` ichida 3-bo‘limdagi
+v0 ga o‘xshash `Naive` klass bor: hamma buyurtmalar bitta ro‘yxatda, har
+xabarda qarshi tomon qaytadan saralanadi. Uni tekshirish oson — o‘n
+qatorni o‘qib, qoidaga mosligini ko‘rasiz.
+
+```
+har seed uchun (40 ta), har qadamda (1 200 ta):
+  buyruq = tasodifiy: yangi (GTC/IOC/FOK, market, post-only, xato
+           miqdor/narx, takror oid) | bekor | o'zgartirish
+  siz  = sizning_kitob.buyruq(...)
+  hakam = Naive.buyruq(...)
+  talab: siz == hakam            (hodisalar ro'yxati aynan)
+         holat(siz) == holat(hakam)  (har daraja, har navbat tartibi)
+         best_bid, best_ask, depth mos
+```
+
+Bu **differensial test** deyiladi. Uning kuchi — siz o‘ylamagan holatlarni
+tasodif o‘zi topadi: FOK dan keyin STP, o‘zgartirilgan buyurtma kesishib
+qisman bajarilishi, bekor qilingan buyurtmaning oid si qayta ishlatilishi.
+Farq topilsa, xabar seed va qadamni beradi — ketma-ketlikni aynan
+takrorlash mumkin (determinizm testning o‘zida ham kerak!).
+
+Sodda model tez kitobni almashtira olmaydi: 5-tekshiruv (20 000 buyurtmali
+kitobda 200 000 buyruq, 6 soniya) unga sekundiga ~1 000 buyruqdan
+oshmaydi. Tez kitob esa sekundiga yuz minglab buyruqni ishlaydi —
+4.1 dagi hisobning amaliy isboti.
+</Deep>
+
+<Task title="1-daraja: v0 va uning chegarasi">
+3-bo‘limdagi v0 ni ishga tushiring va o‘lchang: kitobda 1 000, 10 000 va
+50 000 kutayotgan buyurtma bo‘lganda sekundiga nechta yangi buyurtma va
+nechta bekor qilish ishlanadi. Bekor qilish usulini (`cancel(oid)`) o‘zingiz
+qo‘shing.
+
+**Tekshiruv mezoni:** (1) jadval: kitob hajmi → buyurtma/s va bekor/s;
+kitob 10 barobar oshganda tezlik taxminan 10 barobardan ko‘proq
+tushishini ko‘rsating (saralash n log n); (2) narxni `float` qilib, 1 000
+ta tasodifiy bitim summasini ikki xil tartibda yig‘ing — natijalar bir xilmi?
+Keyin narxni butun songa (tick) o‘tkazib qaytaring; (3) v0 ga ikkita ip
+bilan bir vaqtda buyurtma yuboring (qulfsiz) — biror aksiya ikki marta
+sotilganini yoki miqdor manfiy bo‘lganini topishga harakat qiling.
+</Task>
+
+<Task title="2-daraja: matching engine va L2 mijozi (asosiy topshiriq)">
+`book.py` dagi `Book` usullarini va `feed.py` dagi `on_update`,
+`on_snapshot` ni yozing. `python check.py` ularni birlik testlari, sodda
+model bilan differensial fuzz, jurnalni qayta o‘ynash, “yomon tarmoq”
+stsenariylari va tezlik testi bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 21/21 OK`. Shu jumladan: narx-vaqt
+ustuvorligi va maker narxi; IOC, FOK (kitobga tegmasdan bekor), post-only,
+STP (o‘z buyurtmasigacha); o‘zgartirishda navbat faqat kamaytirishda
+saqlanadi; float narx rad etiladi; 40 ta tasodifiy ketma-ketlikda sodda
+model bilan aynan bir xil hodisalar va holat; L2 mijozi 30 ta yomon tarmoq
+stsenariysida sinxron paytda doim to‘g‘ri; 200 000 buyruq 6 soniyadan tez.
+Keyin tajriba: darajalarni `OrderedDict` o‘rniga oddiy ro‘yxat qilib, tezlik
+testida nima bo‘lishini ko‘ring.
+</Task>
+
+<Task title="3-daraja: auksion va jurnal bilan tiklash">
+2-darajadagi kitobga **ochilish auksioni** qo‘shing (11-qadam Deep):
+`Book.auction()` — yig‘ilgan (kesishgan) buyurtmalar uchun eng ko‘p hajm
+beradigan narxni topadi va hamma mos buyurtmalarni shu narxda narx-vaqt
+tartibida bajaradi. Keyin `exchange.py` ustiga **surat va tiklash** quring:
+har N buyruqda kitob surati, “o‘lim”dan keyin surat + jurnal dumidan tiklash.
+
+**Tekshiruv mezoni:** (1) 11-qadamdagi jadval misolida narx 100.50, hajm
+900; teng hajmli holatlar uchun nomutanosiblik qoidasi; (2) auksiondan
+keyin kitob kesishmagan; (3) tasodifiy nuqtada “o‘ldirilgan” birjani
+surat + jurnaldan tiklash: holat va keyingi hodisalar o‘ldirilmagan birja
+bilan aynan bir xil (1 000 ta tasodifiy o‘lim nuqtasi); (4) tiklash vaqtini
+surat oralig‘iga qarab o‘lchang (6-qadam Deep).
+</Task>
+
+<Task title="4-daraja: sig'im va kechikish modeli">
+Skript yoki jadval: kirish — o‘rtacha va cho‘qqi xabar oqimi, instrumentlar
+soni va faollik taqsimoti, bitta engine sig‘imi, replikatsiya va tarmoq
+kechikishlari, zaxira sayt masofasi. Chiqish — engine guruhlari soni, navbat
+va kechikish (cho‘qqida), bozor oqimi hajmi, zaxira saytni sinxron qilish
+narxi.
+
+**Tekshiruv mezoni:** (1) 1.3, 7-qadam, 10-qadam, 13.1 va 14-qadam
+hisoblarini takrorlang; (2) 3 soniyalik “yangilik bo‘roni”ni simulyatsiya
+qiling: sig‘im 1.5x, 2x va 4x zaxirada — navbat va p99.99 kechikish grafigi;
+(3) eng faol aksiyaga oqim 20 barobar oshsa, uning guruhidagi boshqa
+aksiyalar kechikishi qanday o‘zgaradi va buni qanday cheklash mumkin
+(13.2 Deep)?
+</Task>
+
+<Deep title="Nega testlarda tasodif ham deterministik">
+Fuzz testlar tasodifiy buyruqlar yaratadi, lekin har biri `random.Random(seed)`
+bilan — **qat’iy seed** dan. Bir xil seed — bir xil ketma-ketlik, har
+ishga tushirishda. Bu birja dizaynining kichik nusxasi: tasodif ham
+“kirish”, va uni yozib qo‘yish kerak.
+
+Nima uchun muhim? Xato topilganda “ba’zan yiqiladi” emas, “seed 17,
+312-qadam” deb aniq aytish mumkin. Xatoni tuzatgach, aynan shu holat
+qayta sinaladi. Birjalarning o‘zi ham shunday ishlaydi: ishlab chiqarishdagi
+kun jurnali — eng qimmatli test to‘plami, chunki unda haqiqiy, “tasodifiy”
+bozor bor, va uni istalgancha marta aynan takrorlash mumkin.
+
+Ikkinchi qatlam — **mutatsion test**: to‘g‘ri yechimga ataylab xato
+kiritib (masalan, navbatni teskari tartibda saqlash), testlar buni
+ushlaydimi — tekshirish. Ushlamasa, testlarda teshik bor. Keyingi
+Callout — bu amaliyot testlari uchun natija.
+</Deep>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan yigirma
+ikkita varianti bilan sinalgan. Kitob uchun: navbatni teskari (LIFO)
+saqlash, bitimni taker narxida qilish, IOC qoldig‘ini kitobda qoldirish,
+market qoldig‘ini kitobga qo‘yish, FOK tekshiruvini o‘tkazib yuborish yoki
+`<=` bilan adashtirish, FOK da o‘z buyurtmasini hisobga olmaslik, STP da
+o‘z buyurtmasidan “sakrab” o‘tish, post-only’da teng narxni kesishmaydi
+deb hisoblash, kamaytirishda navbatni yo‘qotish yoki oshirishda saqlash,
+kesishuvchi o‘zgartirishni juftlamaslik, bekor qilishda daraja jamini
+yangilamaslik, oid takrorini faqat kitobdagilar bo‘yicha tekshirish, rad
+etilgan oid ni “ishlatilgan” deb belgilash, float narxni qabul qilish. L2
+mijozi uchun: takrorlarni qo‘llash, kutish paytida xabarlarni tashlash,
+suratdan eski xabarlarni qo‘llash, suratdan keyingi bo‘shliqda qayta
+so‘ramaslik, bo‘shliqni sezmaslik, bo‘shliqda kutish holatiga o‘tmaslik.
+Har biri kamida bitta testni yiqitadi. Referens yechim esa qo‘shimcha
+300 ta tasodifiy ketma-ketlikda sodda model bilan farqsiz.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Buyurtma (order) | Tomon, miqdor va (limit bo‘lsa) narx chegarasi bilan savdo taklifi |
+| Limit buyurtma | Narx chegarasi bor; darhol bajarilmasa, kitobda kutadi |
+| Bozor (market) buyurtmasi | Narx chegarasisiz; bor takliflar bilan darhol bajariladi |
+| Buyurtmalar kitobi | Kutib turgan limit buyurtmalar: bid va ask tomonlari |
+| Bid / Ask | Xarid takliflari / sotuv takliflari |
+| Spred | Eng yaxshi ask va eng yaxshi bid farqi |
+| Narx darajasi | Kitobda bitta narxdagi buyurtmalar navbati |
+| Narx-vaqt ustuvorligi | Avval eng yaxshi narx, bir narxda — kim oldin kelgan (FIFO) |
+| Pro-rata | Bir narxdagi bajarilish hajmga mutanosib bo‘linadi |
+| Maker / Taker | Kitobda turgan (likvidlik yaratuvchi) / kelib bajariladigan (likvidlik oluvchi) |
+| Tick | Narxning eng kichik o‘zgarish qadami |
+| Lot | Miqdorning eng kichik birligi |
+| IOC | Darhol bajarilgani — bitim, qoldig‘i bekor |
+| FOK | To‘liq darhol bajarilsa — bitim, aks holda hech narsa |
+| Post-only | Faqat kitobga qo‘shiladigan buyurtma; kesishsa — rad |
+| Iceberg | Kitobda miqdorining faqat bir qismi ko‘rinadigan buyurtma |
+| STP | O‘z-o‘zi bilan savdoni oldini olish |
+| Matching engine | Buyurtmalarni qoidaga ko‘ra juftlaydigan yadro |
+| Sekvenser | Har kiruvchi xabarga yagona tartib raqami beruvchi komponent |
+| Deterministik qayta o‘ynash | Bir xil jurnal — har doim aynan bir xil holat va natija |
+| Faol-passiv zaxira | Zaxira hamma narsani hisoblaydi, lekin javob bermaydi |
+| Fencing | Yangi asosiy ishlashdan oldin eskisini aniq to‘xtatish |
+| Shlyuz (gateway) | Mijoz sessiyalari, tekshiruvlar va risk nazorati eshigi |
+| ClOrdID | Mijozning buyurtma identifikatori: takrorlarni aniqlash uchun |
+| Narx yoqasi | Oxirgi narxdan ruxsat etilgan chetlanish chegarasi |
+| Kill switch | Qatnashchining hamma buyurtmalarini bekor qilib, yangilarini to‘xtatish |
+| L1 / L2 / L3 | Eng yaxshi narxlar / darajalar jami / har bitta buyurtma |
+| Multicast | Bitta paketni tarmoq hamma obunachiga nusxalaydi |
+| Surat (snapshot) | Kitobning ma’lum tartib raqamidagi to‘liq holati |
+| Kolokatsiya | Qatnashchi serverlarining birja ma’lumot markazida joylashuvi |
+| Tezlik to‘sig‘i | Hamma xabarlarni bir xil qisqa vaqtga ushlab turish |
+| Auksion | Buyurtmalar yig‘ilib, bitta narxda bajariladigan rejim |
+| LULD, circuit breaker | Keskin narx harakatida savdoni avtomatik to‘xtatish |
+| Kliring | Bitimlardan kim kimga qarzdorligini hisoblash (netting bilan) |
+| Markaziy kontragent (CCP) | Har bitimda xaridor uchun sotuvchi, sotuvchi uchun xaridor |
+| Hisob-kitob (T+1) | Pul va qimmatli qog‘ozlarning haqiqiy o‘tishi, bitimdan bir kun keyin |
+| Spoofing | Bajarish niyatisiz buyurtmalar bilan bozorni aldash |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| LMAX bitta ipda | ~6 M buyurtma/s | Martin Fowler, “The LMAX Architecture” (2011) |
+| Yorug‘lik optik tolada | ~200 000 km/s, ~5 µs/km | Fizika (sindirish koeffitsiyenti ~1.47) |
+| IEX tezlik to‘sig‘i | ~350 µs, ~61 km (38 mil) o‘ralgan tola; birja — 2016-yildan | IEX hujjatlari, SEC qarori (2016) |
+| Knight Capital | 2012-yil 1-avgust; ~45 daqiqa; ~4 M bitim, 154 aksiya, 397 M+ aksiya; 460 M $ dan ortiq zarar; 97 ta xat 08:01 dan | SEC, Knight Capital Americas LLC ishi bo‘yicha qaror (2013) |
+| NYSE to‘xtashi | 2015-yil 8-iyul, 3.5 soatga yaqin | NYSE va matbuot hisobotlari |
+| MiFID II vaqt sinxronligi | Yuqori chastotali savdo uchun UTC dan 100 µs gacha | Yevropa Komissiyasi, RTS 25 |
+| AQSh’da T+1 | 2024-yil 28-may | SEC qoidasi (2023) |
+| Butun bozor to‘xtatishlari | S&P 500: 7%, 13%, 20% | AQSh birjalari qoidalari |
+| LULD | Yo‘lak chetida 15 soniya — 5 daqiqalik to‘xtash | LULD rejasi |
+| Taker komissiyasi chegarasi | 0.0030 $ / aksiya (uzoq yillar) | Reg NMS, 610-qoida |
+| Nasdaq MRX AWS da | 2022-yil oxiri | Nasdaq va AWS e’lonlari |
+| Buttonwood kelishuvi | 1792, 24 broker | NYSE tarixi |
+| Nasdaq | 1971, birinchi elektron fond bozori | Nasdaq tarixi |
+| 2-daraja natijalari | 21/21; 22 mutatsiya; qo‘shimcha 300 seed | `docs/amaliyot/stock-exchange/`, referens implementatsiya |
+
+Birjaning kunlik xabarlari va ularning turlari, cho‘qqi koeffitsiyentlari,
+kechikish budjeti qismlari, engine va sekvenser sig‘imi, kitob hajmlari,
+paket yo‘qolish ehtimoli, komissiya va chegirma darajalari, uskuna va
+daromad raqamlari, nazorat ma’lumotlari hajmi — **illyustratsiya uchun
+taxminiy**. Haqiqiy birjalarning ichki arxitekturasi va raqamlari to‘liq
+ochiq emas va bir-biridan sezilarli farq qiladi; darsdagi mexanizmlar
+ochiq manbalar (maqolalar, regulyator hujjatlari, protokol
+spetsifikatsiyalari, muhandislar chiqishlari) va sohaning umumiy
+tamoyillariga asoslangan. Asosiy xulosalar — bitta ipli deterministik
+yadro, sekvenser va jurnal, butun sonli pul, raqamlangan oqim va tiklash,
+dum kechikish va bo‘sh sig‘im — bu raqamlarning bir necha barobarlik
+xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Martin Fowler (2011), “The LMAX Architecture”, martinfowler.com
+- LMAX Exchange, “Disruptor: High performance alternative to bounded
+  queues for exchanging data between concurrent threads” (texnik hujjat)
+- Martin Thompson, “Mechanical Sympathy” blogi va chiqishlari
+- SEC (2013), Knight Capital Americas LLC ishi bo‘yicha qaror
+  (Release No. 70694)
+- SEC va CFTC (2010), “Findings Regarding the Market Events of May 6, 2010”
+- Eric Budish, Peter Cramton, John Shim (2015), “The High-Frequency Trading
+  Arms Race: Frequent Batch Auctions as a Market Design Response”,
+  Quarterly Journal of Economics
+- Michael Lewis (2014), “Flash Boys” (IEX va tezlik poygasi tarixi)
+- SEC (2005), Regulation NMS (Reg NMS)
+- Yevropa Ittifoqi, MiFID II va RTS 25 (soatlar sinxronizatsiyasi)
+- Nasdaq, TotalView-ITCH va OUCH protokol spetsifikatsiyalari
+- FIX Trading Community, FIX protokoli spetsifikatsiyasi
+- SEC (2023), T+1 hisob-kitob muddatiga o‘tish qoidasi
+- Larry Harris (2003), “Trading and Exchanges: Market Microstructure for
+  Practitioners”, Oxford University Press

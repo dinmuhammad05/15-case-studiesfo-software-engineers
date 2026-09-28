@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 14 ta dars tayyor:
+Hozir 15 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -53,8 +53,9 @@ Hozir 14 ta dars tayyor:
 12 — Uber ETA'ni qanday hisoblaydi (19 000 so'z)
 13 — Amazon S3 qanday ishlaydi (18 500 so'z)
 14 — Apache Kafka qanday ishlaydi (17 500 so'z)
+15 — Fond birjasi qanday ishlaydi (17 500 so'z)
 
-Yana 3 tasi rejada: fond birjasi, Bluesky va Meta Serverless.
+Yana 2 tasi rejada: Bluesky va Meta Serverless.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -73,9 +74,9 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-14 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+15 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
 Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA, Amazon S3,
-Kafka), 3 tasi rejada. Internetsiz ham o'qish mumkin.
+Kafka, fond birjasi), 2 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
@@ -445,6 +446,34 @@ tasdiqlangan xabarni ham yo'qotmasligi kerak.
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/kafka/
 ```
 
+### 3.15 — Fond birjasi
+
+```
+Broker ilovasida "Sotib olish" tugmasini bosasiz. Bir soniyadan keyin:
+"Bajarildi: 10 ta, 100.48".
+
+Shu bir soniyaning katta qismi — telefon va internet. Birjaning o'zida
+esa buyurtmangiz o'nlab MIKROsekundda boshqa odamning buyurtmasi bilan
+juftlanadi. Bir tiyin ham xatosiz, va server o'lsa ham birorta bitim
+yo'qolmasdan.
+
+Qizig'i: dunyodagi eng tez birjalarning yuragi bitta ipda ishlaydi.
+Ko'p yadro emas, qulflar emas — bitta ip. Nega?
+
+Yangi dars — Fond birjasi qanday ishlaydi (17 500 so'z):
+buyurtmalar kitobi va "narx-vaqt ustuvorligi", nega pul float'da
+saqlanmaydi, sekvenser va deterministik jurnal (zaxira server qanday
+qilib aynan bir xil "o'ylaydi"), bozor ma'lumotlari multicast orqali
+qanday tarqaladi va yo'qolgan paket qanday tiklanadi, kolokatsiya va
+350 mikrosekundlik "tezlik to'sig'i", va 45 daqiqada 460 million dollar
+yo'qotgan Knight Capital hodisasi.
+Amaliyotda — o'z matching engine'ingizni yozasiz: sodda model bilan
+minglab tasodifiy buyruqda solishtiriladi va sekundiga yuz minglab
+buyruqqa bardosh berishi kerak.
+
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/stock-exchange/
+```
+
 ---
 
 ## 4. SO'ROVNOMA (poll) — engagement uchun
@@ -456,7 +485,7 @@ Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 - Git va GitHub (ob'ektlar, merge, monorepo)
 - Meta Serverless (XFaaS, sovuq start)
 - Bluesky (federatsiya, AT Protocol)
-- Fond birjasi (matching engine, mikrosekundlar)
+- Discord (ovozli kanallar, xabarlar bazasi)
 
 ---
 
