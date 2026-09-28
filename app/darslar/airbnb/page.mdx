@@ -1,0 +1,2870 @@
+## Bu darsda nima o‘rganasiz
+
+Oldingi darslarning ko‘pida asosiy qiyinchilik hajm edi: sekundiga
+millionlab xabar, eksabaytlab video, milliardlab tinglash. Airbnb’da
+hajm ancha kamtar: butun dunyo bo‘ylab bir soniyada bor-yo‘g‘i bir necha
+o‘nta bron. Lekin har bir bron — **pul, sana va ikki begona odam
+o‘rtasidagi va’da**.
+
+Shuning uchun bu darsning markazida uchta savol turadi.
+
+**Ikki kishi bir kvartirani bir kechaga band qila olmasligi kerak.**
+Bitta uy — bitta kalendar. Ikki mehmon bir soniyada “Band qilish”ni
+bossa ham, faqat bittasi muvaffaqiyatli bo‘lishi kerak. Bu “ikki marta
+bron bo‘lmasligi” kafolati — darsning yuragi.
+
+**Pul hech qachon yo‘qolmasligi va ikki marta yechilmasligi kerak.**
+Mehmon bugun to‘laydi, uy egasi pulni bir necha hafta yoki oy keyin, mehmon
+kelgandan keyin oladi. Orada bekor qilishlar, qaytarishlar, valyuta
+kurslari va tarmoq uzilishlari bor.
+
+**“Parijda, 12–15 mart, 2 kishi” so‘rovi soniyaning bir qismida javob
+berishi kerak.** Bu xarita bo‘yicha qidiruv, sanalar bo‘yicha filtr va
+millionlab e’lon ichidan “sizga eng mos” tartiblash.
+
+Yo‘lda ko‘plab muhandislik g‘oyalari uchraydi: sana va vaqt zonalari,
+ma’lumotlar bazasi cheklovlari, vaqtincha “ushlab turish”, idempotentlik,
+buxgalteriya kitobi, geo-indekslar, ikki tomonlama bozor va ishonch
+tizimi. Dars Spotify darsidagi “hisob-kitob” va Google Docs darsidagi
+“parallellik” mavzularining davomi sifatida o‘qilsa qulay.
+
+## 1. Muammo: aslida nimani qurmoqchimiz?
+
+### 1.1 Funksional talablar
+
+| Talab | Tafsilot |
+| --- | --- |
+| Qidiruv | Joy, sana, mehmonlar soni, narx va qulayliklar bo‘yicha; xaritada |
+| E’lon sahifasi | Rasmlar, tavsif, qoidalar, kalendar, narx, sharhlar |
+| Band qilish | Darhol (Instant Book) yoki uy egasi tasdig‘i bilan |
+| To‘lov | Mehmondan olish, uy egasiga keyinroq to‘lash, qaytarishlar |
+| Kalendar | Uy egasi band kunlar, narxlar va qoidalarni boshqaradi |
+| Xabarlar | Mehmon va uy egasi o‘rtasida, bron bilan bog‘langan |
+| Sharhlar | Ikki tomonlama: mehmon uy haqida, uy egasi mehmon haqida |
+| Ishonch | Shaxsni tasdiqlash, firibgarlikka qarshi, nizolarni hal qilish |
+
+Jadvalning uchinchi va to‘rtinchi qatorlari boshqa darslardagi hech narsaga
+o‘xshamaydi. Twitter’da post ikki marta chiqsa — noqulaylik. Bu yerda
+bitta kechaga ikki bron — ikki oila bitta eshik oldida, yarim tunda. Bitta
+to‘lov ikki marta yechilsa — bank shikoyati va ishonchning yo‘qolishi.
+Tizimning qolgan qismi tezlik va qulaylik uchun **taxminiy** bo‘lishi
+mumkin; bu ikkisi esa **mutlaqo aniq** bo‘lishi shart.
+
+### 1.2 Nofunksional talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Ikki marta bron | Nol. Hech qachon, hech qanday poyga holatida |
+| Ikki marta to‘lov | Nol. Qayta urinishlar va uzilishlarda ham |
+| Qidiruv javobi | p50 < 300 ms, p99 < 1 s (xarita siljiganda ham) |
+| Kalendar yangilanishi | Band qilingan kun qidiruvda ~bir necha soniyada band ko‘rinadi |
+| Mavjudlik | Band qilish va to‘lov — 99.95%+; qidiruv degradatsiya bilan ishlaydi |
+| Uy egasiga to‘lov | Kafolatlangan, kechikishi kuzatiladigan, auditdan o‘tadigan |
+
+Birinchi ikki qator va to‘rtinchi qator o‘rtasida qiziq ziddiyat bor.
+**Band qilish** tizimi hech qachon xato qilmasligi kerak; **qidiruv** esa bir
+necha soniya eskirgan ma’lumot ko‘rsatishi mumkin. Bu ziddiyat butun
+arxitekturani ikkiga bo‘ladi: kichik, qat’iy va sekinroq “haqiqat manbai”
+(bronlar bazasi) va katta, tez, lekin biroz orqada qoladigan “ko‘rinish”
+(qidiruv indekslari). Foydalanuvchi qidiruvda bo‘sh deb ko‘rgan kunni
+band qilmoqchi bo‘lganda, oxirgi so‘z doim birinchisida.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="8 M+" label="Faol e'lonlar" hint="Taxminan, 2024" />
+  <Stat value="~490 M" label="Yiliga band qilingan tunlar" hint="2024" />
+  <Stat value="~4/s" label="O'rtacha bron" hint="Hisoblangan" />
+  <Stat value="~370 MB" label="Butun yil kalendari bitlarda" hint="Hisoblangan" />
+</StatGrid>
+
+<Calc title="Airbnb — bir xil o'lchov bilan" result="Bronlar ~4/s (cho'qqida ~40/s), qidiruv ~400-4 000/s; butun kalendar xotiraga sig'adi">{`BRONLAR:
+  Yiliga band qilingan tunlar: ~490 M (2024, taxminan)
+  O'rtacha qolish: ~3.8 tun  -> 490e6 / 3.8 = ~130 M bron/yil
+  130e6 / 365 = ~355 000 bron/kun = ~4 bron/s o'rtacha
+  Cho'qqi (mavsum boshi, yilning eng faol kuni, eng faol soat): ~10x -> ~40/s
+
+QIDIRUV (faraz):
+  Bitta bronga ~100 qidiruv (xarita siljitish, filtrlar, taqqoslash)
+  130e6 x 100 = 13 mlrd/yil = ~410 qidiruv/s o'rtacha, cho'qqida ~4 000/s
+
+KALENDAR (bo'sh/band) — BIT sifatida:
+  8 M e'lon x 365 kun = 2.92 mlrd kun
+  1 bit har kunga: 2.92e9 / 8 = ~365 MB  (2 yil oldinga: ~730 MB)
+  -> butun dunyo kalendari BITTA serverning xotirasiga sig'adi
+
+E'LON MA'LUMOTLARI:
+  8 M x ~5 KB (matn, qulayliklar, qoidalar, koordinata) = ~40 GB
+  Rasmlar: 8 M x ~25 rasm x bir necha o'lcham -> yuzlab TB (CDN'da)`}</Calc>
+
+Hisobni uch xulosaga qisqartiramiz.
+
+**Birinchi: yozish yuki juda kichik.** Sekundiga 4–40 bron — bitta oddiy
+ma’lumotlar bazasi serveri buni bemalol ko‘taradi. Twitter darsidagi
+sekundiga yuz minglab yozuv bilan solishtiring. Demak band qilish yo‘lida
+**tezlik uchun murosa qilish shart emas**: har bir bronni qat’iy
+tranzaksiya, qulf va tekshiruvlar bilan qilish mumkin.
+
+**Ikkinchi: o‘qish yuki yuz barobar katta.** Qidiruv sekundiga minglab, va
+har biri minglab e’lonni ko‘rib chiqadi. Bu yuk bronlar bazasiga tushsa,
+u bazani o‘ldiradi. Shuning uchun qidiruv alohida, maxsus tizimda — va
+u bazadan **nusxa** oladi (6-bo‘lim).
+
+**Uchinchi: kalendar kutilganidan kichik.** “Qaysi uy qaysi kun bo‘sh”
+degan butun dunyo ma’lumoti bitlarda bir necha yuz megabayt. Bu qidiruvni
+tezlashtirishning kalitidir: sanalar bo‘yicha filtr diskdagi baza so‘rovi
+emas, xotiradagi bir necha bit amali bo‘lishi mumkin.
+
+<Check q="Nega bronlar soni kichik bo'lsa ham, band qilish tizimini loyihalash qiyin?">
+Chunki qiyinlik **son**da emas, **bir vaqtdalik** va **oqibat**da.
+
+Sekundiga 4 ta bron butun dunyo bo‘yicha — lekin ular tasodifiy taqsimlanmagan.
+Mashhur uy (Yangi yil kechasi, konsert yaqinidagi kvartira, festival
+shahri) bir xil sanalar uchun bir necha soniya ichida o‘nlab so‘rov
+olishi mumkin. Butun tizim bo‘yicha yuk kichik, lekin **bitta kalendar
+katakchasi** uchun raqobat keskin.
+
+Ikkinchidan, xatoning narxi assimetrik. Qidiruvda xato — foydalanuvchi
+boshqa uyni tanlaydi. Bronda xato — ikki oila bir eshik oldida, pul
+qaytarish, shoshilinch mehmonxona, sharhlar va obro‘. Sekundiga bir
+milliondan bitta xato ham bu yerda yiliga yuzlab halokat.
+
+Bu Google Docs darsidagi xulosaning boshqa ko‘rinishi: u yerda ham
+qiyinlik foydalanuvchilar sonida emas, **bitta hujjat ichidagi**
+parallellikda edi. Bu yerda — bitta uy kalendari ichida.
+</Check>
+
+## 2. Nol nuqta: tun, sana va kalendar
+
+Bron, qidiruv va to‘lovdan oldin eng past qatlamni aniq aytib olamiz:
+**Airbnb aslida nimani sotadi?** Javob — **tunlar**. Mehmon 12-martdan
+15-martgacha qoladi degani — 12, 13 va 14-mart tunlarini sotib oldi degani.
+15-mart — ketish kuni, u tun sotilmagan va boshqa mehmonga bo‘sh.
+
+### 2.1 Yarim ochiq oraliq
+
+```
+Bron = [kelish, ketish)        — kelish kiradi, ketish KIRMAYDI
+
+Ali:   [12-mart, 15-mart)  -> tunlar: 12, 13, 14
+Vali:  [15-mart, 17-mart)  -> tunlar: 15, 16
+       Ziddiyat yo'q: 15-mart ertalab Ali ketadi, kechqurun Vali keladi
+
+Ikki bron to'qnashadimi?
+  a.kelish < b.ketish  VA  b.kelish < a.ketish
+  Ali va Vali: 12 < 17 va 15 < 15 -> ikkinchisi yolg'on -> to'qnashmaydi
+```
+
+Bu “yarim ochiq oraliq” (half-open interval) kichik texnik tafsilot kabi
+ko‘rinadi, lekin u butun tizim bo‘ylab xatolarning bir sinfini yo‘q qiladi.
+Tunlar soni oddiy ayirma (`ketish − kelish`), ketma-ket bronlar
+bir-biriga tegadi lekin to‘qnashmaydi, va to‘qnashuv sharti — bitta
+qator. Yopiq oraliqlar bilan (`[12, 14]`) har joyda “+1” va “−1” paydo
+bo‘ladi, va ularning bittasi qayerdadir unutiladi.
+
+<Calc title="Kalendarni bitlarda saqlash" result="Bir yil — 46 bayt; to'qnashuvni tekshirish — bir nechta bit amali, mikrosekunddan kam">{`Bitta e'lonning bir yillik kalendari: 365 bit = 46 bayt
+  bit i = 1  <=>  i-kun (tun) band yoki bloklangan
+
+"12-15 mart bo'shmi?"  (yilning 71, 72, 73-kunlari)
+  niqob = bitlar 71..73 = 1
+  (kalendar AND niqob) == 0  ->  bo'sh
+
+64 bitli so'z bilan: bitta so'rovga 1-2 ta AND amali
+  (qolish 64 kundan qisqa bo'lsa — deyarli har doim)
+
+Bitta qidiruv 5 000 nomzodni tekshiradi:
+  5 000 x ~2 amal = 10 000 amal = ~5-10 mikrosekund`}</Calc>
+
+Oxirgi qator 6-bo‘limning asosiy g‘oyasi: sanalar bo‘yicha filtr — bu
+ma’lumotlar bazasiga so‘rov emas, xotiradagi bit amallari. Ma’lumotlar
+bazasida esa bir xil ma’lumot boshqacha saqlanadi (2.3), chunki u yerda
+tezlik emas, **qat’iy to‘g‘rilik** kerak.
+
+### 2.2 Sana — vaqt emas
+
+Bronning kelish va ketish kunlari — **sana**, soat va vaqt zonasisiz.
+Bu nozik, lekin juda muhim qaror.
+
+<Deep title="Vaqt zonalari: nega bron sanasini UTC'da saqlash xato">
+Tasavvur qiling: uy Balida (UTC+8), mehmon Nyu-Yorkda (UTC−5). Mehmon
+“12-mart” ni tanlaydi. Agar tizim buni `2025-03-12T00:00:00` sifatida
+mehmon vaqt zonasida qabul qilib, UTC’ga aylantirsa:
+
+```
+Nyu-York 12-mart 00:00 = UTC 12-mart 05:00 = Bali 12-mart 13:00   (yaxshi)
+Nyu-York 12-mart 00:00 da, lekin server UTC'da "kun"ni kesib qo'ysa,
+yoki mehmon Tokioda bo'lsa (UTC+9):
+Tokio 12-mart 00:00 = UTC 11-mart 15:00 -> sana "11-mart" bo'lib qoladi!
+```
+
+Bitta kunlik siljish — boshqa odamning bron qilgan tuniga tushish. Xato
+faqat ba’zi vaqt zonalarida, ba’zi soatlarda chiqadi — ya’ni test
+paytida deyarli hech qachon.
+
+To‘g‘ri model: **bron sanalari — uyning mahalliy kalendaridagi sana**
+(`DATE` turi, vaqt zonasiz). “12-mart tuni” butun dunyo uchun bitta
+ma’noga ega: Balidagi o‘sha uyning 12-mart tuni. Vaqt zonasi faqat
+**vaqtga bog‘liq qoidalar** uchun kerak:
+
+| Qoida | Qaysi vaqt zonasida |
+| --- | --- |
+| Kelish soati (15:00 dan keyin) | Uyning |
+| “Bugun uchun bron” oxirgi muddati | Uyning (u yerda hali “bugun” bo‘lishi kerak) |
+| Bepul bekor qilish muddati (“kelishdan 24 soat oldin”) | Uyning kelish soatiga nisbatan |
+| Uy egasiga to‘lov vaqti | Server (UTC) — ichki jarayon |
+
+Umumiy qoida: **kalendar sanasini vaqt belgisi sifatida saqlamang.**
+Tug‘ilgan kun, bayram, bron kuni — bular sana; “to‘lov qachon o‘tdi” —
+bu vaqt belgisi (UTC). Bu ikkisini aralashtirish sana bilan ishlaydigan
+tizimlardagi eng keng tarqalgan xatolardan biri.
+</Deep>
+
+### 2.3 Kalendar qoidalari
+
+Kalendar faqat “band / bo‘sh” emas. Uy egasi bir qator qoidalar
+belgilaydi, va har bir bron ularning hammasidan o‘tishi kerak:
+
+| Qoida | Misol | Nima tekshiriladi |
+| --- | --- | --- |
+| Minimal / maksimal tunlar | Kamida 2, ko‘pi 30 | `ketish − kelish` |
+| Tayyorgarlik vaqti | Har bron oldidan va keyin 1 kun bo‘sh | Qo‘shni kunlar ham bo‘sh bo‘lishi |
+| Oldindan bron oynasi | Faqat keyingi 6 oy | Kelish sanasi ≤ bugun + 6 oy |
+| Kelish kunlari | Faqat shanba kelish | Kelish kunining hafta kuni |
+| Bloklangan kunlar | Uy egasi o‘zi yashaydi | Band bilan bir xil |
+| Mehmonlar soni | Ko‘pi bilan 4 | So‘rovdagi son |
+
+Ikkinchi qator ayniqsa qiziq: “tayyorgarlik vaqti” bronning **o‘zidan
+tashqaridagi** kunlarni ham egallaydi. Ya’ni [12, 15) bron qilinsa,
+11 va 15-kunlar ham boshqa bron uchun yopiladi, lekin sotilmaydi. Shuning
+uchun ma’lumotlar bazasida “band tunlar” (sotilgan) va “yopiq tunlar”
+(sotilgan + tayyorgarlik + bloklangan) ikki alohida tushuncha.
+
+Ma’lumotlar bazasida kalendarni ikki xil saqlash mumkin:
+
+```sql
+-- A) Oraliqlar jadvali: har bron — bitta qator
+CREATE TABLE bookings (id, listing_id, check_in DATE, check_out DATE, status);
+--   To'qnashuvni tekshirish: oraliqlar ustida so'rov (2.1 dagi shart)
+
+-- B) Tunlar jadvali: har band tun — bitta qator
+CREATE TABLE booked_nights (
+  listing_id BIGINT, night DATE, booking_id BIGINT,
+  PRIMARY KEY (listing_id, night)          -- <- ikki marta bron shu yerda to'xtaydi
+);
+```
+
+B varianti ko‘proq qator yaratadi (har bron uchun o‘rtacha ~4 ta), lekin
+unda **ma’lumotlar bazasining o‘zi** ikki marta bronni rad etadi: bir xil
+`(listing_id, night)` juftligi ikki marta yozilolmaydi. 5-bo‘limning
+birinchi qadami aynan shu g‘oyadan boshlanadi.
+
+<Check q="Nega 'yarim ochiq oraliq' va 'sana, vaqt emas' qarorlari ikki marta bron muammosiga to'g'ridan-to'g'ri ta'sir qiladi?">
+Chunki ikkalasi ham **“ikki bron bir xil tunni egallaydimi?”** degan
+savolning javobini o‘zgartiradi.
+
+**Yopiq oraliqlar bilan** Ali [12, 14] (14 — oxirgi tun) va Vali [14, 16]
+(14 — birinchi tun) — bir xil tun, to‘qnashuv. Lekin agar qayerdadir
+kimdir “14 — ketish kuni” deb tushunsa, u to‘qnashuvni ko‘rmaydi va ikkala
+bronni ham qabul qiladi. Bitta noto‘g‘ri “+1” — ikki marta bron.
+
+**Vaqt belgilari bilan** bitta bron bir vaqt zonasida “12–15”, boshqasida
+“11–14” bo‘lib ko‘rinadi. To‘qnashuv tekshiruvi qaysi zonada
+bajarilganiga qarab turli natija beradi.
+
+Ikkala qaror ham bitta tamoyilga xizmat qiladi: **tun — yagona, aniq
+va hamma joyda bir xil tushuniladigan birlik bo‘lsin.** Shunda
+to‘qnashuv tekshiruvi — oddiy va bitta ma’noli amal, va uni ma’lumotlar
+bazasining cheklovi (2.3, B varianti) yoki bit amali (2.1 hisobi) bilan
+bajarish mumkin.
+</Check>
+
+## 3. v0: eng sodda ishlaydigan yechim
+
+Bitta veb-ilova (Airbnb’ning boshlanishida bu Ruby on Rails monoliti edi),
+bitta ma’lumotlar bazasi va to‘lov provayderi. Band qilish — uch qadam:
+bo‘shligini tekshirish, pulni yechish, bronni yozish.
+
+```python
+def book(listing_id, check_in, check_out, guest, card):
+    busy = db.query("""SELECT 1 FROM bookings
+                       WHERE listing_id = %s AND status = 'confirmed'
+                         AND check_in < %s AND %s < check_out""",        # 2.1 dagi shart
+                    listing_id, check_out, check_in)
+    if busy:
+        raise Unavailable()
+    total = price(listing_id, check_in, check_out)
+    charge = payments.charge(card, total)                                 # tashqi so'rov, ~1-3 s
+    return db.insert("bookings", listing_id=listing_id, guest=guest.id,
+                     check_in=check_in, check_out=check_out,
+                     status="confirmed", charge_id=charge.id)
+
+def search(city, check_in, check_out, guests):
+    return db.query("""SELECT * FROM listings l
+                       WHERE l.city = %s AND l.max_guests >= %s
+                         AND NOT EXISTS (SELECT 1 FROM bookings b
+                                         WHERE b.listing_id = l.id AND b.status = 'confirmed'
+                                           AND b.check_in < %s AND %s < b.check_out)
+                       ORDER BY l.rating DESC LIMIT 20""",
+                    city, guests, check_out, check_in)
+```
+
+Bu kod o‘n minglab e’lon va kuniga bir necha yuz bron uchun **haqiqatan
+ishlaydi**, va unda ikkita to‘g‘ri g‘oya bor.
+
+Birinchi — **to‘qnashuv sharti to‘g‘ri**: yarim ochiq oraliq (2.1) va
+faqat tasdiqlangan bronlar. Qolgan barcha qadamlar shu shartni saqlab
+qoladi, faqat uni **qayerda va qanday** tekshirishni o‘zgartiradi.
+
+Ikkinchi — **narx serverda hisoblanadi**. Mijoz “menga 300 dollar deb
+yozilgan” deb yubormaydi; server narxni o‘zi hisoblaydi va o‘zi yechadi.
+Bu keyingi har bir versiyada qoladi (11-bo‘lim).
+
+Lekin kodning tartibi — tekshirish, to‘lov, yozish — uchta alohida
+halokatning manbai. Keyingi bo‘lim ularni birma-bir ko‘rib chiqadi.
+
+## 4. Nima sindi
+
+### 4.1 Poyga: ikki mehmon, bitta kecha
+
+`book` funksiyasida tekshirish (`SELECT`) va yozish (`INSERT`) o‘rtasida
+**to‘lov so‘rovi** bor — 1–3 soniya. Shu oynada boshqa mehmon ham xuddi
+shu tekshiruvdan o‘tishi mumkin.
+
+```
+t=0.0  Ali:  SELECT -> bo'sh
+t=0.4  Vali: SELECT -> bo'sh            (Ali hali yozmagan)
+t=0.5  Ali:  payments.charge ...
+t=0.9  Vali: payments.charge ...
+t=2.1  Ali:  INSERT -> tasdiqlandi
+t=2.6  Vali: INSERT -> tasdiqlandi       <- ikki marta bron, ikkalasidan pul yechilgan
+```
+
+<Calc title="Mashhur uyda poyga qanchalik tez-tez" result="Oddiy uyda deyarli hech qachon; talab yuqori sanada — har bir necha daqiqada bitta to'qnashuv">{`"Ko'r oyna" = tekshirish va yozish orasidagi vaqt ~2 s (to'lov ichida)
+
+Oddiy uy: bir xil sanalarga kuniga ~1-2 urinish
+  Ikki urinish 2 s ichida tushish ehtimoli: ~2 x 2 / 86 400 = ~0.005%
+  -> yiliga bir-ikki marta bu uyda
+
+Talab yuqori sana (Yangi yil, festival): bitta uyga shu sanaga
+  daqiqasiga ~2 urinish (ko'pchilik bir vaqtda qidiradi)
+  2 s oynada ikkinchi urinish ehtimoli: 2 x 2/60 = ~7% har bronga
+
+Butun tizim bo'yicha: 130 M bron/yil x hatto 0.01% = 13 000
+  ikki marta bron yiliga -> kuniga ~35 ta oila eshik oldida`}</Calc>
+
+Hisobning oxirgi qatori muammo turini ko‘rsatadi: bu “kamdan-kam
+uchraydigan xato” emas, **kundalik halokat**. Va u aynan eng qimmatli
+paytlarda — talab eng yuqori bo‘lganda — ko‘payadi. Muammoning ildizi
+Google Docs darsidagi bilan bir xil: **tekshirish va harakat o‘rtasida
+dunyo o‘zgarishi mumkin** (check-then-act). Yechim ham xuddi shunday
+sinfdan: tekshirish va yozishni bitta, bo‘linmas amalga birlashtirish.
+
+### 4.2 To‘lov va bron o‘rtasida uzilish
+
+v0 to‘lov va bronni ikki alohida tizimga (provayder va baza) ketma-ket
+yozadi. Ular orasida istalgan narsa sinishi mumkin:
+
+| Qayerda sindi | Natija | Kim zarar ko‘radi |
+| --- | --- | --- |
+| To‘lovdan keyin, `INSERT` dan oldin (server qulab tushdi) | Pul yechildi, bron yo‘q | Mehmon: puli yo‘q, uyi yo‘q |
+| `INSERT` rad etildi (4.1 dagi poyga sezildi) | Pul yechildi, bron yo‘q | Mehmon |
+| Tartibni almashtirsak: `INSERT`, keyin to‘lov rad etildi | Bron bor, pul yo‘q | Uy egasi: kun band, pul yo‘q |
+| To‘lov javobi kelmadi (tarmoq uzildi) | Noma’lum: yechildimi yoki yo‘qmi? | Hamma |
+
+Oxirgi qator eng yomoni: **noma’lum natija**. Provayder pulni yechgan,
+lekin javob yo‘lda yo‘qolgan bo‘lishi mumkin. Server bilmaydi. Buni
+qayta so‘rash (qayta urinish) keyingi muammoga olib keladi.
+
+### 4.3 Qayta urinish — ikki marta yechish
+
+Mehmonning telefoni “Band qilish”ni bosdi, javob 10 soniya kelmadi, ilova
+yoki foydalanuvchi qayta bosdi. Server buni **yangi** so‘rov deb biladi.
+
+<Calc title="Qayta urinishlar natijasida ikki marta yechish" result="Himoyasiz tizimda yiliga yuz minglab ikki marta to'lov">{`Bronlar: ~130 M/yil
+To'lov so'rovlarining javobi kechikadi yoki yo'qoladi: ~0.5% (mobil tarmoq,
+  provayder sekinligi, timeout'lar)
+  -> 650 000 "noma'lum" holat/yil
+
+Ulardan qayta urinish qilinadi: ~50% (foydalanuvchi yoki avtomatik)
+  -> 325 000 qayta urinish
+Birinchi urinish aslida muvaffaqiyatli bo'lgan: ~50%
+  -> ~160 000 ikki marta yechish/yil = ~450/kun
+
+Har biri: bank shikoyati (chargeback), qo'lda qaytarish, ishonch yo'qolishi`}</Calc>
+
+Hisobdagi raqamlar taxminiy, lekin tartibi ishonchli: “kamdan-kam” tarmoq
+muammosi millionlab tranzaksiyada **kuniga yuzlab** ikki marta to‘lovga
+aylanadi. Bu Spotify darsidagi “1% dublikat — 100 M dollar” hisobining
+to‘lovlardagi ko‘rinishi, faqat bu yerda har bir dublikat — bevosita
+mijozning puli.
+
+### 4.4 Qidiruv bronlar bazasini o‘ldiradi
+
+v0 dagi `search` har so‘rovda shahar e’lonlarini bronlar jadvali bilan
+`NOT EXISTS` orqali solishtiradi.
+
+<Calc title="v0 qidiruvining narxi" result="Bitta qidiruv ~100 ms, sekundiga 4 000 ta — 400 yadro faqat qidiruvga, va bu bronlar bazasining o'zida">{`Katta shahar: ~60 000 e'lon (Parij, London tartibida)
+Filtr (mehmonlar soni va h.k.) dan keyin: ~30 000 nomzod
+Har biri uchun bronlar indeksida qidiruv (listing_id, check_in):
+  ~2-5 mikrosekund -> 30 000 x 3 mks = ~90 ms CPU
+
++ tartiblash, 20 tasini tanlash, rasmlar va narxlar uchun qo'shimcha so'rovlar
+
+Cho'qqida ~4 000 qidiruv/s (1.3):
+  4 000 x 0.1 s = 400 yadro-soniya har soniyada
+  -> 400 yadro FAQAT qidiruvga, BRONLAR bazasida
+  -> bron yozuvlari (eng muhim amal) qidiruv ortida navbatda turadi`}</Calc>
+
+Muammo ikki qavatli. Birinchisi — hajm: qidiruv yuki yozishdan yuz
+barobar katta (1.3). Ikkinchisi — **aralashish**: eng muhim, eng kam
+uchraydigan amal (bron) eng ko‘p, eng arzimas amal (qidiruv) bilan bir
+resursni bo‘lishadi. Qidiruv to‘lqini bron yozuvlarini sekinlashtiradi,
+va sekin bron — 4.1 dagi oynani kengaytiradi. Yechim — qidiruvni
+**alohida tizimga** chiqarish (5-bo‘lim, 6–7-qadamlar).
+
+### 4.5 Bitta ilova — yuzlab dasturchi
+
+Kompaniya o‘sganda muammo texnikadan tashkilotga o‘tadi. Airbnb’ning
+Rails monoliti (ichkarida “Monorail” deb atalgan) yillar davomida
+qidiruv, bron, to‘lov, xabarlar, sharhlar va admin panelning hammasini
+o‘z ichiga olgan. Muhandislik blogidagi tavsiflarga ko‘ra, yuzlab
+dasturchi bitta kod bazasiga o‘zgartirish kiritganda deploy navbati,
+bir-birining kodini buzish va sinovlarning uzayishi asosiy to‘siqqa
+aylangan.
+
+| Belgi | Nima uchun muammo |
+| --- | --- |
+| Deploy navbati soatlab | Bitta o‘zgarish boshqa jamoaning o‘zgarishini kutadi |
+| To‘lov kodi qidiruv bilan bir jarayonda | Qidiruvdagi xotira oqishi to‘lovlarni to‘xtatadi |
+| Bitta ma’lumotlar bazasi hammaga | Har bir jamoaning so‘rovi boshqalarning yukiga ta’sir qiladi |
+| Kodning “egasi” noaniq | Xato kimga tegishli — bilib bo‘lmaydi |
+
+Bu Slack va YouTube darslaridagi texnik muammolardan farq qiladi: kod
+**ishlaydi**, lekin uni **o‘zgartirish** qimmatlashadi. 5-bo‘limning
+12-qadami buning yechimi — va uning narxi.
+
+<Check q="v0 dagi uchta asosiy xato (poyga, uzilish, qayta urinish) orasidagi umumiy ildiz nima?">
+Uchalasi ham **bir nechta qadamni bitta bo‘linmas amal deb faraz
+qilish**dan kelib chiqadi.
+
+**Poyga (4.1):** “tekshir, keyin yoz” — ikki qadam, orasida boshqa so‘rov
+kirib qoladi. Faraz: tekshirish natijasi yozish paytida ham to‘g‘ri.
+
+**Uzilish (4.2):** “pul yech, keyin bronni yoz” — ikki tizim, orasida
+qulash mumkin. Faraz: ikkalasi yoki hech biri.
+
+**Qayta urinish (4.3):** “so‘rov yubor, javob ol” — javob yo‘qolishi mumkin.
+Faraz: javob kelmadi — demak amal bajarilmadi.
+
+Taqsimlangan tizimda bu farazlarning hech biri to‘g‘ri emas. Yechimlar
+ham uch xil, lekin bitta g‘oyaga tayanadi: **har bir qadamni o‘zi xavfsiz
+qilish**. Ma’lumotlar bazasi cheklovi (tekshirish va yozish — bitta amal),
+holatlar mashinasi va vaqtincha ushlab turish (qadamlar orasidagi holat
+aniq), idempotentlik kaliti (qayta urinish — xavfsiz). Bular 5-bo‘limning
+birinchi uchta qadami.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar uch guruhda. **Bronning to‘g‘riligi** (1–5): ikki marta bron va
+ikki marta to‘lov bo‘lmasligi, pul to‘g‘ri yetib borishi. **Qidiruv**
+(6–9): xarita, sana va reyting — bronlar bazasiga tegmasdan. **Bozor va
+tashkilot** (10–14): uy egasi va mehmon o‘rtasidagi qoidalar, va
+yuzlab jamoa bitta mahsulot ustida qanday ishlashi.
+
+<Step n={1} title="Tunlar jadvali — ma'lumotlar bazasi hakam" gain="Ikki marta bron poygada ham imkonsiz — qulfsiz, kod xatosidan ham himoya" cost="Har bron ~4 qator; kalendar qoidalari kodda qoladi">
+2.3-bo‘limdagi B varianti: har band tun alohida qator, va
+`(listing_id, night)` — birlamchi kalit. Band qilish endi “tekshir, keyin
+yoz” emas, **faqat yoz**:
+
+```sql
+BEGIN;
+INSERT INTO booked_nights (listing_id, night, booking_id) VALUES
+  (42, '2025-03-12', 9001), (42, '2025-03-13', 9001), (42, '2025-03-14', 9001);
+-- Agar biror tun allaqachon band bo'lsa -> unique violation -> butun tranzaksiya bekor
+INSERT INTO bookings (...);
+COMMIT;
+```
+
+4.1 dagi poyga endi shunday tugaydi: Ali va Vali ikkalasi ham `INSERT`
+qiladi, ma’lumotlar bazasi bittasini qabul qiladi, ikkinchisiga xato
+qaytaradi. Hech qanday qulf, “SELECT ... FOR UPDATE” yoki navbat kerak
+emas — **kafolatni ma’lumotlar bazasining indeksi beradi**.
+
+<Calc title="Tunlar jadvali qancha katta" result="Yiliga ~0.5 mlrd qator, ~30 GB — bitta baza serveri uchun oddiy">{`Yiliga band tunlar: ~490 M (1.3)
+Qator: listing_id 8 + night 4 + booking_id 8 + qo'shimcha ~40 bayt = ~60 bayt
+  490e6 x 60 = ~29 GB/yil (+ indeks ~15 GB)
+
+Faol qism (kelajakdagi va joriy bronlar, ~1 yil): ~45 GB
+O'tgan yillar -> arxivga (faqat tarix va hisobot uchun)
+
+Yozish: ~4 bron/s x ~4 qator = ~16 qator/s, cho'qqida ~160/s — arzimas`}</Calc>
+
+Muhim nozik joy: kalendar **qoidalari** (tayyorgarlik kunlari, minimal
+tunlar — 2.3) indeks bilan tekshirilmaydi. Ular tranzaksiya ichida, kodda
+tekshiriladi. Lekin indeks — **oxirgi himoya chizig‘i**: qoidani
+tekshiradigan kodda xato bo‘lsa ham, bir tun ikki marta sotilmaydi.
+</Step>
+
+<Step n={2} title="Vaqtincha ushlab turish va holatlar mashinasi" gain="To'lov tranzaksiyadan tashqarida, tunlar esa to'lov davomida himoyalangan" cost="Ushlab turilgan, lekin sotilmagan tunlar; muddati tugaganlarni tozalash">
+1-qadam poygani hal qildi, lekin 4.2 muammosini emas: to‘lov (1–3 soniya
+tashqi so‘rov) qayerda bo‘ladi? Uni tranzaksiya ichiga qo‘yish — bazada
+qulflarni soniyalab ushlab turish. Tashqarisiga qo‘yish — “pul yechildi,
+bron yo‘q” xavfi.
+
+Yechim — bronni **bir nechta holatli** qilish:
+
+```
+                 tunlar yozildi              to'lov muvaffaqiyatli
+  (yo'q) ────────────────────────▶ HOLD ──────────────────────────▶ CONFIRMED
+                                     │
+                                     │ 15 daqiqa o'tdi / to'lov rad etildi
+                                     ▼
+                                  EXPIRED  (tunlar bo'shatiladi)
+
+1. Tranzaksiya: tunlarni HOLD holatida yoz (1-qadam cheklovi ishlaydi) -> millisekundlar
+2. Tranzaksiyadan TASHQARIDA: to'lov (sekundlar)
+3. Tranzaksiya: HOLD -> CONFIRMED  yoki  HOLD -> EXPIRED + tunlarni o'chir
+```
+
+Endi har bir uzilish **aniq holatda** qoladi. Server to‘lovdan keyin
+qulasa — bron `HOLD` da turibdi, fon jarayoni uni topadi va to‘lov
+provayderidan natijani so‘raydi (3-qadamdagi kalit bilan). Hech narsa
+“noma’lum” emas.
+
+<Calc title="Ushlab turish muddatini tanlash" result="Bir vaqtda o'rtacha ~1 000, cho'qqida ~10 000 vaqtincha yopiq e'lon — tizim uchun arzimas, lekin mashhur uyda sezilarli">{`Bronlar ~4/s; ulardan har biri avval HOLD bo'ladi
+Ushlab turishlarning ~20% i tasdiqlanmaydi (to'lov rad etildi, mehmon ketdi)
+
+Bir vaqtda faol HOLD'lar soni (Little qonuni: tezlik x vaqt):
+  To'lov odatda ~1 daqiqada tugaydi: 4/s x 60 s = ~240 faol HOLD
+  Tugallanmaganlar TTL gacha turadi: 4 x 0.2 x 900 s = ~720
+
+Cho'qqida (x10): ~9 600 e'lon vaqtincha yopiq — 8 M dan 0.1%
+
+Mashhur uy: bitta mehmon ushlab turib ketib qolsa, uy 15 daqiqa
+  boshqalar uchun "band" ko'rinadi. TTL 5 daqiqa bo'lsa — kamroq yo'qotish,
+  lekin 3D-Secure yoki bank tasdig'i kutayotgan mehmon ulgurmaydi.`}</Calc>
+
+Bu Google Docs darsidagi “ijara” (lease) g‘oyasiga o‘xshaydi: resurs
+muddatli egallanadi, va egasi yo‘qolsa, muddat tugashi bilan o‘z-o‘zidan
+bo‘shaydi. Farq — bu yerda muddat soniyalar emas, daqiqalar, chunki
+kutilayotgan narsa odam (bank ilovasida tasdiqlash).
+</Step>
+
+<Step n={3} title="Idempotentlik kaliti" gain="Qayta urinish — xavfsiz: bir so'rov necha marta kelsa ham, bitta bron va bitta to'lov" cost="Har bir so'rov uchun kalit saqlash; noaniq holatlarni hal qilish mantig'i">
+4.3 muammosi: mijoz javob olmadi va qayta yubordi. Server buni yangi so‘rov
+deb biladi. Yechim — mijoz har bir “niyat” uchun **noyob kalit** yaratadi
+va uni har qayta urinishda o‘zgartirmasdan yuboradi:
+
+```
+POST /reservations
+Idempotency-Key: 5f1c...-guest17-checkout      (mijoz yaratadi, bir marta)
+
+Server:
+  kalit yangi        -> bajar, natijani kalit bilan SAQLA, qaytar
+  kalit bor, tugagan -> saqlangan natijani QAYTAR (hech narsa bajarmasdan)
+  kalit bor, jarayonda -> "hali jarayonda" (409) — mijoz keyinroq so'raydi
+```
+
+To‘lov provayderiga ham xuddi shunday: server provayderga o‘z kalitini
+yuboradi (yirik provayderlar buni qo‘llab-quvvatlaydi), shunda server
+o‘zi qayta ursa ham, provayder pulni ikki marta yechmaydi.
+
+Bu darsliklar bo‘ylab qayta-qayta uchraydigan naqsh — Slack’dagi
+`client_msg_id`, WhatsApp’dagi xabar ID, Spotify’dagi `event_id`, Google
+Docs’dagi `(mijoz, ketma-ketlik)`. Lekin to‘lovlarda u eng qimmat:
+dublikat bu yerda — mijozning haqiqiy puli.
+</Step>
+
+<Deep title="Orpheus: Airbnb'ning idempotentlik kutubxonasi">
+Airbnb 2019-yilda o‘z muhandislik blogida to‘lov tizimidagi ikki marta
+yechishning oldini oluvchi ichki kutubxonasini tasvirlagan — **Orpheus**.
+Uning asosiy g‘oyasi so‘rovni uchta fazaga bo‘lish:
+
+```
+1. RPC dan oldin (lokal tranzaksiya):
+     idempotentlik yozuvini yarat yoki top; "ijara" (lease) ol —
+     shu kalit bilan bir vaqtda faqat bitta ishchi ishlasin
+     so'rov parametrlarini saqlab qo'y
+
+2. RPC (tashqi chaqiruv — to'lov provayderi):
+     tranzaksiyadan TASHQARIDA; natija kelishi yoki kelmasligi mumkin
+
+3. RPC dan keyin (lokal tranzaksiya):
+     natijani va javobni kalit yozuvi bilan BIRGA saqla
+     (ma'lumot va idempotentlik yozuvi — bitta bazada, bitta tranzaksiyada)
+```
+
+Muhim qarorlardan biri — xatolarni **ikki sinfga** ajratish:
+
+| Xato turi | Misol | Nima qilinadi |
+| --- | --- | --- |
+| Qayta urinsa bo‘ladigan | Tarmoq uzildi, timeout, provayder 503 | Kalit “bajarilmagan” holatda qoladi; xuddi shu kalit bilan qayta urinish xavfsiz |
+| Qayta urinib bo‘lmaydigan | Karta rad etildi, noto‘g‘ri so‘rov | Natija yakuniy deb saqlanadi; qayta urinish o‘sha javobni qaytaradi |
+
+Noto‘g‘ri tasnif ikki tomonlama xavfli: vaqtinchalik xatoni “yakuniy”
+deb saqlash — mehmon kartasi aslida ishlaydi, lekin tizim uni rad etib
+qo‘ydi. Yakuniy xatoni “vaqtinchalik” deb hisoblash — cheksiz qayta
+urinishlar va provayder bilan muammo.
+
+Ikkinchi muhim qaror: **idempotentlik yozuvi va biznes ma’lumoti bitta
+tranzaksiyada** yoziladi. Aks holda “bron yozildi, kalit yozilmadi”
+holati mumkin — va qayta urinish ikkinchi bronni yaratadi. Bu Google
+Docs darsidagi “jurnalga yozish tasdiqdan oldin” qoidasining yana bir
+ko‘rinishi: holatning ikki qismi hech qachon alohida-alohida yozilmaydi.
+</Deep>
+
+<Step n={4} title="Avtorizatsiya va yechish — ikki alohida qadam" gain="Bron tasdiqlanmasa, pul hech qachon yechilmaydi — faqat ushlab turiladi va qo'yib yuboriladi" cost="Avtorizatsiya muddati cheklangan; ba'zi to'lov usullarida mavjud emas">
+Karta to‘lovlarida pulni olish ikki bosqichli bo‘lishi mumkin:
+
+```
+AUTHORIZE (avtorizatsiya): bank summani mehmon kartasida "muzlatadi"
+                           — pul hali o'tmagan, lekin ishlatib bo'lmaydi
+CAPTURE (yechish):         muzlatilgan summa haqiqatan o'tkaziladi
+VOID (bekor qilish):       muzlatish olib tashlanadi — hech narsa o'tmagan
+```
+
+2-qadamdagi holatlar mashinasiga to‘g‘ridan-to‘g‘ri mos keladi:
+`HOLD` paytida — avtorizatsiya; `CONFIRMED` bo‘lganda — yechish; `EXPIRED`
+bo‘lsa — bekor qilish. Endi “pul yechildi, lekin bron yo‘q” holati deyarli
+yo‘qoladi: bron tasdiqlanmagan bo‘lsa, pul hech qachon o‘tmagan, faqat
+bir necha kun muzlatilgan.
+
+Uy egasi tasdig‘ini kutadigan bronlarda (10-qadam) bu ayniqsa muhim:
+uy egasi 24 soatda javob beradi, va rad etsa — mehmonning puli hech
+qachon yechilmagan. Narxi: avtorizatsiya odatda bir necha kundan keyin
+o‘z-o‘zidan bekor bo‘ladi, shuning uchun uzoq kutishda qayta avtorizatsiya
+kerak; va ba’zi mahalliy to‘lov usullari bu ikki bosqichni umuman
+qo‘llab-quvvatlamaydi.
+</Step>
+
+<Step n={5} title="Buxgalteriya kitobi va uy egasiga to'lov" gain="Har bir so'm qayerdan kelib, qayerga ketgani — tekshiriladigan; to'lovlar kechiktirilgan va boshqariladigan" cost="Ikki yoqlama yozuv; to'lovlar jadvali; valyuta va mamlakat qoidalari">
+Mehmon 12-yanvarda to‘laydi, 12-martda keladi, uy egasi pulni 13-martda
+oladi. Ikki oy davomida pul **Airbnb’ning hisobida** turadi — va bu
+muddatda bron bekor qilinishi, qisman qaytarilishi yoki nizoga aylanishi
+mumkin. Bu pulni “bronlar jadvalidagi summa” sifatida kuzatish yetarli
+emas. Kerak bo‘lgani — buxgalteriya kitobi.
+
+```
+Ikki yoqlama yozuv: har bir amal — kamida ikkita yozuv, yig'indisi NOL
+
+Mehmon to'ladi 330$ (300 tunlar + 30 xizmat haqi):
+  mehmon_karta          -330
+  kutilayotgan_uy_egasi +291    (300 - 3% uy egasi haqi)
+  airbnb_daromad        + 39    (30 + 9)
+
+Mehmon kelgandan ~24 soat keyin — uy egasiga to'lov:
+  kutilayotgan_uy_egasi -291
+  uy_egasi_bank         +291
+
+Bron bekor qilindi (to'liq qaytarish):
+  kutilayotgan_uy_egasi -291
+  airbnb_daromad        - 39
+  mehmon_karta          +330
+```
+
+Qoida — **hech qachon yozuvni o‘zgartirmaslik**, faqat yangisini
+qo‘shish (Spotify darsidagi tinglashlar kitobi bilan bir xil). Istalgan
+paytda istalgan hisobning qoldig‘i — uning yozuvlari yig‘indisi, va
+butun kitobning yig‘indisi har doim nol. Nol bo‘lmasa — xato bor, va u
+aniq qaysi amalda ekanini topish mumkin.
+
+<Calc title="Kitob hajmi va to'lovlar oqimi" result="Yiliga ~1-2 mlrd yozuv; kuniga ~350 000 uy egasiga to'lov, ~80 mlrd dollar yiliga oqib o'tadi">{`Bronlar: ~130 M/yil
+Har bronga yozuvlar: to'lov (3) + uy egasiga to'lov (2) + ba'zan
+  o'zgarish/qaytarish (3-6) + valyuta konvertatsiyasi (2-4) -> ~8-12
+  130e6 x 10 = ~1.3 mlrd yozuv/yil = ~40/s o'rtacha
+
+Pul oqimi (Gross Booking Value, 2024, taxminan): ~82 mlrd dollar/yil
+  = ~225 M dollar/kun, ~2 600 dollar/s
+
+Uy egasiga to'lovlar: ~130 M/yil = ~355 000/kun
+  ko'plab mamlakat, bank tizimi va valyutada`}</Calc>
+
+Buxgalteriya kitobi texnik jihatdan oddiy (faqat qo‘shiladigan jadval),
+lekin u butun to‘lov tizimining **haqiqat manbai**. Uy egasiga qancha
+to‘lash, qaytarish mumkinmi, soliq hisoboti — hammasi undan hisoblanadi.
+</Step>
+
+<Step n={6} title="Qidiruv — alohida tizimda, o'zgarishlar oqimi bilan" gain="Qidiruv to'lqini bronlarga tegmaydi; qidiruvni alohida kengaytirish mumkin" cost="Qidiruv bir necha soniya orqada; ikki tizimni izchil ushlash">
+4.4 muammosining yechimi — qidiruvni bronlar bazasidan butunlay ajratish.
+Qidiruv tizimi e’lonlar, narxlar va kalendarning **o‘z nusxasiga** ega,
+va u bazadagi o‘zgarishlarni oqim sifatida oladi:
+
+```
+Bronlar bazasi (haqiqat)
+   │  har bir o'zgarish (INSERT/UPDATE/DELETE) jurnalda
+   ▼
+O'zgarishlarni ushlash (CDC — Change Data Capture)
+   │  "e'lon 42: 12-14 mart band", "e'lon 7: narx o'zgardi"
+   ▼
+Hodisalar shinasi (Kafka)
+   │
+   ├──▶ Qidiruv indeksi (e'lonlar, geo, narx)
+   ├──▶ Kalendar bitlari (7-qadam)
+   └──▶ Tahlil, hisobotlar, ML
+```
+
+Airbnb 2018-yilda o‘zining CDC tizimini — **SpinalTap** — ochiq kodga
+chiqargan: u MySQL’ning binlog jurnalini o‘qib, har o‘zgarishni Kafka’ga
+hodisa sifatida uzatadi. Afzalligi: ilova kodi “qidiruvni ham yangila”
+deb eslab qolishi shart emas — bazaga yozilgan narsa avtomatik oqib
+ketadi. Ilovada ikki joyga yozish (baza va qidiruv) — Google Docs
+darsidagi “ikki joyga yozuv, biri yo‘qoladi” muammosini qaytaradi.
+
+Narxi — **eskirish**: bron qilingan tun qidiruvda bir necha soniya
+bo‘sh ko‘rinishi mumkin. Bu qabul qilinadi, chunki oxirgi so‘z 1-qadamdagi
+indeksda: foydalanuvchi “Band qilish”ni bossa, baza rad etadi va u
+“afsuski, bu sanalar band bo‘ldi” xabarini ko‘radi.
+</Step>
+
+<Step n={7} title="Geo indeks: xarita — kataklar" gain="Xarita oynasidagi e'lonlar millisekundlarda" cost="Katak o'lchami tanlovi; chegara va zich shaharlardagi nozik holatlar">
+Qidiruvning asosiy savoli: “xaritaning shu to‘rtburchagida qaysi e’lonlar
+bor?” Kenglik va uzunlik bo‘yicha oddiy indeks buni yaxshi bajarmaydi —
+ikki o‘lchovli oraliq. Yechim — yer sharini **kataklarga** bo‘lish va har
+e’lonni o‘z katagiga yozish:
+
+```
+Katak ID = geohash yoki S2 hujayra (masalan, uzunligi ~1 km)
+  e'lon 42 (48.8566, 2.3522) -> katak "u09tvw"
+
+Xarita oynasi -> uni qoplaydigan kataklar ro'yxati (bir necha o'ntasi)
+  -> har katakdagi e'lonlar (indeksdan)
+  -> aniq to'rtburchak ichidagilarni saralab olish
+```
+
+<Calc title="Xarita oynasi bo'yicha nomzodlar" result="Shahar markazidagi oyna ~20 katak, ~15 000 nomzod — bir necha millisekund">{`Parij markazi, xarita oynasi ~4 x 3 km
+Katak ~1 km x 1 km -> ~12-20 katak (chetlar bilan)
+
+Zichlik: ~60 000 e'lon / ~100 km^2 -> ~600/km^2, markazda ~1 000/km^2
+  20 katak x ~750 = ~15 000 nomzod
+
+Har katak — indeksdagi ro'yxat; 20 ta ro'yxatni birlashtirish:
+  15 000 ID ni o'qish ~1-2 ms (xotirada)
+
+Keyingi filtrlar (sana, mehmonlar, narx) shu 15 000 ustida`}</Calc>
+
+Katak o‘lchami — klassik savdo: juda katta katak (10 km) — ortiqcha
+nomzodlar, keyin ko‘p chiqarib tashlash; juda kichik (100 m) — oyna yuzlab
+katakka bo‘linadi. Shuning uchun tizimlar odatda **bir necha darajali**
+kataklarni ishlatadi: uzoqlashtirilgan xarita uchun katta, yaqinlashtirilgan
+uchun kichik. Bu Uber darsida batafsil ko‘riladigan geoindeks g‘oyasining
+boshlanishi.
+</Step>
+
+<Step n={8} title="Kalendar bitlari xotirada" gain="Sanalar bo'yicha filtr — mikrosekundlar, bazaga bitta ham so'rov yo'q" cost="Har bir qidiruv serverida butun kalendar nusxasi; CDC orqali yangilash">
+7-qadamdan keyin ~15 000 nomzod bor. Ulardan qaysilari 12–15 mart bo‘sh?
+2.1-bo‘limdagi hisob: butun dunyo kalendari bitlarda ~365 MB. Demak uni
+**har bir qidiruv serverining xotirasida** ushlash mumkin:
+
+```
+kalendar[listing_id] = 2 yillik bitmap (730 bit ~ 92 bayt)
+  6-qadamdagi CDC hodisasi keldi: "42: 12-14 mart band"
+    -> kalendar[42] da 3 bitni 1 ga o'rnat
+
+Qidiruv:
+  niqob = sanalar bitlari
+  bo'sh = [id for id in nomzodlar if kalendar[id] & niqob == 0]
+  15 000 nomzod -> ~15 000 AND amali -> ~15-30 mikrosekund
+```
+
+Bu 4.4 dagi 90 ms lik `NOT EXISTS` so‘rovini ~30 mikrosekundga tushiradi —
+**3 000 barobar**. Va eng muhimi, bronlar bazasiga hech narsa tushmaydi.
+
+Kalendar qoidalari (minimal tunlar, kelish kunlari — 2.3) ham xuddi
+shunday oldindan hisoblangan kichik tuzilmalar sifatida saqlanadi.
+Qoidalar murakkab bo‘lgani uchun qidiruv **ba’zan xato** qiladi (masalan,
+tayyorgarlik kunlarini hisobga olmasdan “bo‘sh” ko‘rsatadi) — lekin 1-qadam
+va 2-qadamdagi tekshiruvlar bronni baribir to‘g‘ri rad etadi. Qidiruv
+taxminiy, bron — aniq.
+</Step>
+
+<Step n={9} title="Reyting: saralashdan mashinaviy o'rganishgacha" gain="Mehmon bron qiladigan uylar birinchi sahifada" cost="Model, belgilar va tajribalar infratuzilmasi; tushuntirib bo'lmaydigan tartib">
+Parijda 12–15 mart uchun ~8 000 bo‘sh uy bor. Birinchi sahifada — 18 tasi.
+Qaysi 18 tasi? v0 da “reyting bo‘yicha”. Lekin yuqori reytingli uy mehmon
+uchun juda qimmat yoki markazdan uzoq bo‘lishi mumkin.
+
+Airbnb ilmiy maqolalarida bu yo‘l tasvirlangan: qo‘lda yozilgan
+qoidalardan **gradient boosting** modellariga, keyin **neyron tarmoqlarga**
+(KDD 2019, “Applying Deep Learning to Airbnb Search”). Model har bir
+(mehmon so‘rovi, e’lon) juftligi uchun “bu mehmon shu uyni band qilish
+ehtimoli” ni baholaydi va shu bo‘yicha tartiblaydi.
+
+```
+Belgilar (features) misollari:
+  e'lon:  narx, joylashuv, sharhlar soni va bahosi, rasm sifati,
+          uy egasining javob tezligi, bekor qilish tarixi
+  so'rov: sanalar, mehmonlar soni, qancha oldin qidirilmoqda
+  kontekst: mehmonning oldingi bosishlari va saqlaganlari (sessiya)
+Maqsad: bron (eng kuchli signal) > saqlash > bosish > ko'rsatilib o'tib ketish
+```
+
+Asosiy nozik joy — bu **ikki tomonlama bozor**. Model faqat mehmonni
+emas, uy egasini ham hisobga olishi kerak: mehmon yoqtirgan, lekin uy
+egasi rad etadigan so‘rovni birinchi o‘ringa qo‘yish — ikkalasining
+vaqtini behuda sarflash. 6.3-bo‘limda batafsil.
+</Step>
+
+<Step n={10} title="Darhol bron va so'rov orqali bron" gain="Uy egasi nazoratni saqlaydi; mehmon esa darhol natija olishi mumkin" cost="Ikki xil holatlar mashinasi; kutilayotgan so'rovlar kalendarni qanday egallaydi">
+Ikki xil bron turi bor, va ular turli holatlar mashinasiga ega:
+
+```
+DARHOL BRON (Instant Book):
+  HOLD -> (to'lov) -> CONFIRMED                    — soniyalarda
+
+SO'ROV ORQALI (Request to Book):
+  HOLD -> (avtorizatsiya) -> PENDING_HOST -> (uy egasi 24 soat ichida)
+     -> qabul qildi -> CONFIRMED (yechish)
+     -> rad etdi / javob bermadi -> DECLINED / EXPIRED (bekor qilish)
+```
+
+Savol: `PENDING_HOST` holatidagi so‘rov tunlarni egallaydimi? Agar ha —
+uy egasi 24 soat o‘ylaydi, bu vaqtda boshqa hech kim bu sanalarni ololmaydi.
+Agar yo‘q — ikki mehmon bir xil sanalarga so‘rov yuboradi, uy egasi
+birini qabul qiladi, ikkinchisi avtomatik rad etilishi kerak.
+
+Ikkinchi yondashuvda 1-qadamdagi cheklov o‘rnini **tasdiqlash paytidagi**
+tekshiruv egallaydi: `CONFIRMED` ga o‘tish tunlarni yozish bilan bitta
+tranzaksiyada, va muvaffaqiyatsiz bo‘lsa — so‘rov rad etiladi. Qaysi
+yondashuv tanlansa ham, **ikki marta bron** kafolati bitta joyda — tunlar
+jadvalining indeksida — qoladi.
+</Step>
+
+<Step n={11} title="Narx takliflari" gain="Uy egasi talabga mos narx qo'yadi; bo'sh kunlar kamayadi" cost="Model va tushuntirish; uy egasi ishonchi — oxirgi qaror unda">
+Uy egasi odatda bitta narx qo‘yadi va unutadi. Lekin talab kun, hafta,
+mavsum va tadbirlarga qarab o‘zgaradi: festival haftasida bir xil kvartira
+uch barobar qimmatroq sotilishi mumkin, fevral seshanbasida esa umuman
+sotilmasligi. Airbnb 2015-yilda **Smart Pricing** — uy egasiga kun
+bo‘yicha narx tavsiya qiluvchi tizimni — chiqargan (va shu yili o‘zining
+ML kutubxonasi Aerosolve’ni ochiq kodga chiqargan).
+
+```
+Har e'lon, har kun uchun:
+  talab belgilari: shu hududdagi qidiruvlar soni, bron qilinish tezligi,
+                   o'xshash uylarning narxi va bandligi, mavsum, tadbirlar
+  -> "shu kuni shu narxda bron qilinish ehtimoli"
+  -> uy egasi belgilagan minimal va maksimal oraliqda taklif narx
+```
+
+Muhim dizayn qarori — **uy egasi nazoratni yo‘qotmaydi**: minimal va
+maksimal narx uniki, va u tavsiyani o‘chirib qo‘yishi mumkin. Bu texnik
+emas, bozor qarori: uy egasi o‘z uyi “arzonga ketib qolgan”ini ko‘rsa,
+platformaga ishonchini yo‘qotadi.
+
+Arxitektura nuqtai nazaridan narx takliflari — Spotify darsidagi
+Discover Weekly kabi **oldindan hisoblanadi** (kuniga bir marta,
+barcha e’lonlar va keyingi oylar uchun), qidiruv va e’lon sahifasi esa
+tayyor natijani o‘qiydi.
+</Step>
+
+<Step n={12} title="Sharhlar — ikki tomonlama va bir vaqtda ochiladigan" gain="Halol sharhlar: hech kim javob tariqasida 'qasos' yozolmaydi" cost="14 kunlik kutish; sharhlar kechikib paydo bo'ladi">
+Sharh — ikki tomonlama bozorda ishonchning asosiy manbai. Lekin ikki
+tomonlama sharhning o‘z muammosi bor: agar uy egasi mehmon sharhini
+ko‘rib keyin o‘zinikini yozsa, salbiy sharhga salbiy javob berish
+(“qasos”) vasvasasi paydo bo‘ladi, va mehmonlar halol yozishdan
+qo‘rqadi.
+
+Airbnb’ning qoidasi: ketishdan keyin ikkala tomonda **14 kun** bor, va
+sharhlar **ikkalasi ham yozgandan keyin** yoki muddat tugaganda bir
+vaqtda ochiladi. Hech kim boshqasining sharhini ko‘rib o‘zinikini
+yozmaydi.
+
+```
+Holatlar:
+  ikkalasi ham yozmagan           -> hech narsa ko'rinmaydi
+  biri yozdi                      -> yashirin, ikkinchisiga "sizni sharh kutmoqda"
+  ikkalasi yozdi  YOKI  14 kun o'tdi -> ikkalasi bir vaqtda e'lon qilinadi
+```
+
+Texnik jihatdan bu oddiy holatlar mashinasi va rejalashtirilgan vazifa
+(14-kun oxirida ochish). Lekin bu kichik qoida sharhlar tizimining
+qiymatini tubdan o‘zgartiradi — ko‘p “ishonch” muammolari algoritmda emas,
+**qoidada** hal qilinadi.
+</Step>
+
+<Step n={13} title="Monolitdan servislarga" gain="Jamoalar mustaqil deploy qiladi; to'lov qidiruvdan ajratilgan" cost="Tarmoq chaqiruvlari, taqsimlangan xatolar, migratsiyaning yillari">
+4.5-bo‘limdagi tashkiliy muammo. Airbnb konferensiya chiqishlari va
+muhandislik blogida tasvirlaganidek, kompaniya 2010-yillarning ikkinchi
+yarmida Rails monolitidan servislarga yo‘naltirilgan arxitekturaga (SOA)
+bosqichma-bosqich o‘tgan.
+
+```
+Taxminiy qatlamlar:
+  Taqdimot servislari   — sahifa uchun ma'lumot yig'ish (e'lon sahifasi, qidiruv natijasi)
+  Mantiq servislari      — narxlash, bron qoidalari, bekor qilish siyosati
+  Ma'lumot servislari   — har bir ob'ekt (e'lon, bron, foydalanuvchi) uchun yagona egasi
+                          boshqalar uning bazasiga to'g'ridan-to'g'ri kirmaydi
+```
+
+Oxirgi qator eng muhim: **har bir ma’lumotning bitta egasi**. Bron
+jadvaliga faqat bron servisi yozadi; qidiruv uni CDC orqali o‘qiydi
+(6-qadam), to‘lov — bron servisining API si orqali. Shunda “kim bu
+ma’lumotni buzdi?” savoliga har doim bitta javob bor.
+</Step>
+
+<Deep title="Monolitdan chiqish: nima uchun bu yillar oladi">
+Monolitdan servislarga o‘tish ko‘pincha “kodni bo‘lib tashlash” deb
+tasavvur qilinadi. Amalda eng qiyin qism — **ma’lumot**, chunki
+monolitdagi har bir modul boshqalarning jadvallariga to‘g‘ridan-to‘g‘ri
+kiradi.
+
+Keng tarqalgan bosqichma-bosqich yondashuv (“strangler” naqshi):
+
+```
+1. Yangi servis yaratiladi, lekin monolit bazasini o'qiydi
+2. Monolit ichidagi chaqiruvlar yangi servis API siga yo'naltiriladi
+   (avval faqat o'qish, "soyada" — natijalar solishtiriladi)
+3. Yozuvlar ham servis orqali o'tadi
+4. Ma'lumot servisning o'z bazasiga ko'chiriladi
+   (ikki joyga yozish, solishtirish, keyin o'qishni almashtirish)
+5. Monolitdagi eski kod o'chiriladi
+```
+
+Har bir bosqichda ikki narsa parallel ishlaydi va natijalar
+solishtiriladi — xuddi Spotify darsidagi firibgarlik filtrini “soya
+rejimida” sinash kabi. Bu sekin, lekin har qadamda orqaga qaytish mumkin.
+
+Narxlar ham real. Monolitda bitta funksiya chaqiruvi bo‘lgan narsa endi
+tarmoq so‘rovi: kechikish, qayta urinishlar, taymautlar, qisman
+nosozliklar. E’lon sahifasini chizish uchun o‘nlab servisga murojaat
+kerak bo‘lishi mumkin, va ularning har biri sekinlashsa — sahifa
+sekinlashadi. Shuning uchun SOA bilan birga ikki narsa majburiy bo‘ladi:
+**taqsimlangan kuzatuv** (bitta so‘rov qaysi servislardan o‘tdi) va
+**degradatsiya qoidalari** (sharhlar servisi ishlamasa, sahifa sharhlarsiz
+chiqadi — 10-bo‘lim).
+
+Umumiy dars: SOA — texnik emas, **tashkiliy** yechim. Uni “tezlik uchun”
+qilish odatda xato; uni “yuzlab dasturchi bir-biriga xalaqit bermasin”
+uchun qilish — to‘g‘ri sabab.
+</Deep>
+
+<Step n={14} title="Tashqi kalendarlar bilan sinxronlash" gain="Uy egasi bir nechta platformada sotadi — bitta kalendar" cost="Tashqi tizim kechikishi — platformalararo ikki marta bron xavfi qoladi">
+Ko‘p uy egalari bitta kvartirani bir nechta platformada sotadi. Har bir
+platformaning o‘z kalendari bor, va 1-qadamdagi kafolat faqat **bitta
+platforma ichida** ishlaydi. Platformalar o‘rtasida ikkita yo‘l bor: iCal
+havolalari (davriy o‘qiladigan kalendar fayli) yoki kanal menejerlari
+(API orqali tezkor sinxronlash).
+
+<Calc title="iCal sinxronlashda platformalararo ikki marta bron" result="Sinxronlash har 2 soatda bo'lsa, faol uyda ikki marta bron yiliga bir necha marta — 1-qadamning kafolati bu yerda ishlamaydi">{`Faraz: uy ikki platformada, iCal har ~2 soatda o'qiladi
+  "Ko'r oyna": bir platformadagi bron ikkinchisida ~0-2 soat ko'rinmaydi,
+  o'rtacha ~1 soat
+
+Uy yiliga ~40 bron oladi (ikkala platformadan)
+Bir platformadagi bron vaqtida, ikkinchi platformadan xuddi shu sanalarga
+  1 soat ichida bron kelish ehtimoli (talab yuqori sanalarda): ~2-5%
+
+40 x 0.03 = ~1.2 to'qnashuv/yil har uyda
+Kanal menejeri (API, soniyalar): ko'r oyna ~1 000x qisqa -> deyarli nol`}</Calc>
+
+Bu qadam muhim bir chegarani ko‘rsatadi: **kafolat faqat haqiqat manbai
+bitta bo‘lgan joyda ishlaydi.** Ikki mustaqil tizim o‘rtasida (ikki
+platforma) kafolat yo‘q — faqat “ko‘r oyna”ni qisqartirish mumkin. Bu
+Google Docs darsidagi CRDT va OT munozarasining kichik ko‘rinishi:
+markaziy hakam bo‘lmasa, to‘qnashuvlarni oldini olib bo‘lmaydi, faqat
+keyin hal qilish mumkin.
+</Step>
+
+<Check q="O'n to'rt qadamdan qaysi biri qolganlarining hammasi tayanadigan 'oxirgi himoya chizig'i', va nega u eng oddiysi?">
+**1-qadam — tunlar jadvalidagi birlamchi kalit.**
+
+Qolgan qadamlarning ko‘pi taxminiy yoki kechikishga ega: qidiruv bir
+necha soniya eskirgan (6-qadam), kalendar bitlari qoidalarni to‘liq
+bilmaydi (8-qadam), so‘rov orqali bronlar tasdiq paytida tekshiriladi
+(10-qadam), ushlab turishlar muddati tugaydi (2-qadam), servislar
+bir-birini tarmoq orqali chaqiradi (13-qadam). Ularning har birida
+xato bo‘lishi mumkin.
+
+Lekin ularning hammasi oxir-oqibat bitta `INSERT` ga keladi, va
+`(listing_id, night)` bo‘yicha noyob indeks uni **ma’lumotlar bazasi
+darajasida** rad etadi. Kod, servis, kesh yoki qidiruv qanchalik xato
+qilmasin — bir tun ikki marta yozilmaydi.
+
+Nega eng oddiysi? Chunki kafolat **kodda emas, ma’lumot tuzilmasida**.
+Kodni yuzlab dasturchi yillar davomida o‘zgartiradi; indeks esa bir marta
+yaratiladi va hech kim uni “tasodifan” o‘chirmaydi. Bu umumiy tamoyil:
+eng muhim invariantni iloji boricha **past qatlamda** — tuzilma,
+cheklov, tur tizimi — ta’minlash kerak, chunki u qanchalik past bo‘lsa,
+shunchalik kam narsa uni buza oladi.
+</Check>
+
+## 6. Qidiruv: xarita, sana va reyting
+
+5-bo‘limning 6–9-qadamlari qidiruvni qismlarga bo‘ldi. Bu bo‘lim ularni
+bitta so‘rov yo‘lida birlashtiradi va ikki chuqurroq savolni ko‘radi:
+reyting nima o‘rganadi, va ikki tomonlama bozor uni qanday murakkablashtiradi.
+
+### 6.1 Bitta qidiruvning yo‘li
+
+<Flow nodes={["Xarita oynasi + sanalar", "Geo kataklar", "~15 000 nomzod", "Kalendar bitlari", "Filtrlar (mehmon, narx)", "Reyting modeli", "Top 18 + narxlar"]} caption="Har bosqich nomzodlarni kamaytiradi; eng qimmat bosqich (model) eng kichik to'plamda ishlaydi" />
+
+<Calc title="Qidiruvning kechikish byudjeti" result="Server ichida ~120-200 ms; eng qimmat qismi — reyting modeli va narxlarni hisoblash">{`Nomzodlarni olish (geo kataklar, 7-qadam):          ~2-5 ms
+Kalendar bitlari (8-qadam), 15 000 -> ~8 000:         ~0.1 ms
+Filtrlar (mehmonlar, narx, qulayliklar) -> ~5 000:     ~2-5 ms
+Birinchi bosqich reyting (arzon model), 5 000 -> 500:  ~10-20 ms
+Ikkinchi bosqich (neyron tarmoq), 500 ta:              ~30-60 ms
+Top 18 uchun aniq narx (sanalar, chegirmalar, soliq):  ~20-40 ms
+Rasmlar, sharhlar soni, xarita belgilari:              ~20-40 ms
+Tarmoq va seriyalash:                                  ~20-30 ms
+------------------------------------------------------------------
+Jami: ~120-200 ms (p50), p99 da ~2-3x`}</Calc>
+
+Byudjet YouTube va Spotify darslaridagi tavsiyalar bilan bir xil
+tuzilmani ko‘rsatadi: **arzon filtrlar ko‘p nomzodda, qimmat model oz
+nomzodda**. Sana bo‘yicha filtr eng arzon (bitlar), shuning uchun u
+iloji boricha erta; neyron tarmoq eng qimmat, shuning uchun u faqat
+yuzlab nomzodda.
+
+Narx alohida qadam ekani qiziq: qidiruv indeksida “o‘rtacha tungi narx”
+bor, lekin aniq narx (sanalarga bog‘liq narxlar, haftalik chegirma,
+tozalash haqi, soliqlar, valyuta) faqat oxirgi 18 ta uchun hisoblanadi.
+Bu ham “qimmat ishni kichik to‘plamga qoldirish” naqshi.
+
+### 6.2 E’lonlarni vektor sifatida
+
+<Deep title="Sessiyadan o'rganilgan e'lon vektorlari">
+Airbnb’ning 2018-yilgi KDD maqolasi (“Real-time Personalization using
+Embeddings for Search Ranking at Airbnb”) Spotify darsidagi g‘oyani
+boshqa manbadan qo‘llaydi. Spotify’da vektorlar “kim nimani tingladi”
+matritsasidan olingan edi. Bu yerda ular **qidiruv sessiyalaridan**
+o‘rganiladi:
+
+```
+Sessiya: mehmon bir qidiruvda ketma-ket bosgan e'lonlar
+  [e17, e203, e88, e1450, e91]   -> oxiri bron bo'lsa, u alohida belgi
+
+Word2vec g'oyasi: matndagi so'z o'z qo'shnilaridan o'rganilgani kabi,
+  e'lon ham sessiyadagi qo'shnilaridan o'rganiladi
+  -> bir sessiyada ko'riladigan e'lonlar vektorlari yaqin
+```
+
+Bu vektorlar bir nechta joyda ishlatiladi: “o‘xshash uylar” ro‘yxati,
+reyting modeliga belgi sifatida (e’lon mehmon shu sessiyada bosgan
+e’lonlarga qanchalik yaqin?), va real vaqtda shaxsiylashtirish —
+mehmon bir necha e’lonni bosgandan keyin natijalar uning didiga siljiydi.
+
+Maqolada ikki qiziq muhandislik tafsiloti bor. Birinchisi — **bron
+qilingan e’lon** sessiyadagi har bir e’lon uchun “global kontekst”
+sifatida qo‘shiladi: model faqat “nima birga ko‘rildi” ni emas, “nima
+oxir-oqibat tanlandi” ni ham o‘rganadi. Ikkinchisi — **salbiy misollar
+bir xil bozordan** olinadi: agar tasodifiy salbiy misollar boshqa
+shaharlardan bo‘lsa, model shunchaki “Parij e’lonlari Parij e’lonlariga
+o‘xshash” ni o‘rganadi — foydasiz.
+
+Sovuq start muammosi ham xuddi Spotify’dagidek: yangi e’londa sessiya
+tarixi yo‘q. Yechim — yaqin atrofdagi, o‘xshash turdagi va narxdagi
+e’lonlar vektorlarining o‘rtachasi.
+</Deep>
+
+<Calc title="E'lon vektorlari qancha joy oladi" result="8 M x 32 o'lchov — ~1 GB; har qidiruv serverida xotirada">{`E'lonlar: ~8 M
+Vektor o'lchovi: 32 (maqolada kichik o'lchov tanlangan)
+float32: 8e6 x 32 x 4 = ~1 GB
+
+Bitta qidiruvda: sessiyadagi ~5 e'lon vektori bilan 500 nomzodni solishtirish
+  500 x 5 x 32 = 80 000 ko'paytma -> ~0.05 ms`}</Calc>
+
+### 6.3 Ikki tomonlama bozor: kim kimni tanlaydi
+
+Spotify’da trek mehmonni rad eta olmaydi. Airbnb’da uy egasi mehmonni
+rad etishi mumkin (so‘rov orqali bronlarda), yoki mehmon so‘ragan sanalar
+uy egasining xohlagan naqshiga mos kelmasligi mumkin (masalan, uy egasi
+uzoq bronlarni afzal ko‘radi, mehmon esa bitta tun so‘raydi va ikki
+bron orasida “teshik” qoladi).
+
+| Kim uchun optimallashtiriladi | Natija | Muammo |
+| --- | --- | --- |
+| Faqat mehmon bosishi | Mehmon yoqtirgan uylar yuqorida | Uy egasi rad etadi — mehmon vaqti behuda |
+| Faqat bron (mehmon + uy egasi qabul qildi) | Haqiqiy natija | Signal kam — bron bosishdan yuz barobar kam |
+| Bron + uy egasi qabul qilish ehtimoli | Ikkala tomon mos keladi | Ikki model, ikki xato manbai |
+
+Uchinchi qator amaldagi yondashuvga yaqin: reyting “mehmon bron qiladi”
+ehtimolini “uy egasi qabul qiladi” ehtimoliga ko‘paytiradi. Masalan,
+darhol bron yoqilgan uylar va yuqori qabul qilish darajasiga ega uy
+egalari yuqoriroq ko‘tariladi — chunki ular bilan mehmonning urinishi
+bronga aylanish ehtimoli yuqori.
+
+<Callout type="ogoh" title="Pozitsiya egriligi: model o'z tartibidan o'rganadi">
+Birinchi o‘rindagi e’lon ko‘proq bosiladi — u yaxshi bo‘lgani uchun emas,
+**birinchi** bo‘lgani uchun. Model bosishlardan o‘rgansa, u o‘zi yuqoriga
+qo‘ygan e’lonlarni “yaxshi” deb o‘rganadi va ularni yanada yuqoriga
+qo‘yadi — Spotify darsidagi mashhurlik halqasining qidiruvdagi
+ko‘rinishi. Yumshatish: pozitsiyani o‘qitishda belgi sifatida berib,
+xizmat paytida uni o‘chirish; tasodifiy aralashtirilgan kichik trafik
+ulushi; va eng muhimi — bosishni emas, **bronni** asosiy maqsad qilish,
+chunki bron pozitsiyaga kamroq bog‘liq.
+</Callout>
+
+<Check q="Nega qidiruvda sana filtri reyting modelidan OLDIN, narx hisoblash esa model'dan KEYIN keladi?">
+Chunki har bosqichning **narxi** va **tanlash kuchi** turlicha, va tartib
+umumiy narxni minimallashtirishi kerak.
+
+**Sana filtri** — eng arzon (bitta AND amali, ~nanosekund) va juda
+kuchli (katta shaharda talab yuqori sanalarda nomzodlarning yarmini
+chiqaradi). Arzon va kuchli filtr iloji boricha erta: undan keyingi
+har bir bosqich kamroq nomzod bilan ishlaydi.
+
+**Reyting modeli** — qimmat (nomzod boshiga mikrosekundlar–millisekundlar),
+shuning uchun faqat filtrlardan o‘tgan nomzodlarda, va ikki bosqichli:
+arzon model minglab nomzodni yuzlabga, qimmat model yuzlabni tartibga.
+
+**Aniq narx** — eng qimmat (har e’lon uchun sanalar bo‘yicha narxlar,
+chegirmalar, soliqlar, valyuta), lekin tanlashga deyarli ta’sir qilmaydi
+(model allaqachon o‘rtacha narxni biladi). Shuning uchun u faqat
+ko‘rsatiladigan 18 ta uchun.
+
+Bu umumiy qoida — **filtrlarni “narx / kuch” nisbati bo‘yicha
+tartiblash** — ma’lumotlar bazasi so‘rov rejalashtiruvchisi ham xuddi
+shunday ishlaydi: eng tanlovchan va arzon shart birinchi.
+</Check>
+
+## 7. Band qilish: ikki marta bron bo‘lmasligi
+
+5-bo‘limning 1–4-qadamlari band qilish yo‘lini qurdi. Bu bo‘lim ikki
+chuqurroq savolni ko‘radi: bir xil kafolatni qanday **boshqa** usullar bilan
+berish mumkin va ular qanday farq qiladi, va bekor qilish kalendar va pulga
+qanday ta’sir qiladi.
+
+### 7.1 Kafolatning uch usuli
+
+| Usul | Qanday ishlaydi | Kuchli tomoni | Zaif tomoni |
+| --- | --- | --- | --- |
+| Pessimistik qulf | `SELECT ... FOR UPDATE` e’lon qatorida, keyin tekshirish va yozish | Murakkab qoidalarni (tayyorgarlik kunlari) qulf ichida tekshirish oson | Qulf ushlab turilgan vaqt — boshqalar kutadi; tashqi so‘rov qulf ichida bo‘lsa, halokat |
+| Noyob cheklov | Tunlar jadvali, `(listing, night)` birlamchi kalit | Qulfsiz, kod xatosiga chidamli, eng oddiy | Faqat “bir tun — bir bron” ni kafolatlaydi; boshqa qoidalar alohida |
+| Optimistik versiya | E’lon qatorida `version`; yozishda `WHERE version = v` | Qulf yo‘q, o‘qish arzon | Raqobatda ko‘p qayta urinish; mashhur uyda “live-lock” |
+
+Amalda ular birgalikda ishlatiladi: noyob cheklov — asosiy kafolat,
+qisqa pessimistik qulf yoki versiya — qoidalarni tekshirish uchun.
+
+<Versus
+  left={{ title: "Pessimistik qulf", points: [
+    "Avval qulfla, keyin tekshir va yoz",
+    "Mashhur uyda so'rovlar navbatga turadi",
+    "Qulf ichida tashqi chaqiruv — butun kalendar muzlaydi",
+    "Qulfni unutgan kod — kafolat yo'q",
+    "Murakkab qoidalar uchun qulay",
+  ] }}
+  right={{ title: "Noyob cheklov (tunlar jadvali)", points: [
+    "Yoz; baza rad etsa — band",
+    "Mashhur uyda ikkinchi so'rov darhol rad etiladi",
+    "Tashqi chaqiruv tranzaksiyadan tashqarida (2-qadam)",
+    "Kafolat kodga emas, indeksga bog'liq",
+    "Faqat 'bir tun — bir bron' qoidasi",
+  ] }}
+/>
+
+<Deep title="PostgreSQL'da oraliqlar uchun cheklov">
+Tunlar jadvali (har tun — qator) yagona usul emas. PostgreSQL’da
+**oraliqlar ustida** to‘g‘ridan-to‘g‘ri cheklov qo‘yish mumkin — “exclusion
+constraint”:
+
+```sql
+CREATE EXTENSION btree_gist;
+CREATE TABLE bookings (
+  id BIGSERIAL PRIMARY KEY,
+  listing_id BIGINT NOT NULL,
+  stay DATERANGE NOT NULL,            -- '[2025-03-12, 2025-03-15)' — yarim ochiq!
+  status TEXT NOT NULL,
+  EXCLUDE USING gist (listing_id WITH =, stay WITH &&)
+    WHERE (status IN ('HOLD', 'CONFIRMED'))
+);
+-- && — "oraliqlar ustma-ust tushadi" operatori (2.1 dagi shart)
+-- Bir xil e'lon uchun ustma-ust tushadigan ikki faol bron — baza rad etadi
+```
+
+Afzalliklari: har bron — bitta qator (tunlar jadvalidagi ~4 qator o‘rniga),
+`DATERANGE` turi yarim ochiq oraliqni tabiiy ifodalaydi, va `WHERE` qismi
+bilan faqat faol bronlar hisobga olinadi — bekor qilingan bron alohida
+o‘chirilmasa ham cheklovga xalaqit bermaydi.
+
+Kamchiliklari: GiST indeksi oddiy B-daraxtdan sekinroq va katta; bu
+imkoniyat PostgreSQL’ga xos (MySQL’da yo‘q — Airbnb tarixan MySQL
+ishlatgan); va “tayyorgarlik kunlari” kabi qoidalarni baribir alohida
+ifodalash kerak (masalan, oraliqni kengaytirib saqlash).
+
+Umumiy dars bir xil: **kafolatni ma’lumotlar bazasiga topshiring**. Qaysi
+mexanizm — qator-bo‘yicha noyob kalit yoki oraliq cheklovi — sizning
+bazangiz va so‘rovlaringizga bog‘liq; muhimi, u kodda emas.
+</Deep>
+
+### 7.2 Mashhur uyda raqobat
+
+<Calc title="Yangi yil kechasi, bitta mashhur uy" result="Noyob cheklov bilan 20 so'rovdan 1 tasi yutadi, 19 tasi ~10 ms da rad javobini oladi — hech kim pul yo'qotmaydi">{`Mashhur uy, 31-dekabr tuni. Bir daqiqada 20 mehmon "Band qilish" bosadi.
+
+NOYOB CHEKLOV + HOLD (5-bo'lim, 1-2 qadamlar):
+  Birinchi INSERT yutadi: HOLD, keyin to'lov
+  Qolgan 19: INSERT -> unique violation -> ~5-10 ms da "band" javobi
+  To'lov faqat birinchisida (avtorizatsiya, 4-qadam) — boshqalarda umuman yo'q
+
+PESSIMISTIK QULF (tashqi to'lov qulf ichida — xato dizayn):
+  Har so'rov qulfni ~2 s ushlaydi (to'lov)
+  19 ta so'rov navbatda: oxirgisi ~38 s kutadi, keyin "band"
+  Qulf kutish taymauti (odatda ~10-50 s) -> xatolar, qayta urinishlar
+
+Birinchi mehmonning to'lovi rad etilsa:
+  HOLD -> EXPIRED, tunlar bo'shaydi -> keyingi urinishlar uchun ochiq`}</Calc>
+
+Hisobning birinchi qismi muhim foydalanuvchi tajribasi xususiyatini
+ko‘rsatadi: rad etish **tez** va **pulsiz**. Mehmon “afsuski, bu sanalar
+hozirgina band bo‘ldi” xabarini bir necha millisekundda oladi, va uning
+kartasida hech narsa muzlatilmagan. Pessimistik qulfdagi 38 soniyalik
+kutish va keyin rad etish — eng yomon natija: vaqt ham, ishonch ham
+yo‘qoldi.
+
+### 7.3 Bekor qilish: kalendar va pul
+
+Bekor qilish ham holatlar mashinasi, lekin uning oqibati ikki joyga
+tushadi: tunlar bo‘shatiladi (kalendar) va pulning bir qismi qaytariladi
+(kitob). Qancha qaytarilishi — uy egasi tanlagan **bekor qilish
+siyosatiga** bog‘liq.
+
+| Siyosat (soddalashtirilgan) | To‘liq qaytarish | Qisman |
+| --- | --- | --- |
+| Moslashuvchan | Kelishdan 24 soat oldingacha | Keyin — birinchi tun ushlab qolinadi |
+| O‘rtacha | Kelishdan 5 kun oldingacha | Keyin — 50% |
+| Qat’iy | Bron qilinganidan 48 soat ichida (kelishga 14+ kun bo‘lsa) | 7 kun oldingacha — 50% |
+
+<Calc title="Bekor qilish — qaytariladigan summa" result="O'rtacha siyosat, kelishga 3 kun qolganda: 150 dollar qaytariladi, uy egasi 145.5 oladi">{`Bron: 3 tun x 100$ = 300$, xizmat haqi 30$, jami to'langan 330$
+Siyosat: "O'rtacha" — kelishdan 5 kun oldin bekor qilinsa to'liq, keyin 50%
+Mehmon kelishga 3 kun qolganda bekor qildi -> 50%
+
+Qaytariladi: tunlar 300$ x 50% = 150$
+  (xizmat haqi qaytarilishi — alohida qoida; bu yerda qaytarilmaydi deb faraz)
+Uy egasiga: 150$ x (1 - 0.03) = 145.50$
+Kitob (5-qadam):
+  kutilayotgan_uy_egasi  -291.00
+  mehmon_karta           +150.00
+  uy_egasi_bank          +145.50   (kelish sanasidan keyin)
+  airbnb_daromad          -4.50    (150$ dagi 3% qaytdi)
+  Yig'indi: -291 + 150 + 145.5 - 4.5 = 0`}</Calc>
+
+Muhim: “kelishga 3 kun qolganda” — qaysi soat bo‘yicha? 2.2-bo‘limdagi
+Deep’ga ko‘ra — **uyning** vaqt zonasi va kelish soati bo‘yicha. Mehmon
+o‘z vaqt zonasida hali “5 kun oldin” deb o‘ylashi, uyning zonasida esa
+muddat allaqachon o‘tgan bo‘lishi mumkin. Bekor qilish siyosatlari
+foydalanuvchiga ham, kodda ham **aniq vaqt belgisi** bilan ko‘rsatilishi
+kerak: “to‘liq qaytarish 10-mart 15:00 (Bali vaqti) gacha”.
+
+<Check q="Nega ushlab turish (HOLD) ham noyob cheklovga kiradi, garchi u hali bron emas?">
+Chunki aks holda 2-qadamning butun ma’nosi yo‘qoladi.
+
+Agar `HOLD` tunlarni egallamasa, Ali ushlab turadi va to‘lovga o‘tadi,
+shu 30 soniyada Vali ham ushlab turadi va to‘lovga o‘tadi. Ikkalasining
+ham to‘lovi muvaffaqiyatli bo‘ladi, va `CONFIRMED` ga o‘tishda bittasi rad
+etiladi — lekin endi uning kartasida pul muzlatilgan va u sahifani
+yopgan. 4.1 dagi poyga faqat kechroq bosqichga ko‘chdi.
+
+`HOLD` tunlarni egallasa, poyga **to‘lovdan oldin**, eng arzon joyda —
+`INSERT` da — hal bo‘ladi: yutqazgan tomon hech qachon to‘lov sahifasiga
+yetib bormaydi. Narxi — ushlab turilgan, lekin sotilmagan tunlar
+(2-qadamdagi hisob: o‘rtacha ~1 000 e’lon, 8 M dan 0.01%). Bu juda arzon
+narx.
+
+Umumiy qoida: **qimmat va qaytarib bo‘lmaydigan qadamdan (pul) oldin
+resursni egallab qo‘ying**, va egallashni muddatli qiling, shunda
+muvaffaqiyatsiz urinish uni abadiy band qilib qo‘ymaydi.
+</Check>
+
+## 8. To‘lovlar va pul oqimi
+
+Bron tasdiqlangandan keyin tizimning ikkinchi yarmi boshlanadi: pul
+mehmondan platformaga, platformadan uy egasiga — ko‘pincha turli
+mamlakatlar, valyutalar va bank tizimlari orqali — oqadi. 5-bo‘limning
+3–5-qadamlari buning asosini qurdi. Bu bo‘lim miqyos, valyuta va
+tekshiruv haqida.
+
+### 8.1 Pul qayerga ketadi
+
+<Calc title="Butun platforma bo'yicha pul oqimi" result="Mehmonlar to'lagan ~82 mlrd dollardan ~11 mlrd (13-14%) platforma daromadi; qolgani uy egalariga">{`Gross Booking Value (mehmonlar to'lagan jami, 2024, taxminan): ~82 mlrd dollar
+Platforma daromadi (2024, taxminan):                             ~11 mlrd dollar
+  "Take rate" = 11 / 82 = ~13.5%
+
+Komissiya modellari (soddalashtirilgan):
+  Bo'lingan: mehmondan ~14% gacha xizmat haqi + uy egasidan ~3%
+  Faqat uy egasidan: ~14-16% (mehmon qo'shimcha haq ko'rmaydi)
+
+Bitta o'rtacha bron: ~630 dollar (82e9 / 130e6)
+  Platforma ulushi: ~85 dollar
+  To'lov provayderi komissiyasi (~2-3% kartalar uchun): ~15 dollar
+  -> to'lov qayta ishlash — platforma daromadining ~15-20% i`}</Calc>
+
+Oxirgi qator iqtisodning muhim tomonini ko‘rsatadi (12-bo‘limda batafsil):
+**to‘lovlarni qayta ishlash** — serverlar va ma’lumotlar bazalaridan
+ancha katta xarajat. Shuning uchun to‘lov marshrutlash (qaysi provayder,
+qaysi mamlakatda, qaysi usul) — sof muhandislik emas, balki
+millionlab dollarlik optimallashtirish.
+
+### 8.2 Valyuta va yaxlitlash
+
+Mehmon evroda to‘laydi, uy egasi Turkiyada lira oladi, platforma
+hisoboti dollarda. Har bir konvertatsiya — kurs, vaqt va yaxlitlash.
+
+<Callout type="xato" title="Pulni hech qachon float'da saqlamang">
+`0.1 + 0.2 = 0.30000000000000004` — ikkilik kasr sonlar o‘nlik kasrlarni
+aniq ifodalay olmaydi. Pul summalari **butun sonlarda eng kichik birlikda**
+(sent, tiyin) yoki aniq o‘nlik turda (`DECIMAL`) saqlanadi. Eng kichik
+birlik valyutaga bog‘liq: dollar va evroda 2 xona, yapon iyenasida 0,
+Quvayt dinorida 3. Kod “100 ga ko‘paytir” deb faraz qilsa, iyena
+summalari 100 barobar noto‘g‘ri bo‘ladi. Har bir summa **valyuta kodi
+bilan birga** saqlanadi, va turli valyutadagi summalarni qo‘shish kodda
+imkonsiz bo‘lishi kerak (masalan, `Money` turi orqali).
+</Callout>
+
+<Calc title="Yaxlitlash qoldiqlari" result="Har bronda 0-1 kurush farq — millionlab bronda sezilarli summa, agar qoida bo'lmasa">{`Bron: 3 tun x 97.35 EUR, uy egasi TRY da oladi, kurs 35.1234
+
+A) Har tunni alohida konvertatsiya va yaxlitlash:
+   97.35 x 35.1234 = 3419.26299 -> 3419.26 TRY
+   3 tun: 3 x 3419.26 = 10 257.78 TRY
+
+B) Jami summani bir marta konvertatsiya:
+   292.05 x 35.1234 = 10 257.78897 -> 10 257.79 TRY
+
+Farq: 0.01 TRY (1 kurush) — faqat yaxlitlash TARTIBI tufayli
+
+130 M bron, har birida o'rtacha ~0.5 sent farq = ~650 000 dollar/yil
+  -> kimning foydasiga? Mehmon, uy egasi yoki platforma?
+
+Qoida: yaxlitlash BITTA joyda, BITTA marta, hujjatlashtirilgan yo'nalishda;
+  qoldiq aniq hisobga ("yaxlitlash farqlari") yoziladi — kitob nolga teng qoladi`}</Calc>
+
+Kurs **qachon** qat’iylashtiriladi ham muhim. Mehmon bron qilganda narx
+o‘z valyutasida ko‘rsatiladi va shu summa yechiladi; uy egasiga to‘lov
+esa oylar keyin bo‘lishi mumkin. Kurs o‘rtada o‘zgaradi, va bu farqni
+kimdir ko‘taradi — odatda platforma (valyuta xavfi), va bu kitobda alohida
+hisob sifatida ko‘rinishi kerak.
+
+### 8.3 Uy egasiga to‘lov
+
+Uy egasi pulni mehmon kelgandan keyin (odatda ~24 soat o‘tib) oladi. Bu
+kechikish ataylab: mehmon kelib, uy e’londagiga mos kelmasa, nizo va
+qaytarish uchun vaqt bor.
+
+```
+Har kuni (rejalashtirilgan vazifa):
+  kecha kelgan bronlar -> to'lov vazifalari
+  har vazifa: uy egasining to'lov usuli (bank, PayPal, mahalliy tizim),
+              valyuta, soliq ushlab qolish qoidalari
+  -> to'lov provayderiga (idempotentlik kaliti bilan — 3-qadam)
+  -> natija kitobga: kutilayotgan_uy_egasi -X, uy_egasi_bank +X
+  -> muvaffaqiyatsiz (noto'g'ri hisob raqami): qayta urinish, uy egasiga xabar
+```
+
+Bu **paketli** jarayon — Spotify darsidagi oylik royalti hisobiga
+o‘xshaydi, faqat har kunlik va har bir to‘lov alohida. Ikkala holatda
+ham asosiy talab bir xil: har bir to‘lov **aynan bir marta**, va nima
+bo‘lganini keyin tekshirish mumkin.
+
+### 8.4 Rekonsilyatsiya: kitob va bank bir xil gapiryaptimi
+
+<Deep title="Rekonsilyatsiya: ikki mustaqil haqiqatni solishtirish">
+Platformaning kitobi (5-qadam) “biz 1 250 000 dollar yechdik” deydi.
+To‘lov provayderining kunlik hisoboti (settlement report) “biz sizga
+1 249 870 dollar o‘tkazdik” deydi. Qaysi biri to‘g‘ri? Ikkalasi ham —
+yoki ikkalasi ham xato. Rekonsilyatsiya — ularni har bir tranzaksiya
+darajasida solishtirish:
+
+```
+Har kuni:
+  1. Provayder hisobotini yuklab olish (har tranzaksiya: ID, summa, komissiya)
+  2. Kitobdagi shu kunlik yozuvlar bilan provayder ID bo'yicha birlashtirish
+  3. Tasniflash:
+     - mos keldi                         -> belgilanadi
+     - kitobda bor, provayderda yo'q     -> yechilmagan? kechikkan? (keyingi kun yana)
+     - provayderda bor, kitobda yo'q     -> XAVFLI: pul yechilgan, biz bilmaymiz
+                                            (4.2 dagi "noma'lum natija" holati)
+     - summa farq qiladi                 -> komissiya, valyuta yoki xato
+  4. Farqlar navbatga — avtomatik qoidalar yoki odam ko'rib chiqadi
+```
+
+Uchinchi holat eng muhimi, chunki u **tizim xatosini** ochadi:
+5-bo‘limning 2–3-qadamlaridagi himoya bir joyda ishlamagan va pul
+bronsiz yechilgan. Rekonsilyatsiya shunday holatlarni kunlar ichida
+topadi — mijoz bank shikoyati yozishidan oldin.
+
+Bu Spotify darsidagi “ikki mustaqil yo‘l bilan hisoblash va solishtirish”
+tamoyilining aniq ko‘rinishi. Moliyaviy tizimda bu ixtiyoriy emas: har
+bir kun “yopilishi” uchun kitob tashqi dunyo (bank, provayder) bilan
+mos kelishi kerak.
+</Deep>
+
+<Check q="Nega uy egasiga to'lov bron paytida emas, mehmon kelgandan keyin qilinadi — va bu arxitekturaga qanday ta'sir qiladi?">
+**Biznes sababi:** kelishgacha bekor qilish, nizolar va “uy e’londagiga
+mos emas” holatlari bor. Pul uy egasiga o‘tib ketgan bo‘lsa, uni qaytarib
+olish deyarli imkonsiz. Kelgandan keyin ~24 soat — mehmon muammo haqida
+xabar berishi uchun oyna.
+
+**Arxitektura oqibatlari** uchta.
+
+Birinchidan, platforma milliardlab dollarni **oylab ushlab turadi** —
+kitob (5-qadam) har bir so‘mning kimga tegishli ekanini bilishi shart,
+chunki bu pul hali platformaniki emas.
+
+Ikkinchidan, to‘lov **ikki mustaqil jarayonga** bo‘linadi: mehmondan olish
+(bron paytida, real vaqtda) va uy egasiga berish (har kuni, paketda).
+Ular turli vaqtda, turli provayderlar orqali, turli xatolar bilan ishlaydi
+— va faqat kitob ularni bog‘laydi.
+
+Uchinchidan, **o‘zgarishlar** oraliqda sodir bo‘ladi: bekor qilish, sanani
+o‘zgartirish, qisman qaytarish. Har biri kitobga yangi yozuvlar qo‘shadi,
+va uy egasiga to‘lov kuni “hozirgi qoldiq” — barcha yozuvlar yig‘indisi —
+hisoblanadi. Shuning uchun kitob faqat qo‘shiladigan bo‘lishi shart:
+qoldiqni o‘zgartiriladigan maydonda saqlasangiz, parallel o‘zgarishlar
+bir-birini o‘chiradi.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="To'liq tizim"
+  layers={[
+    { name: "Mijozlar", boxes: ["Veb", "iOS / Android", "Uy egasi ilovasi"], note: "Har bir 'Band qilish' — idempotentlik kaliti bilan (5-bo'lim, 3-qadam)." },
+    { name: "Taqdimot servislari", boxes: ["Qidiruv sahifasi", "E'lon sahifasi", "To'lov oqimi", "Xabarlar"], note: "Sahifa uchun kerakli ma'lumotni bir nechta servisdan yig'adi." },
+    { name: "Mantiq servislari", boxes: ["Bron (holatlar mashinasi)", "Narxlash", "Bekor qilish siyosati", "Reyting", "Ishonch va firibgarlik"], note: "Har biri o'z ma'lumotiga ega — boshqalarning bazasiga kirmaydi." },
+    { name: "Haqiqat manbalari", boxes: ["Bronlar va tunlar (MySQL)", "Buxgalteriya kitobi", "E'lonlar", "Foydalanuvchilar"], note: "Qat'iy tranzaksiyalar; ikki marta bron kafolati shu yerda." },
+    { name: "Hosila ko'rinishlar", boxes: ["Qidiruv indeksi", "Kalendar bitlari", "E'lon vektorlari", "Keshlar"], note: "CDC orqali yangilanadi; bir necha soniya orqada — bu qabul qilinadi." },
+    { name: "Tashqi", boxes: ["To'lov provayderlari", "Bank to'lovlari", "Kanal menejerlari (iCal / API)", "SMS va email"], note: "Har biri ishonchsiz: idempotentlik, qayta urinish, rekonsilyatsiya." },
+  ]}
+/>
+
+Diagrammaning markaziy g‘oyasi — **to‘rtinchi va beshinchi qatlam
+o‘rtasidagi chegara**. Yuqorida kichik, qat’iy, sekinroq “haqiqat”
+(bronlar, pul); pastda katta, tez, biroz eskirgan “ko‘rinishlar”
+(qidiruv, kalendar bitlari). Ular faqat bir yo‘nalishda — CDC orqali
+haqiqatdan ko‘rinishlarga — bog‘langan. Ko‘rinish hech qachon haqiqatga
+yozmaydi. Bu Spotify darsidagi “tinglashlar kitobi va undan hisoblangan
+narsalar” va Google Docs’dagi “jurnal va suratlar” bilan bir xil tuzilma.
+
+Oxirgi qatlam ham muhim: to‘lov provayderlari, banklar va boshqa
+platformalar — **nazorat qilib bo‘lmaydigan** tizimlar. Ular bilan har
+bir chegara uchta vosita bilan himoyalanadi: idempotentlik (ikki marta
+bajarmaslik), holatlar mashinasi (qayerda to‘xtaganini bilish) va
+rekonsilyatsiya (keyin tekshirish).
+
+<Flow nodes={["Mehmon: 'Band qilish'", "HOLD: tunlar yozildi", "Avtorizatsiya", "CONFIRMED + yechish", "CDC: qidiruv yangilandi", "Kelish + 24 soat", "Uy egasiga to'lov"]} caption="Bitta bronning hayoti: soniyalar (yuqori qism) va haftalar (pastki qism) bitta holatlar mashinasida" />
+
+<Deep title="Ikki joyga yozish muammosi: nega servis Kafka'ga o'zi yozmaydi">
+Bron tasdiqlandi. Endi kamida uchta boshqa tizim buni bilishi kerak:
+qidiruv (kalendar bitlari), xabarlar (uy egasiga bildirishnoma) va
+tahlil. Eng oddiy yo‘l — bron servisi bazaga yozadi, keyin Kafka’ga
+hodisa yuboradi:
+
+```
+1. COMMIT: bookings.state = CONFIRMED     -> muvaffaqiyat
+2. kafka.send("booking_confirmed", id)    -> ???
+```
+
+Bu **ikki joyga yozish** (dual write), va u ikki usulda sinadi.
+Server 1 va 2 orasida qulasa — bazada bron bor, hodisa yo‘q: qidiruv
+kun bo‘yi uyni bo‘sh ko‘rsatadi, uy egasi xabar olmaydi. Tartibni
+almashtirsak (avval Kafka, keyin baza) — teskari: hodisa bor, bron
+yo‘q (tranzaksiya qaytarildi), va qidiruv bo‘sh uyni band ko‘rsatadi.
+Ikki mustaqil tizimga atomik yozishning oddiy yo‘li yo‘q.
+
+Ikki yechim bor, va ikkalasi ham bitta g‘oyaga tayanadi — **faqat bitta
+joyga yozish, qolganini undan keltirib chiqarish**:
+
+**CDC** (5-bo‘lim, 6-qadam): servis faqat bazaga yozadi. Bazaning o‘z
+jurnali (binlog) — bu allaqachon tartiblangan, ishonchli o‘zgarishlar
+ro‘yxati. Alohida jarayon (SpinalTap) jurnalni o‘qib, Kafka’ga uzatadi.
+Agar u qulasa — jurnaldagi oxirgi o‘qilgan joydan davom etadi. Hech
+narsa yo‘qolmaydi, lekin hodisalar **jadval qatorlari** shaklida:
+“bookings qatori o‘zgardi”, “bron tasdiqlandi” emas.
+
+**Outbox jadvali**: servis bir tranzaksiyada ham bronni, ham `outbox`
+jadvaliga hodisani yozadi:
+
+```sql
+BEGIN;
+UPDATE bookings SET state = 'CONFIRMED' WHERE id = 42 AND state = 'HOLD';
+INSERT INTO outbox(event, payload) VALUES ('booking_confirmed', '{"id": 42, ...}');
+COMMIT;
+```
+
+Endi ikkalasi atomik — yo ikkalasi bor, yo hech biri. Alohida jarayon
+outbox’ni o‘qib, Kafka’ga yuboradi va yuborilganlarni belgilaydi. U
+qulasa — qayta yuboradi, shuning uchun iste’molchilar hodisani **ikki
+marta** olishi mumkin va idempotent bo‘lishi kerak (hodisa ID si
+bo‘yicha). Afzalligi — hodisa **biznes ma’nosiga** ega va servis uning
+shaklini nazorat qiladi; ichki jadval tuzilmasi o‘zgarsa ham,
+iste’molchilar buzilmaydi.
+
+Amalda ikkalasi birga ishlatiladi: CDC — ko‘p jadvalli hosila
+ko‘rinishlar uchun (qidiruv indeksi hamma narsani ko‘rishi kerak),
+outbox — boshqa servislar bilan “shartnoma” sifatidagi hodisalar uchun.
+Umumiy qoida esa o‘zgarmaydi: **tashqi tizimga yozish hech qachon
+bazaga yozish bilan “yonma-yon” emas, balki undan keyin va undan
+keltirib chiqarilgan**. Bu 4.2-dagi to‘lov muammosining (baza va
+provayder) aynan o‘sha shakli — faqat bu yerda ikkinchi tizim Kafka.
+</Deep>
+
+<Timeline
+  rows={[
+    { when: "2007-2008", what: "Havo matraslari va nonushta — 'AirBed & Breakfast'", why: "San-Fransiskoda konferensiya mehmonlari uchun boshlangan g'oya; bitta Rails ilova." },
+    { when: "2009", what: "Nom Airbnb'ga qisqaradi", why: "Kvartira va butun uylar — mahsulot faqat 'matras' emas." },
+    { when: "2014-2016", what: "Airflow va Superset yaratiladi va ochiq kodga chiqariladi", why: "Ma'lumot quvurlari va tahlil ichki vositalari — keyinchalik sanoat standartiga aylangan." },
+    { when: "2015", what: "Smart Pricing va Aerosolve", why: "Narx takliflari (5-bo'lim, 11-qadam) va ML kutubxonasi." },
+    { when: "2017-2020", what: "Monolitdan servislarga (SOA)", why: "Yuzlab dasturchi bitta kod bazasida — tashkiliy to'siq (4.5, 13-qadam)." },
+    { when: "2018", what: "SpinalTap (CDC) ochiq kodga; KDD'da e'lon vektorlari maqolasi", why: "Qidiruv va boshqa ko'rinishlar bazadan oqim orqali yangilanadi (6-qadam, 6.2)." },
+    { when: "2019", what: "Orpheus — to'lovlarda idempotentlik", why: "Ikki marta yechishning oldini olish (5-bo'lim, 3-qadam Deep)." },
+    { when: "2020", what: "Pandemiya: bronlar keskin tushadi, ommaviy bekor qilishlar", why: "Tizim teskari yukni ko'taradi — qaytarishlar to'lqini (10.2)." },
+    { when: "2022", what: "Ziyofatlarga doimiy taqiq", why: "Ishonch qoidasi texnik tizimga aylanadi: xavfli bronlarni oldindan aniqlash (11-bo'lim)." },
+  ]}
+/>
+
+Tarix bitta tendensiyani ko‘rsatadi: Airbnb’ning eng mashhur ochiq kodli
+loyihalari — Airflow, Superset, SpinalTap — **ma’lumot** vositalari, bron
+yoki qidiruv emas. Bu tasodif emas: ikki tomonlama bozorda eng qimmat
+qarorlar (narx, reyting, firibgarlik, ishonch) ma’lumotga tayanadi, va
+kompaniya bu vositalarni o‘zi uchun yaratib, keyin boshqalarga bergan.
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Foydalanuvchi nimani ko‘radi | Himoya |
+| --- | --- | --- |
+| Qidiruv indeksi sekin yoki ishlamaydi | Natijalar sekin yoki oddiyroq | Kesh, oddiyroq reyting, geo filtrgacha degradatsiya |
+| CDC oqimi to‘xtadi | Band kunlar qidiruvda bo‘sh ko‘rinadi | Bronda baza baribir rad etadi (5-bo‘lim, 1-qadam); orqada qolish ogohlantirishi |
+| To‘lov provayderi ishlamaydi | “To‘lov amalga oshmadi” | Ikkinchi provayderga yo‘naltirish; HOLD muddati uzaytiriladi |
+| To‘lov javobi yo‘qoldi | “Jarayonda...” | Idempotentlik kaliti, fon tekshiruvi (3-qadam) |
+| Bronlar bazasi lideri o‘ldi | Band qilish bir necha soniya ishlamaydi | Avtomatik failover; mijoz xuddi shu kalit bilan qayta uradi |
+| Sharhlar servisi ishlamaydi | E’lon sahifasi sharhlarsiz | Taqdimot servisi ixtiyoriy qismlarni tashlab yuboradi |
+
+Jadvalning ikkinchi qatori butun arxitekturaning to‘g‘riligini ko‘rsatadi:
+hosila ko‘rinish (qidiruv) to‘liq noto‘g‘ri bo‘lsa ham, **ikki marta bron
+bo‘lmaydi**. Eng yomon natija — mehmon bo‘sh deb ko‘rgan uyni band qila
+olmaydi va “afsuski, band” xabarini oladi. Noqulay, lekin xavfsiz.
+
+### 10.2 Teskari to‘lqin: ommaviy bekor qilishlar
+
+Odatda sig‘im “ko‘p odam bir vaqtda band qiladi” deb o‘ylanadi. 2020-yil
+bahorida pandemiya teskari stsenariyni ko‘rsatdi: millionlab bron bir
+necha hafta ichida bekor qilindi, va Airbnb “favqulodda holatlar” qoidasi
+bilan ko‘pchiligiga jarimasiz qaytarishga ruxsat berdi.
+
+<Timeline
+  rows={[
+    { when: "1-kun", what: "Chegaralar yopiladi; bekor qilishlar oddiy kundan o'nlab barobar ko'p", why: "Har bekor qilish: holatlar mashinasi, tunlarni bo'shatish, kitobga qaytarish yozuvlari, provayderga qaytarish so'rovi." },
+    { when: "1-3 kun", what: "Qaytarish so'rovlari provayder chegaralariga uriladi", why: "Qaytarishlar navbatga olinadi va tezlik bilan cheklanadi — idempotentlik kaliti har birini bir marta bajaradi." },
+    { when: "1-2 hafta", what: "Siyosat e'lon qilinadi: favqulodda holatlar", why: "Siyosat kodda qoida sifatida: qaysi sanalar, qaysi bronlar, qancha qaytariladi — minglab qo'lda murojaat o'rniga." },
+    { when: "Haftalar", what: "Uy egalariga to'lovlar keskin kamayadi, qaytarishlar oqimi", why: "Kitob (5-qadam) har bir o'zgarishni qayd qiladi; rekonsilyatsiya (8.4) har kuni farqlarni topadi." },
+  ]}
+/>
+
+<Calc title="Ommaviy bekor qilish to'lqini" result="Oddiy kundan ~30 barobar ko'p bekor qilish — lekin bu baribir sekundiga o'nlab amal; tor joy — tashqi provayderlar">{`Oddiy kun: ~355 000 bron, ulardan ~10-15% keyin bekor qilinadi
+  -> ~40 000 bekor qilish/kun = ~0.5/s
+
+To'lqin: kelgusi oylardagi bronlarning katta qismi bir necha kunda
+  Faraz: 10 M bron 7 kunda -> ~1.4 M/kun = ~16/s (o'rtacha), cho'qqida ~50/s
+
+Har bekor qilish:
+  bazada: tunlarni o'chirish + holat + kitob yozuvlari (~10 qator) — arzimas
+  tashqarida: to'lov provayderiga qaytarish so'rovi — provayder chegarasi,
+    masalan ~20-50 so'rov/s -> navbat kunlarga cho'ziladi
+
+Xulosa: ichki tizim yukni ko'taradi; tashqi chegaralar va mijozlarga
+  "qaytarish jarayonda" deb aniq holat ko'rsatish — asosiy ish`}</Calc>
+
+<Deep title="Degradatsiya: e'lon sahifasi 20 ta servisdan tuziladi">
+SOA’dan keyin (5-bo‘lim, 13-qadam) bitta e’lon sahifasi o‘nlab servisdan
+ma’lumot yig‘adi: e’lon, rasmlar, narx, kalendar, sharhlar, uy egasi
+profili, xarita, o‘xshash uylar, tarjima. Agar har biri 99.9% ishlasa,
+20 tasi birgalikda: 0.999²⁰ ≈ 98% — ya’ni **har 50 sahifadan biri** biror
+qismsiz qoladi.
+
+Shuning uchun taqdimot servisi har bir bog‘liqlikni ikki sinfga ajratadi:
+
+```
+MAJBURIY: e'lon, narx, kalendar
+  -> ulardan biri ishlamasa, sahifa xato ko'rsatadi (band qilib bo'lmaydi)
+
+IXTIYORIY: sharhlar, o'xshash uylar, uy egasi profili tafsilotlari, tarjima
+  -> qisqa taymaut (masalan, 150 ms); javob kelmasa — shu qism yashiriladi
+     yoki keshdagi eski versiya ko'rsatiladi
+```
+
+Ikkinchi vosita — **parallel chaqiruvlar va umumiy muddat**: 20 ta
+chaqiruv ketma-ket emas, parallel; va butun sahifa uchun bitta
+kechikish byudjeti (masalan, 800 ms). Sekin servis butun sahifani
+emas, faqat o‘z qismini kechiktiradi.
+
+Bu Slack va YouTube darslaridagi “degradatsiya tartibi” ning servislar
+darajasidagi ko‘rinishi: tizimni qismlarga ajratish va har bir qismning
+**ahamiyatini oldindan** belgilash.
+</Deep>
+
+<Check q="Nega CDC oqimi to'xtashi (qidiruv eskirishi) jiddiy nosozlik hisoblanmaydi, lekin kitobga yozish to'xtashi — jiddiy?">
+Chunki ular turli **kafolatlarni** ko‘taradi.
+
+Qidiruv — **hosila ko‘rinish**. U noto‘g‘ri bo‘lsa (band kun bo‘sh
+ko‘rinsa), eng yomon natija — mehmonning urinishi bazada rad etiladi.
+To‘g‘rilik kafolati (ikki marta bron yo‘q) boshqa joyda — tunlar
+jadvalida — va u qidiruvga bog‘liq emas. CDC to‘xtashi faqat tajribani
+yomonlashtiradi (ko‘proq “afsuski, band” xabarlari), va u tiklanganda
+oqim o‘z-o‘zidan quvib yetadi.
+
+Kitob — **haqiqat manbai**. Unga yozish to‘xtasa, pul harakati qayd
+etilmaydi: to‘lov yechildi, lekin kimga tegishli ekani noma’lum. Buni
+keyin “quvib yetish” mumkin emas, chunki qayd qilinmagan narsani
+qayerdandir tiklash kerak (rekonsilyatsiya, 8.4 — og‘ir, qo‘lda ish).
+Shuning uchun to‘lov oqimi kitobga yozishni **to‘lovdan oldingi
+shart** qiladi: kitob yozilmasa, to‘lov ham boshlanmaydi.
+
+Umumiy qoida: har komponent uchun so‘rang — “bu to‘xtasa, **qaysi
+kafolat** buziladi?” Agar javob “hech qaysi, faqat tezlik yoki qulaylik”
+bo‘lsa — u degradatsiya qilinishi mumkin. Agar “pul” yoki “ikki marta bron”
+bo‘lsa — u to‘xtaganda butun jarayon to‘xtashi kerak.
+</Check>
+
+## 11. Ishonch va xavfsizlik
+
+Airbnb’ning asosiy mahsuloti — kalendar ham, qidiruv ham emas, balki
+**ishonch**: notanish odam boshqa notanish odamning uyida tunaydi.
+Mehmon uy egasini hech qachon ko‘rmagan, uy egasi mehmonni ham. Bu
+bo‘limda texnik tizim shu ishonchni qanday ushlab turishini ko‘ramiz:
+kimlikni tekshirish, firibgarlikni ushlash, platformadan tashqari to‘lov
+urinishlari, hisobni egallab olish va ziyofatlarga qarshi kurash.
+
+Barcha holatlarda bitta tamoyil takrorlanadi: **ishqalanish maqsadli
+bo‘lishi kerak**. Har bir mehmondan pasport, selfi va telefon talab
+qilish firibgarlikni kamaytiradi — lekin halol mehmonlarning ham bir
+qismini yo‘qotadi. Vazifa — xavfli 1% ni aniqlab, faqat ularga
+qo‘shimcha qadam qo‘yish, qolgan 99% uchun esa yo‘lni silliq qoldirish.
+
+### 11.1 Xavf balli: har bron uchun qaror
+
+Har bir muhim amal — ro‘yxatdan o‘tish, kirish, e’lon yaratish, bron,
+to‘lov usulini qo‘shish, uy egasiga to‘lov manzilini o‘zgartirish —
+**xavf servisi** orqali o‘tadi. U amal haqidagi belgilarni (qurilma,
+IP, karta mamlakati, hisob yoshi, oldingi bronlar, xabarlar matni)
+yig‘ib, 0 dan 1 gacha ball qaytaradi. Ballga qarab uchta qarordan
+biri tanlanadi:
+
+```
+ball < 0.2    -> ruxsat (ishqalanishsiz)
+0.2 ... 0.8   -> qo'shimcha qadam: telefon kodi, hujjat, selfi,
+                 kartaning 3-D Secure tasdig'i
+ball > 0.8    -> rad etish yoki qo'lda tekshiruvga navbat
+```
+
+Bu 2014-yilda Airbnb muhandislik blogida tasvirlangan xavf tizimining
+asosiy g‘oyasi: qoidalar (tez, tushunarli) va mashinaviy o‘rganish
+modellari (yangi naqshlarni ushlaydi) birgalikda, va qaror — faqat
+“ha/yo‘q” emas, **ishqalanish darajasi**.
+
+<Calc title="Xavf servisi yuki va qo'lda tekshiruv navbati" result="Sekundiga ~50 ta tekshiruv — arzimas; qiyin qism — qo'lda tekshiruvchilar soni, u chegara qiymatini belgilaydi">{`Bronlar: ~355 000/kun
+Boshqa tekshiriladigan amallar (kirish, to'lov usuli, e'lon tahriri):
+  ~10x bronlar -> ~3.5 M/kun
+Jami: ~4 M/kun ~ 46/s o'rtacha, cho'qqida ~150/s
+
+Har tekshiruv: ~50-100 belgi, ~5-20 ms (keshlangan profillar + model)
+  -> bir necha server yetadi
+
+Qo'lda tekshiruv:
+  chegara 0.8 dan yuqori: faraz 0.1% -> ~4 000 holat/kun
+  bir tekshiruvchi: ~5 min/holat -> ~90 holat/smena
+  -> ~45 tekshiruvchi smenada
+  chegarani 0.7 ga tushirsak: faraz 0.3% -> ~12 000/kun -> ~135 kishi
+
+Xulosa: chegara — texnik parametr emas, xarajat va xavf o'rtasidagi
+  biznes qarori`}</Calc>
+
+Hisob muhim narsani ko‘rsatadi: model qanchalik aniq bo‘lmasin, oxirgi
+chegara **odamlar soniga** bog‘liq. Chegarani pasaytirish ko‘proq
+firibgarni ushlaydi, lekin ko‘proq halol mehmonni kutishga majbur
+qiladi va tekshiruvchilar xarajatini oshiradi. Shuning uchun xavf
+jamoalari modelning aniqligini emas, **ikki xato narxini** optimallashtiradi:
+o‘tkazib yuborilgan firibgarlik (chargeback, jarima, obro‘) va noto‘g‘ri
+bloklangan halol mijoz (yo‘qotilgan bron va, ehtimol, abadiy yo‘qotilgan
+mijoz).
+
+<Callout type="maslahat" title="Kechiktirilgan qaror — kuchli vosita">
+Bron va to‘lov o‘rtasida vaqt bor: mehmon bugun bron qiladi, lekin
+pul uy egasiga faqat kirishdan ~24 soat keyin boradi (8.3). Bu oyna
+xavf tizimiga **kechiktirilgan tekshiruv** imkonini beradi: shubhali
+bron darhol rad etilmaydi, balki qabul qilinadi va keyingi soatlarda
+chuqurroq tekshiriladi (karta tarixi, bank javoblari, boshqa bronlar
+bilan bog‘liqlik). Firibgarlik aniqlansa — bron bekor qilinadi, pul
+qaytariladi, uy egasi hech narsa yo‘qotmaydi. Tezlik va to‘g‘rilik
+o‘rtasidagi murosani vaqtda taqsimlash — to‘lov tizimlarida keng
+tarqalgan naqsh.
+</Callout>
+
+### 11.2 Platformadan tashqari to‘lov
+
+Eng qadimgi firibgarlik sxemasi texnik emas, ijtimoiy: uy egasi (yoki
+uy egasi qiyofasidagi firibgar) xabarlarda “Airbnb komissiyasini tejaymiz,
+pulni to‘g‘ridan-to‘g‘ri o‘tkazing” deb yozadi. Mehmon pul o‘tkazadi —
+va uy ham, pul ham yo‘q. Airbnb’ning barcha himoyalari (kechiktirilgan
+to‘lov, qaytarish, AirCover kafolatlari) faqat platforma ichidagi pulga
+tegishli, shuning uchun bu sxema mehmon uchun ayniqsa xavfli.
+
+Texnik javob — **xabarlarni tahlil qilish**. Bron tasdiqlanmaguncha
+xabarlarda telefon raqamlari, elektron pochta manzillari va tashqi
+havolalar yashiriladi; har xabar matni modeldan o‘tadi va “pulni
+to‘g‘ridan-to‘g‘ri”, “WhatsApp’da yozing”, bank rekvizitlari kabi
+naqshlarda ogohlantirish chiqadi.
+
+<Deep title="Nega raqamlarni yashirish oddiy regex bilan bo'lmaydi">
+Birinchi urinish oddiy: xabarda 7 ta ketma-ket raqam bo‘lsa — yashir.
+Bir hafta ichida odamlar aylanma yo‘l topadi:
+
+```
+"meni raqamim: 90 819 97 51"        -> bo'shliqlar
+"to'qqiz nol sakkiz bir to'qqiz..."  -> so'z bilan
+"9O8199751"                          -> O harfi nol o'rnida
+"raqamim profil rasmida"             -> rasm
+"instagramda: ali_uylari"            -> boshqa kanal
+```
+
+Har yangi qoida yangi aylanma yo‘lni tug‘diradi — bu klassik
+**qarshilik ko‘rsatuvchi muhit** (adversarial). Undagi qoidalar:
+
+1. **Oddiy qoidalar — faqat birinchi qatlam.** Ular arzon va
+   tushunarli, lekin tez eskiradi. Ularning vazifasi — “dangasa”
+   holatlarni ushlash va model uchun belgi berish.
+2. **Model belgilar yig‘indisiga qaraydi, bitta xabarga emas.**
+   Xabarlar ketma-ketligi, hisob yoshi, bron holati, oldin
+   tekshiruvchilar belgilagan hisoblar bilan o‘xshashlik.
+3. **Javob — to‘liq bloklash emas.** Ko‘pincha xabar yetkaziladi,
+   lekin mehmonga “Airbnb tashqarisida to‘lov qilmang — himoyangiz
+   yo‘qoladi” degan ogohlantirish ko‘rsatiladi. Firibgar qaysi xabari
+   ushlanganini bilmaydi — va qoidalarni teskari muhandislik qilish
+   qiyinlashadi.
+4. **Tekshiruvchilar qarorlari — yangi ma’lumot.** Har qo‘lda
+   tekshirilgan holat modelni qayta o‘qitish uchun belgi bo‘ladi.
+   Bu halqa bo‘lmasa, model firibgarlar o‘zgarishidan orqada qoladi.
+
+Muhim nozik jihat: halol uy egasi ham kirish kodini yoki manzilni
+yozishi kerak. Shuning uchun yashirish **bron holatiga** bog‘liq:
+tasdiqlangan brondan keyin aloqa ma’lumotlari ko‘rinadi, chunki pul
+allaqachon platforma ichida.
+</Deep>
+
+<Callout type="ogoh" title="Firibgarlikda aniqlik metrikasi aldaydi">
+Firibgarlik bronlarning juda kichik ulushi — masalan, 0.1%. Hamma
+bronni “halol” deb belgilaydigan model 99.9% aniqlikka ega va mutlaqo
+foydasiz. Xavf modellarini aniqlik (accuracy) bilan emas, **precision
+va recall** bilan, aniqrog‘i — tanlangan chegaradagi pul oqimi bilan
+baholang: “bu chegarada qancha firibgarlik dollari to‘xtatildi va qancha
+halol bron dollari yo‘qotildi”.
+</Callout>
+
+### 11.3 Hisobni egallab olish
+
+Uy egasi hisobi — bu **pul oqimi**. Unga kirgan firibgar birinchi
+navbatda bitta narsani o‘zgartiradi: to‘lov yuboriladigan bank hisobini.
+Keyingi to‘lov (8.3) firibgarga ketadi, va uy egasi buni faqat pul
+kelmaganda bilib qoladi. Shuning uchun “to‘lov usulini o‘zgartirish” —
+eng qattiq himoyalangan amallardan biri.
+
+<Calc title="To'lov manzili o'zgartirilgandagi kutish oynasi" result="O'rtacha uy egasi uchun 1-2 to'lov ushlanadi — bu firibgarning butun foydasi; halol uy egasi uchun esa bir martalik kechikish">{`Faol uy egalari: ~4 M+
+To'lov manzilini o'zgartirish: faraz yiliga har 10-uy egasi -> ~400 000/yil
+  ~1 100/kun
+
+Himoya:
+  1) qayta autentifikatsiya (parol + ikkinchi omil)
+  2) eski manzil egasiga xabar ("siz o'zgartirdingizmi?")
+  3) yangi manzilga birinchi to'lovni ~N kun kechiktirish
+
+N ni tanlash:
+  o'rtacha uy egasi: oyiga ~4 bron -> haftasiga ~1 to'lov
+  N = 7 kun -> 1-2 to'lov kutadi
+  firibgar kirgandan so'ng uy egasi eski manzilga kelgan xabarni
+    odatda 1-2 kun ichida ko'radi -> N ichida ulgurib bekor qiladi
+
+Xarajat: halol uy egasi bir marta ~1 hafta kechikish
+Foyda: hisobni egallab olishdan tushadigan pul deyarli nolga tushadi`}</Calc>
+
+Bu 11.1 dagi “kechiktirilgan qaror” ning yana bir ko‘rinishi: xavfli
+amalni rad etish emas, uning **natijasini kechiktirish** va qonuniy
+egaga reaksiya qilish uchun vaqt berish. Firibgarlar tezlikka tayanadi
+— hisobga kirib, pulni tezda chiqarib olish. Kechikish ularning iqtisodini
+buzadi.
+
+Hisob darajasidagi boshqa himoyalar klassik: yangi qurilmadan kirishda
+tasdiq, parol sizib chiqqan bazalarda bo‘lsa — majburiy almashtirish,
+bir IP’dan ko‘p hisobga kirish urinishlarini cheklash (credential
+stuffing), va xavf balli yuqori bo‘lsa — sessiyani qisqartirish.
+
+### 11.4 Ziyofatlar va jamoat xavfsizligi
+
+2020-yil avgustda Airbnb butun dunyoda ziyofatlarni vaqtincha taqiqladi,
+2022-yil iyunda esa taqiq doimiy bo‘ldi. Bu biznes qarori texnik
+vazifaga aylandi: **bron ziyofat uchun qilinayotganini oldindan qanday
+bilish mumkin?**
+
+Javob — yana xavf balli, lekin boshqa belgilar bilan. Masalan, AQSh
+va Kanadada 2022-yildan joriy etilgan tekshiruv quyidagilarga qaraydi:
+mehmonning yoshi va sharhlar tarixi, bron qilinayotgan kechalar soni
+(bir kecha — shubhaliroq), mehmon yashaydigan joydan uygacha masofa
+(o‘z shahrida bir kechalik bron — shubhaliroq), hafta kuni va bayram
+kunlari (31-dekabr, mustaqillik kuni), va uy turi (butun uy, katta
+sig‘im).
+
+<Versus
+  left={{ title: "Qat'iy qoida", points: [
+    "'25 yoshdan kichik, sharhsiz, 1 kecha, butun uy — rad'",
+    "Tushunarli, tushuntirish oson",
+    "Chegarada adolatsiz: 24 yoshli halol mehmon ham rad",
+    "Firibgarlar qoidani tez o'rganadi (2 kecha bron qiladi)",
+    "Yangi naqshlarni ushlamaydi",
+  ] }}
+  right={{ title: "Model va ball", points: [
+    "Ko'p belgining yig'indisi — bitta belgi hal qilmaydi",
+    "Qoidani 'o'qish' qiyin",
+    "Kamroq halol mehmon rad etiladi",
+    "Tushuntirish qiyin — mijoz 'nega' deb so'raydi",
+    "Doimiy qayta o'qitish va monitoring kerak",
+  ] }}
+/>
+
+Amalda ikkalasi birga ishlaydi: model ball beradi, qoidalar esa
+**qonuniy va siyosiy chegaralarni** ifodalaydi (masalan, “18 yoshdan
+kichik bron qila olmaydi” — model qarori emas, qonun). Model chiqishi
+esa ko‘pincha rad etish emas, balki muqobil: “butun uy o‘rniga xona”
+yoki “uy egasi tasdig‘i kerak” (Request to Book, 5-bo‘lim 10-qadam).
+
+<Check q="Nega xavf tizimi bron paytida emas, balki uy egasiga to'lov paytida ham ishlashi kerak?">
+Chunki bron paytida ma’lumot kam, keyin esa ko‘payadi.
+
+Bron paytida tizim faqat mehmon profili, karta va qurilmani biladi.
+Keyingi kunlarda yangi belgilar keladi: bank kartani o‘g‘irlangan deb
+belgilashi, mehmonning xabarlar tarixi, shu kartadan boshqa bronlar,
+uy egasi hisobidagi o‘zgarishlar (masalan, to‘lov manzili yangi —
+11.3). To‘lovgacha bo‘lgan oyna (8.3) — xavf tizimining eng qimmatli
+resursi: pul hali platformada, va har qanday qarorni **qaytarish arzon**.
+
+To‘lov ketganidan keyin esa pulni qaytarish deyarli imkonsiz — ayniqsa
+firibgar hisobidan. Shuning uchun to‘lov oldidan oxirgi tekshiruv —
+“bu to‘lov manzili yangi emasmi, bron bilan bog‘liq firibgarlik
+belgilari paydo bo‘lmadimi” — xavf tizimining ikkinchi, va ko‘pincha
+eng muhim, nazorat nuqtasi.
+
+Umumiy qoida: pul oqimidagi har **qaytarilmas** qadam oldidan qaror
+qayta ko‘rib chiqiladi, chunki o‘sha nuqtada ma’lumot eng ko‘p va xato
+narxi eng yuqori.
+</Check>
+
+## 12. Iqtisod: bitta bron qancha turadi
+
+Airbnb o‘zi uy egasi emas — u **vositachi**. Uning daromadi — har
+brondan olinadigan xizmat haqi: odatda mehmondan ~14% gacha va uy
+egasidan ~3% (ikki tomonlama model), yoki ba’zi bozorlarda faqat uy
+egasidan ~14–16% (bitta tomonlama model). Bu bo‘limda shu komissiyaning
+qanchasi texnik xarajatga ketishini hisoblaymiz — va nima uchun
+bronlashning to‘g‘riligi iqtisodning markazida turishini ko‘ramiz.
+
+<Calc title="Bitta bronning daromadi" result="Bir bron Airbnb'ga o'rtacha ~$80-90 daromad keltiradi; bu yillik ~$10-11 mlrd">{`O'rtacha bron: ~3.5-4 kecha, ~2 mehmon
+Kechalik o'rtacha narx (ADR): ~$160
+Bron qiymati (GBV): 4 x $160 + tozalash ~$60 = ~$700
+
+Xizmat haqi (o'rtacha, ikki model aralashmasi): ~12-13% GBV dan
+  -> ~$85-90 bir brondan
+
+Yillik: ~130 M bron x ~$85 = ~$11 mlrd
+  (ochiq hisobotlardagi yillik daromad ~$10-11 mlrd bilan mos)
+
+Taqqoslash: to'lov provayderi (karta) ~2-3% GBV -> ~$15-20 bir brondan
+  -> daromadning ~20% i faqat karta komissiyasiga ketadi`}</Calc>
+
+Hisob kutilmagan xulosani beradi: bitta bronning **eng katta texnik
+xarajati** — serverlar emas, to‘lov provayderining komissiyasi. Karta
+tarmog‘i har brondan ~$15–20 oladi, va bu raqam hech qanday arxitektura
+bilan kamaymaydi — faqat to‘lov usullarini (mahalliy to‘lov tizimlari,
+bank o‘tkazmalari) va provayderlar bilan shartnomalarni boshqarish
+orqali. Shuning uchun katta marketpleyslarda **to‘lov marshrutlash**
+(qaysi provayder orqali qaysi kartani o‘tkazish) alohida jamoaning
+ishi.
+
+<Calc title="Infratuzilma xarajati bir brondan" result="Serverlar bir bron uchun ~$2-4 — daromadning ~3-4%; qidiruv bronlashdan ~100 barobar qimmat">{`Faraz: yillik bulut xarajati ~$300-500 M (hisobotlardagi tartib)
+Bronlar: ~130 M/yil -> ~$2.5-4 bir brondan
+
+Bu xarajat qayerga ketadi:
+  qidiruv so'rovlari: bir bronga ~100 qidiruv (1.3)
+    har qidiruv ~50-100 ms CPU + model; bron esa ~bir necha ms
+  e'lon sahifalari va rasmlar: CDN, rasm o'lchamlari
+  ma'lumotlar ombori va ML o'qitish: tahlil, reyting, narx modellari
+  bronlash va to'lov yo'li o'zi: bir bronga bir necha tranzaksiya
+    -> umumiy xarajatning ~1% idan kam
+
+Nisbat: so'rovlar soni ~100 : 1, CPU bo'yicha ~1 000 : 1`}</Calc>
+
+Bu raqamlar 4.4-dagi xulosani pul bilan tasdiqlaydi: **o‘qish (qidiruv)
+yozishdan (bron) ko‘p barobar ko‘p** va xarajatning katta qismi
+o‘qish tomonida — qidiruv, e’lon sahifalari, rasmlar va ular ustidagi
+tahlil. Bronlash yo‘li arzon — lekin u yagona joy, bu yerda xato
+to‘g‘ridan-to‘g‘ri pulga aylanadi.
+
+<Deep title="Nega ikki marta bron qimmat: xato narxining assimetriyasi">
+Bitta ikki marta bron qancha turadi? To‘g‘ridan-to‘g‘ri hisob:
+
+```
+Ikkinchi mehmonni boshqa joyga joylash (qayta joylash kafolati):
+  shu shaharda, shu sanalarga, o'xshash uy — ko'pincha qimmatroq
+  farqni platforma to'laydi: ~$200-1 000
+
+Xizmat haqi qaytariladi: -$85
+Qo'llab-quvvatlash xizmatiga qo'ng'iroqlar: 2-3 ta x ~$15 = ~$45
+Mehmon keyingi yili qaytmasligi ehtimoli:
+  mehmonning umrbod qiymati ~$300-500, yo'qotish ehtimoli ~30-50%
+  -> ~$100-250
+
+Jami: ~$400-1 400 bir hodisaga
+```
+
+Endi solishtiring: bitta bron ~$85 olib keladi. Demak **bitta ikki
+marta bron ~5–15 ta muvaffaqiyatli bronning foydasini yeydi**. Agar
+tizim har 10 000 brondan birida xato qilsa (0.01%) — bu kuniga ~35
+hodisa, yiliga ~$5–18 M zarar, ya’ni butun bronlash infratuzilmasidan
+qimmat.
+
+Bu assimetriya butun 5-bo‘limdagi qarorlarni tushuntiradi. Nega
+kafolat indeksda (1-qadam), kodda emas? Nega qidiruv eskirgan bo‘lsa
+ham bronlash baribir bazada tekshiriladi? Nega idempotentlik (3-qadam)
+har bir to‘lov chaqiruvida? Chunki to‘g‘rilik xatosining narxi uni
+oldini olish narxidan **ko‘p tartib** yuqori. Tunlar jadvalining
+indeksi bir bronga mikrosent turadi; unsiz bitta xato — yuzlab dollar.
+
+Qarama-qarshi holat ham ibratli: **qidiruvda** xato (band kun bo‘sh
+ko‘rinishi) arzon — mehmon “afsuski, band” xabarini ko‘radi va boshqa
+uyni tanlaydi (~$0.1 yo‘qotilgan konversiya). Shuning uchun qidiruv
+eskirishga ruxsat beradi, bronlash esa — yo‘q. Arxitekturadagi har
+bir “qat’iy” va “yumshoq” qaror shu narxlar nisbatidan kelib chiqadi.
+</Deep>
+
+<Callout type="info" title="Uy egasining iqtisodi ham tizim talabi">
+Airbnb daromadining manbai — uy egalari: ular e’lon qilmasa, qidirish
+uchun hech narsa yo‘q. Shuning uchun ba’zi texnik qarorlar platforma
+emas, **uy egasi** iqtisodiga xizmat qiladi: to‘lovning ~24 soatda
+kelishi (8.3) uy egasining pul aylanmasini tezlashtiradi; Smart Pricing
+(5-bo‘lim 11-qadam) bo‘sh kechalarni kamaytiradi; iCal sinxronlash
+(14-qadam) boshqa platformalarda ham e’lon qilishga imkon beradi —
+raqobatchiga yo‘l ochgandek ko‘rinsa ham, uy egasini saqlab qoladi.
+Ikki tomonlama bozorda texnik qaror har doim ikkala tomon uchun
+baholanadi.
+</Callout>
+
+Umumiy xulosa: Airbnb iqtisodida uchta qatlam bor. **Katta va
+o‘zgarmas** — karta komissiyasi (~20% daromad). **O‘rtacha va
+optimallashtiriladigan** — qidiruv va ML infratuzilmasi (~3–4%).
+**Kichik, lekin xavfli** — bronlash va to‘lov yo‘li: arzon, lekin
+xatosi qimmat. Muhandislik e’tibori shu tartibda emas, teskari tartibda
+taqsimlanadi — chunki birinchisini kod o‘zgartira olmaydi, uchinchisini
+esa faqat kod himoya qiladi.
+
+## 13. Sig‘im rejalashtirish
+
+Airbnb yuki bir tekis emas. U uch xil to‘lqinda keladi: **mavsumiy**
+(yanvarda odamlar yozgi ta’tilni rejalashtiradi — qidiruvlar ko‘payadi),
+**voqea** (Olimpiada, jahon chempionati, Super Bowl — bitta shaharga
+talab portlaydi) va **reklama** (katta kampaniya yoki OAV xabaridan keyin
+bir soatda trafik ikki barobar). Bu bo‘limda har birini hisoblaymiz.
+
+### 13.1 Qidiruv yuki: yanvar cho‘qqisi
+
+<Calc title="Qidiruv serverlari: o'rtacha va cho'qqi" result="Cho'qqida ~4 000 so'rov/s; bitta server ~80 so'rov/s -> ~50 server, zaxira va zonalar bilan ~150-250">{`1.3 dagi hisob: bitta bronga ~100 qidiruv
+  -> ~410 so'rov/s o'rtacha, cho'qqida ~4 000/s
+Yanvar (rejalashtirish mavsumi) cho'qqini yana ~1.5x oshiradi -> ~6 000/s
+Reja zaxira bilan: ~10 000 so'rov/s
+
+Bitta qidiruv serveri:
+  nomzodlarni olish + bitlar + filtr: ~10 ms CPU
+  reyting modeli (500 nomzod): ~30-60 ms CPU
+  -> ~60 ms CPU/so'rov, 8 yadro -> ~130 so'rov/s, 60% band -> ~80/s
+
+Serverlar: 10 000 / 80 ~ 125
+  + har zonada nusxa (3 zona, bittasi yiqilsa qolganlar ko'tarsin)
+  -> ~150-250 server
+
+Agar neyron tarmoq 500 emas, 5 000 nomzodda ishlasa:
+  ~400 ms CPU/so'rov -> ~1 500-2 000 server`}</Calc>
+
+Hisob ko‘rsatadiki, qidiruv sig‘imining asosiy o‘lchovi — **reyting
+modeli** uchun CPU (yoki GPU). Shuning uchun 6.1 dagi ikki bosqichli
+tuzilma sig‘im uchun hal qiluvchi: agar neyron tarmoq 500 emas, 5 000
+nomzodda ishlasa, serverlar soni ~10 barobar oshadi. Arzon birinchi
+bosqich — bu nafaqat kechikish, balki **xarajat** optimallashtirish.
+
+Qidiruv indeksi esa har serverda to‘liq nusxada saqlanadi (~7–8 M
+e’lon, kalendar bitlari va xususiyatlar — bir necha GB), shuning uchun
+qidiruv serverlari gorizontal masshtablanadi: yuk oshsa — nusxa
+qo‘shiladi. Bu 6.2-dagi “1 GB xotirada” hisobining amaliy ma’nosi:
+indeks kichik bo‘lgani uchun sharding kerak emas, faqat replikatsiya.
+
+### 13.2 Bronlash yuki: mashhur voqea
+
+Qidiruvdan farqli, bronlash yuki kichik — sekundiga o‘nlab. Lekin
+voqea paytida u **bir joyga** yig‘iladi.
+
+<Calc title="Olimpiada shahri: bron to'lqini" result="Global yuk arzimas (~100 bron/s), lekin bitta shahar kalendarlarida sekundiga yuzlab to'qnashuv — ular noyob cheklov bilan millisekundlarda hal bo'ladi">{`Olimpiada chiptalari sotuvga chiqdi (bir kun, bir shahar):
+  shahardagi e'lonlar: ~60 000
+  shu sanalarga bron urinishlari: bir soatda ~200 000
+  -> ~55 urinish/s shu shaharda (odatdagi global ~4/s dan 10+ barobar)
+
+Har e'longa to'qnashuv:
+  mashhur 5% e'lon (~3 000) urinishlarning ~50% ini oladi
+  -> har mashhur e'longa ~0.01 urinish/s, cho'qqi daqiqalarda ~1/s
+
+Tunlar jadvalida (1-qadam):
+  har urinish: ~3-5 tunni INSERT, noyob indeks -> ~2-5 ms
+  ikkinchi urinish -> darhol rad (kalit to'qnashuvi), qulf kutish yo'q
+
+Pessimistik qulf bilan (7.1):
+  bir e'lon qulfi ~50 ms (tekshirish + yozish + tarmoq)
+  1 urinish/s da navbat yo'q, lekin 20/s da -> ~1 s kutish`}</Calc>
+
+Bu 7.2 dagi “mashhur uy” muammosining sig‘im tomoni: ma’lumotlar bazasi
+umumiy yukni bemalol ko‘taradi, lekin **bitta qatordagi raqobat** (hot
+key) tezlikni cheklaydi. Tunlar jadvali shu sababli qulflardan ustun:
+u raqobatni kutishga emas, **tez rad etishga** aylantiradi.
+
+<Deep title="Bronlash bazasini bo'lish: kalit — e'lon, mehmon emas">
+Bronlash yuki kichik bo‘lsa ham, **ma’lumotlar hajmi** o‘sib boradi:
+yillik ~130 M bron, har biri ~3.5 tun — ~450 M tun qatori yiliga,
+bir necha yil tarix bilan milliardlar. Bir paytda jadvalni bo‘lish
+(sharding) kerak bo‘ladi. Savol — **nima bo‘yicha**?
+
+```
+Variant A: mehmon ID bo'yicha
+  + "mening bronlarim" sahifasi bitta shardda
+  - bitta e'longa ikki mehmon -> ikki xil shard
+  - noyob cheklov (listing_id, night) ishlamaydi: ikki shard
+    bir-birining qatorlarini ko'rmaydi -> ikki marta bron!
+
+Variant B: e'lon ID bo'yicha
+  + (listing_id, night) har doim bitta shardda -> cheklov ishlaydi
+  + e'lon kalendari bitta shardda
+  - "mening bronlarim" — hamma shardga so'rov
+    -> alohida indeks (mehmon -> bron ID lar), CDC orqali to'ldiriladi
+```
+
+Javob — **B**, va sabab 12-bo‘limdagi assimetriya: noyob cheklov
+to‘g‘rilik kafolati, “mening bronlarim” esa qulaylik. Kafolat hech
+qachon shardlar orasidagi tranzaksiyaga bog‘lanmasligi kerak — u
+bitta shard ichida, bitta indeksda bo‘lishi shart. Mehmon ko‘rinishi
+esa hosila — uni CDC orqali alohida jadvalga (yoki qidiruv indeksiga)
+to‘ldirish mumkin, va u bir necha soniya eskirsa ham xavfsiz.
+
+Umumiy qoida: **sharding kaliti — kafolat kaliti**. Tizimdagi eng
+muhim invariant qaysi ob’ekt atrofida qurilgan bo‘lsa, ma’lumot shu
+ob’ekt bo‘yicha bo‘linadi. Airbnb’da bu — e’lon (va uning tunlari).
+Uber darsida — safar, Slack darsida — kanal, Google Docs darsida —
+hujjat. Qolgan har bir ko‘rinish — hosila.
+</Deep>
+
+### 13.3 Vaqtincha ushlab turishlar jadvali
+
+5-bo‘lim 2-qadamdagi HOLD holati o‘z sig‘im savoliga ega: ushlab
+turilgan, lekin tasdiqlanmagan bronlar tunlarni band qiladi. Ular
+qancha?
+
+<Calc title="TTL tanlash: 5, 15 va 30 daqiqa" result="Soxta bandlik TTL ga chiziqli bog'liq: 15 daqiqada o'rtacha ~720, 30 daqiqada ~1 440; 5 daqiqada esa halol mehmonlarning ~2-3% i ulgurmaydi">{`5-bo'lim 2-qadamdagi model: bronlar ~4/s, ~20% ushlab turish tasdiqlanmaydi
+Tugallanmagan HOLD lar TTL oxirigacha turadi (Little qonuni):
+  soxta band e'lonlar = 4 x 0.2 x TTL
+
+TTL = 5 daqiqa  (300 s):  ~240   o'rtacha, cho'qqida (x10) ~2 400
+TTL = 15 daqiqa (900 s):  ~720   o'rtacha, cho'qqida ~7 200
+TTL = 30 daqiqa (1800 s): ~1 440 o'rtacha, cho'qqida ~14 400
+
+Boshqa tomoni — halol mehmon to'lovni qancha vaqtda tugatadi:
+  karta, 3-D Secure'siz:          ~1 daqiqa
+  3-D Secure / bank ilovasi:      ~2-4 daqiqa, uzun dumi ~5-10 daqiqa
+  faraz: to'lovlarning ~2-3% i 5 daqiqadan uzoq davom etadi
+  -> TTL = 5 da kuniga ~7 000-10 000 halol bron muddati o'tib yo'qoladi
+
+Tozalash ishi: har daqiqada muddati o'tganlarni EXPIRED ga o'tkazish
+  -> ~50 qator/daqiqa o'rtacha — arzimas`}</Calc>
+
+TTL — xuddi 11.1 dagi xavf chegarasi kabi — texnik emas, **mahsulot**
+parametri. U ikki xato orasida tanlaydi: juda qisqa — halol mehmon
+to‘lovni tugatolmay bronini yo‘qotadi; juda uzun — mashhur uylarning
+kalendarlari tashlab ketilgan ushlab turishlar bilan “yopiladi”.
+Voqealar paytida (13.2) TTL ni qisqartirish mantiqli: raqobat yuqori,
+va har daqiqalik soxta bandlik boshqa mehmonga qimmat.
+
+<Callout type="maslahat" title="Tozalash ishiga tayanmang — o'qishda ham tekshiring">
+Muddati o‘tgan ushlab turishlarni fon jarayoni tozalaydi. Lekin u
+to‘xtab qolsa yoki orqada qolsa, e’lonlar keraksiz band ko‘rinadi.
+Shuning uchun bandlik tekshiruvi ikki qatlamli: tunlar jadvalidagi
+qator “band” deb hisoblanadi, **faqat agar** uning holati CONFIRMED
+yoki muddati o‘tmagan HOLD bo‘lsa. Yangi bron urinishi muddati o‘tgan
+HOLD’ga duch kelsa — uni o‘sha tranzaksiya ichida o‘chiradi. Fon
+jarayoni shunda to‘g‘rilik uchun emas, faqat tozalik uchun kerak
+bo‘ladi. Amaliyotdagi `expire_holds` ham shu tamoyil bilan tekshiriladi.
+</Callout>
+
+<Check q="Nega qidiruv serverlari replikatsiya bilan, bronlash bazasi esa sharding bilan masshtablanadi?">
+Chunki ularning tor joylari turli.
+
+Qidiruv — **o‘qish** yuki: cho‘qqida sekundiga minglab qimmat so‘rov, lekin
+ma’lumot kichik (butun indeks bir necha GB — 6.2, 13.1). Kichik
+ma’lumotni har serverga to‘liq nusxalash arzon, va har yangi nusxa
+sig‘imni chiziqli oshiradi. Bo‘lishning keragi yo‘q — aksincha, u har
+so‘rovni bir necha shardga yuborishga majbur qilib, kechikishni
+oshirardi.
+
+Bronlash — **yozish** yuki: sekundiga o‘nlab, lekin ma’lumot katta
+va o‘sib boradi (milliardlab tun qatori), va har yozuv **qat’iy
+tekshiruv** (noyob cheklov) talab qiladi. Yozuvlarni replikalarga
+tarqatib bo‘lmaydi — har bir tun uchun yagona haqiqat manbai kerak.
+Shuning uchun ma’lumot kafolat kaliti (e’lon) bo‘yicha bo‘linadi va har
+tunning “egasi” — aniq bitta shard.
+
+Umumiy qoida: **o‘qish yukini nusxalar bilan, yozish hajmini bo‘lish
+bilan** masshtablang. Va bo‘lish kalitini invariant belgilaydi (13.2
+Deep).
+</Check>
+
+## 14. Kuzatuv: invariantlar va signallar
+
+Oldingi darslarda kuzatuv asosan tezlik va xatolar haqida edi. Airbnb’da
+yana bir qatlam bor: **invariantlar** — tizim hech qachon buzmasligi
+kerak bo‘lgan qoidalar. “Bitta tun — bitta tasdiqlangan bron”, “kitobdagi
+har tranzaksiya yig‘indisi nol”, “yechilgan har bir to‘lov — bitta bron”.
+Ular buzilganda foydalanuvchi xatolik sahifasini ko‘rmaydi — tizim
+“ishlaydi”, faqat noto‘g‘ri.
+
+### 14.1 Metrikalar
+
+| Qatlam | Metrika | Nima uchun |
+| --- | --- | --- |
+| Qidiruv | p50/p99 kechikish, bo‘sh natijalar ulushi | Tezlik va sifat: bo‘sh natija — indeks yoki filtr xatosi belgisi |
+| Qidiruv | “Band” rad etishlar ulushi | Qidiruv qanchalik eskirgan: CDC kechikishining foydalanuvchiga ta’siri |
+| Bronlash | HOLD → CONFIRMED konversiyasi | To‘lov yo‘lidagi muammolar: provayder, 3-D Secure, UI |
+| Bronlash | Kalit to‘qnashuvlari soni | Raqobat darajasi (13.2); keskin o‘sish — voqea yoki bot |
+| To‘lov | Avtorizatsiya muvaffaqiyati, provayder bo‘yicha | Bitta provayder yoki mamlakat nosozligini tez ajratish |
+| Kitob | Muvozanatsiz tranzaksiyalar | Har doim nol bo‘lishi kerak |
+| CDC | Kechikish (bazadagi o‘zgarish → indeks) | Qidiruv eskirishining bevosita o‘lchovi |
+| Xavf | Rad etish va qo‘lda tekshiruv ulushi | Model yoki chegara o‘zgarishining ta’siri |
+
+Jadvaldagi eng qiziq metrika — **“band” rad etishlar ulushi**. U
+ikkita mustaqil tizimni bog‘laydi: qidiruv “bo‘sh” dedi, bronlash
+“band” dedi. Bu raqamning keskin o‘sishi deyarli har doim CDC oqimida
+muammo borligini bildiradi — hatto CDC’ning o‘z metrikalari hali
+normal ko‘rinsa ham. Foydalanuvchi ko‘radigan natija bo‘yicha o‘lchash
+ichki metrikadan ishonchliroq.
+
+<Calc title="CDC kechikishi va 'band' xabarlari" result="CDC 1 soniyadan 5 daqiqaga kechiksa, 'afsuski, band' xabarlari ~0.1% dan ~3% gacha o'sadi — metrika bu nosozlikni CDC dashbordidan tezroq ko'rsatadi">{`Bir e'lon kalendari o'zgarishi: ~355 000 bron/kun + bekor qilish +
+  uy egasi bloklari + iCal (14-qadam) -> ~2 M o'zgarish/kun ~ 23/s
+
+CDC kechikishi L soniya bo'lsa, qidiruvda eskirgan e'lonlar:
+  23 x L ta bir paytda
+  L = 1 s    -> ~23 e'lon (7 M dan 0.0003%)
+  L = 300 s  -> ~7 000 e'lon
+
+Lekin eskirganlar tasodifiy emas — ular aynan hozir talab yuqori
+  bo'lgan e'lonlar (bron qilinayotganlar). Ularga bron urinishlari:
+  L = 1 s    -> rad etishlar ~0.1% (asosan haqiqiy poyga)
+  L = 300 s  -> ~2-3% (mashhur e'lonlar ko'p marta "bo'sh" ko'rinadi)
+
+Ogohlantirish chegarasi: rad etishlar ulushi odatdagidan 3x yuqori
+  va 5 daqiqa davom etsa -> CDC ga navbatchi`}</Calc>
+
+### 14.2 Invariant tekshiruvchilari
+
+<Flow nodes={["Bronlar bazasi (replika)", "Kitob bazasi (replika)", "To'lov provayderi hisobotlari", "Tekshiruvchi ish (har soat)", "Buzilishlar navbati", "Navbatchi + tuzatish"]} caption="Invariantlar asosiy yo'ldan tashqarida, replikalar ustida mustaqil tekshiriladi" />
+
+Invariant tekshiruvchisi — alohida, oddiy dastur. U bronlash kodini
+qayta ishlatmaydi (xuddi shu xato unda ham bo‘lishi mumkin), balki
+ma’lumotlarni to‘g‘ridan-to‘g‘ri so‘raydi:
+
+```sql
+-- 1) ikki marta bron: bitta tunda ikki faol bron
+SELECT listing_id, night, count(*)
+FROM booked_nights n JOIN bookings b ON b.id = n.booking_id
+WHERE b.state IN ('CONFIRMED', 'HOLD') AND n.night >= current_date
+GROUP BY listing_id, night HAVING count(*) > 1;
+
+-- 2) muvozanatsiz kitob tranzaksiyasi
+SELECT txn_id, sum(amount_minor)
+FROM ledger_entries GROUP BY txn_id HAVING sum(amount_minor) <> 0;
+
+-- 3) to'lovsiz tasdiqlangan bron yoki bronsiz yechilgan to'lov
+SELECT b.id FROM bookings b LEFT JOIN payments p ON p.booking_id = b.id
+WHERE b.state = 'CONFIRMED' AND p.id IS NULL;
+```
+
+Birinchi so‘rov qiziq: tunlar jadvalida noyob indeks bor, demak u
+**hech qachon** natija qaytarmasligi kerak. Nega unda tekshirish?
+Chunki indeksdan tashqari yo‘llar ham bor: qo‘lda tuzatish skripti,
+migratsiya, indeks vaqtincha o‘chirilgan yangi shard, boshqa jadvalga
+yozadigan eski servis (5-bo‘lim 13-qadam — o‘tish davrida ikki tizim
+yonma-yon). Tekshiruvchi kafolatning o‘zini emas, **kafolat haqidagi
+farazlarni** tekshiradi.
+
+<Deep title="Tekshiruvchi yolg'on signal bermasligi uchun">
+Invariant tekshiruvchisining eng katta xavfi — yolg‘on signallar.
+Agar u har kuni “buzilish” deb 50 ta noto‘g‘ri xabar yuborsa, bir
+haftadan keyin hech kim uni o‘qimaydi — va haqiqiy buzilish e’tiborsiz
+qoladi. Yolg‘on signallarning uchta manbai va ularga qarshi usullar:
+
+**1. Replika kechikishi.** Tekshiruvchi replikadan o‘qiydi. Bron
+yaratildi, lekin to‘lov yozuvi replikaga hali yetib kelmadi — 3-so‘rov
+“to‘lovsiz bron” deb ko‘rsatadi. Yechim: faqat ma’lum yoshdan katta
+yozuvlarni tekshirish (`created_at < now() - interval '10 minutes'`),
+yoki topilgan har holatni **asosiy bazada qayta tekshirish** va faqat
+ikkinchi tekshiruvdan keyin signal berish.
+
+**2. O‘tish holatlari.** HOLD dan EXPIRED ga o‘tish, bekor qilish
+va qaytarish — bir necha qadam. Oraliq holatda invariant vaqtincha
+“buzilgan” ko‘rinishi mumkin (masalan, bron bekor qilindi, qaytarish
+hali jarayonda). Yechim: invariantni **holat mashinasi** bilan birga
+ta’riflash: “CANCELLED holatidagi bron uchun 72 soat ichida qaytarish
+yozuvi bo‘lishi kerak” — vaqt oynasi bilan.
+
+**3. Tashqi ma’lumot.** To‘lov provayderining hisobotlari kunlik va
+ba’zan kechikadi. Rekonsilyatsiya (8.4) shu sabab kun oxirida emas,
+hisobot kelgandan keyin ishga tushadi.
+
+Maqsad — tekshiruvchi xabarlarining **deyarli barchasi** haqiqiy
+muammo bo‘lishi. Shunda har bir xabar navbatchini uyg‘otishga arziydi.
+Bu 11.2-dagi Callout’ning teskari tomoni: u yerda firibgarlikni
+o‘tkazib yubormaslik muhim, bu yerda esa — ishonchni yo‘qotmaslik.
+</Deep>
+
+<Callout type="xato" title="Invariant buzilishini 'tuzatib' qo'yish — ikkinchi xato">
+Tekshiruvchi ikki marta bron topdi. Birinchi instinkt — skript yozib,
+ikkinchi bronni bekor qilish. Bu faqat simptomni yo‘qotadi: xatoga
+olib kelgan yo‘l (migratsiya, eski servis, poyga) ochiq qoladi va
+ertaga yana ishlaydi. To‘g‘ri tartib: (1) mehmonlarga ta’sirni
+cheklash (qayta joylash), (2) **ildiz sababni** topish — qaysi kod yo‘li
+indeksdan o‘tib ketdi, (3) yo‘lni yopish, (4) shundan keyingina
+tarixiy ma’lumotni tozalash. Va har tuzatish skripti o‘zi ham
+idempotent va jurnalga yozilgan bo‘lishi kerak — aks holda u yangi
+invariant buzilishining manbai bo‘ladi.
+</Callout>
+
+<Check q="Noyob indeks ikki marta bronni imkonsiz qiladi. Nega baribir tekshiruvchi kerak?">
+Chunki indeks faqat **o‘zidan o‘tadigan yozuvlarni** himoya qiladi.
+
+Indeks kafolati quyidagi farazlarga tayanadi: barcha bronlar shu
+jadvalga yoziladi; indeks mavjud va yoqilgan; bir e’lonning barcha
+tunlari bitta shardda (13.2 Deep); tunlar to‘g‘ri sanalar bilan
+yoziladi (vaqt zonasi xatosi — 2.2 — bir tunni boshqa sanaga surib,
+indeksni “aldashi” mumkin). Bu farazlarning har biri kod, migratsiya
+yoki qo‘lda aralashuv bilan buzilishi mumkin.
+
+Masalan, vaqt zonasi xatosi: bir servis sanani UTC’da, boshqasi
+mahalliy vaqtda hisoblaydi. Bir bron “14-mart kechasi”, ikkinchisi
+xuddi shu kechani “15-mart” deb yozadi. Indeks nuqtai nazaridan bular
+turli kalitlar — hech qanday to‘qnashuv yo‘q. Lekin mehmonlar bir
+kechada bir uyga keladi. Tekshiruvchi (bron oraliqlarini kesishish
+bo‘yicha ham solishtirsa) buni ushlaydi, indeks — yo‘q.
+
+Umumiy qoida: **kafolat mexanizmi va uni tekshiruvchi mexanizm
+mustaqil bo‘lishi kerak**. Bir xil faraz ikkalasida bo‘lsa, ikkalasi
+bir vaqtda xato qiladi.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "'Bo'shmi?' deb tekshirib, keyin yozish (ilova kodida)", pro: "Tushunarli; bitta foydalanuvchida benuqson", con: "Ikki parallel so'rov ikkalasi 'bo'sh' ko'radi — ikki marta bron (4.1)" },
+    { choice: "Bron vaqtini timestamp'da, UTC bo'yicha saqlash", pro: "'Vaqtni hamma joyda UTC da saqlang' degan umumiy maslahatga mos", con: "Tun — sana, vaqt emas; zona almashganda bron bir kunga siljiydi (2.2)" },
+    { choice: "To'lovni bazaviy tranzaksiya ichida chaqirish", pro: "Hammasi bitta joyda: yo muvaffaqiyat, yo qaytarish", con: "Sekundlik tashqi chaqiruv qulf ushlab turadi; server qulasa — pul yechildi, bron yo'q (4.2)" },
+    { choice: "To'lovni idempotentlik kalitisiz qayta urinish", pro: "Tarmoq xatosida mijoz tajribasi silliq", con: "Taymaut — muvaffaqiyatsizlik degani emas; ikki marta yechish (4.3)" },
+    { choice: "Qidiruvni asosiy bronlar bazasidan to'g'ridan-to'g'ri qilish", pro: "Har doim yangi ma'lumot; indeks va CDC yo'q", con: "O'qish yuki yozishdan ~100x ko'p (CPU bo'yicha ~1000x) — baza bronlashga ulgurmaydi (4.4, 12)" },
+  ]}
+/>
+
+**Birinchi qator** — darsning markaziy antinaqshi va eng xavflisi,
+chunki u sinovlarda **ishlaydi**. Dasturchi bitta brauzerda bron qiladi
+— tekshiruv to‘g‘ri, yozuv to‘g‘ri. Poyga faqat ikki so‘rov bir necha
+millisekund ichida kelganda chiqadi, bu esa ishlab chiqarishda mashhur
+uyda har kuni, testda esa hech qachon bo‘lmaydi. Chuqur sabab —
+**kafolatni kodga ishonish**: kod “tekshiruv va yozish orasida hech kim
+aralashmaydi” deb faraz qiladi, baza esa bunday va’da bermagan. Kafolat
+baza cheklovida bo‘lsa (1-qadam), kod qanchalik xato bo‘lmasin, baza
+ikkinchi yozuvni rad etadi.
+
+**Ikkinchi qator** qiziq, chunki u **to‘g‘ri maslahatni noto‘g‘ri
+joyda** qo‘llash. “Vaqtni UTC’da saqlang” — hodisalar (to‘lov qachon
+bo‘ldi, xabar qachon yuborildi) uchun to‘g‘ri. Lekin tun — hodisa
+emas, **mahalliy kalendar sanasi**: “Parijdagi 14-mart kechasi”. Uni
+UTC timestamp’ga aylantirish ma’lumot qo‘shmaydi, balki ma’noni yo‘qotadi,
+va yozgi vaqtga o‘tish yoki mehmon boshqa zonada bo‘lishi uni bir
+kunga surib yuboradi. Qoida: har bir qiymatning **tabiatini** so‘rang —
+bu lahzami yoki kalendar sanasimi?
+
+**Uchinchi qator** “atomiklik” so‘zining noto‘g‘ri tushunilishi.
+Ma’lumotlar bazasi tranzaksiyasi faqat **bazani** atomik qiladi; tashqi
+to‘lov provayderi bu tranzaksiyaning qismi emas. Baza qaytarilsa, karta
+yechilgani qaytarilmaydi. Shuning uchun 2-qadamdagi HOLD holat mashinasi
+kerak: tashqi chaqiruv ikki qisqa tranzaksiya **orasida**, va har bir
+uzilish aniq holatda qoladi.
+
+**To‘rtinchi qator** tarmoq haqidagi eng keng tarqalgan xato faraz:
+“javob kelmadi — demak bajarilmadi”. Taymaut uch holatning birini
+bildiradi: so‘rov yetib bormagan, bajarilgan lekin javob yo‘qolgan, yoki
+hali bajarilmoqda. Idempotentlik kalitisiz qayta urinish ikkinchi va
+uchinchi holatda pulni ikki marta yechadi.
+
+**Beshinchi qator** — yosh tizimlarda tabiiy va to‘g‘ri tanlov (v0),
+lekin uni vaqtida o‘zgartirmaslik — antinaqsh. O‘qish va yozish yuklari
+ajralmaguncha, har bir qidiruv cho‘qqisi bronlashni sekinlashtiradi —
+ya’ni eng arzon operatsiya eng qimmatini o‘ldiradi.
+
+<Callout type="xato" title="Oltinchi antinaqsh: qidiruv natijasiga bron qarori sifatida ishonish">
+“Qidiruv e’lonni bo‘sh deb ko‘rsatdi — demak, bron qilish mumkin, bazada
+qayta tekshirish ortiqcha”. Bu CDC orqali yangilanadigan har qanday
+hosila ko‘rinishni haqiqat manbai bilan adashtirish. Qidiruv indeksi
+soniyalar (nosozlikda — daqiqalar, 14.1) eskiradi, va eskirgan
+ma’lumotga asoslangan yozuv to‘g‘ridan-to‘g‘ri ikki marta bronga olib
+keladi. Qoida: hosila ko‘rinish **ko‘rsatish** uchun, haqiqat manbai —
+**qaror** uchun. Qidiruv “bo‘sh” desa — bu faqat “urinib ko‘rish
+mumkin” degani; oxirgi so‘z har doim tunlar jadvalidagi noyob cheklovniki.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Instant Book (darhol tasdiq)", pro: "Konversiya yuqori; mehmon kutmaydi; reytingda ustunlik", con: "Uy egasi mehmonni tanlay olmaydi; xavf tizimiga ko'proq yuk (11)" },
+    { choice: "Request to Book (uy egasi tasdig'i)", pro: "Uy egasi nazorati; shubhali bronlarda qo'shimcha filtr", con: "24 soatgacha kutish; HOLD uzoq — kalendar yopiq; mehmon boshqa joyni bron qiladi" },
+    { choice: "Tunlar jadvali + noyob indeks", pro: "Kafolat bazada; tez rad etish; har qanday ma'lumotlar bazasida", con: "Bir bronga N qator; uzoq bronlar (oylik) ko'p qator" },
+    { choice: "Oraliq + EXCLUDE cheklovi (PostgreSQL)", pro: "Bir bron — bir qator; oraliq so'rovlari tabiiy", con: "Bitta bazaga bog'liqlik; GiST indeksi sekinroq; sharding murakkab" },
+    { choice: "Qat'iy bekor qilish siyosati", pro: "Uy egasi daromadi himoyalangan; soxta bronlar kam", con: "Mehmon bron qilishdan qo'rqadi — konversiya pastroq" },
+    { choice: "Moslashuvchan bekor qilish siyosati", pro: "Mehmon uchun xavfsiz; konversiya yuqori", con: "Oxirgi daqiqa bekor qilishlar; uy egasi bo'sh kechalar bilan qoladi" },
+  ]}
+/>
+
+Jadvaldagi har bir juftlik bitta savolga turli javob: **xavfni kim
+ko‘taradi?** Instant Book’da xavfni platforma va uy egasi ko‘taradi
+(notanish mehmon), Request to Book’da — mehmon (kutish, rad etilish).
+Qat’iy siyosatda — mehmon (pul yo‘qotish), moslashuvchan siyosatda —
+uy egasi (bo‘sh kecha). Tunlar jadvali va EXCLUDE o‘rtasidagi tanlov esa
+xavfni **kelajakdagi muhandislarga** o‘tkazadi: EXCLUDE bugun
+chiroyliroq, lekin ertaga sharding kerak bo‘lganda qimmatroq.
+
+<Calc title="Instant Book va konversiya: nega Airbnb uni rag'batlantiradi" result="Konversiyadagi bir necha foizlik farq yiliga millionlab bronga teng — shuning uchun Instant Book reytingda ustunlik oladi">{`Faraz: e'lon sahifasini ko'rgan mehmonlardan bron qilganlar
+  Instant Book:       ~3.0%
+  Request to Book:    ~2.2% (kutish, rad etish, mehmon ketib qolishi)
+
+Request to Book da yana:
+  uy egalarining ~15-20% i so'rovni rad etadi yoki javob bermaydi
+  mehmonning ~30% i shu vaqtda boshqa uyni topadi
+
+Farq: nisbiy ~35% ko'proq bron Instant Book e'lonlarida
+
+Platforma darajasida:
+  agar Request to Book e'lonlarining yarmi Instant Book ga o'tsa
+  va ular bronlarning ~30% ini tashkil etsa:
+  130 M x 0.30 x 0.5 x 0.35 ~ +7 M bron/yil ~ +$600 M daromad
+
+Narxi: xavf tizimiga yuk (11.1), uy egalarining nazorat yo'qotishi`}</Calc>
+
+<Deep title="Moslashuvchanlik narxi: bekor qilish siyosati qanday hisoblanadi">
+7.3-bo‘limda bekor qilish siyosatlari tasvirlangan edi. Texnik jihatdan
+ular oddiy — sanalar va foizlar jadvali. Lekin **qaysi siyosat
+standart bo‘lishi** — iqtisodiy qaror, va uni ma’lumot bilan baholash
+mumkin.
+
+Mehmon nuqtai nazaridan moslashuvchan siyosat — **bepul opsion**:
+u bron qiladi, lekin bekor qilish huquqi saqlanadi. Opsionning qiymati
+bor, va kimdir uni to‘laydi. To‘lovchi — uy egasi, bo‘sh qolgan
+kecha shaklida:
+
+```
+Bekor qilish ehtimoli (faraz):
+  moslashuvchan: ~20%, qat'iy: ~8%
+
+Bekor qilingan kechani qayta sotish ehtimoli:
+  30+ kun oldin: ~70%     3 kundan kam: ~15%
+
+Uy egasi uchun kutilgan yo'qotish (4 kecha x $160 = $640):
+  moslashuvchan: 0.20 x (1 - qayta sotish) x $640
+    ko'pchilik bekor qilish oxirgi haftada -> qayta sotish ~40%
+    -> 0.20 x 0.60 x $640 ~ $77
+  qat'iy: 0.08 x 50% qaytarish x 0.60 x $640 ~ $15
+```
+
+Ya’ni moslashuvchan siyosat uy egasiga bir bronga ~$60 qimmatroq. Lekin
+7.3-dagi va 16-dagi konversiya hisobidan: moslashuvchan e’lonlar
+**ko‘proq bron** oladi. Agar bronlar soni ~10% dan ko‘proq oshsa, uy
+egasi yutadi. Bu uy egalariga platformada ko‘rsatiladigan tavsiyalarning
+asosi: “moslashuvchan siyosat bilan siz yiliga X ta ko‘proq bron
+olasiz”.
+
+Pandemiya bu hisobni sindirdi (10.2): bekor qilish ehtimoli bir necha
+haftada 20% dan ~80–90% ga sakradi, va “ekstremal holatlar” siyosati
+barcha siyosatlarni bekor qildi. Model faqat **mustaqil** bekor
+qilishlar uchun ishlaydi; hamma bir vaqtda bekor qilganda qayta sotish
+ehtimoli nolga tushadi va opsion narxi portlaydi — xuddi moliyadagi
+kabi.
+</Deep>
+
+<Callout type="maslahat" title="Qaysi metrikani optimallashtiryapsiz?">
+Airbnb’dagi deyarli har bir trade-off ikki tomonlama: mehmon uchun
+yaxshi bo‘lgan narsa ko‘pincha uy egasi uchun yomon, va aksincha.
+Bitta metrikani (masalan, bronlar sonini) optimallashtirish bozorning
+bir tomonini yeydi: mehmonlar ko‘payadi, uy egalari ketadi, keyin
+mehmonlar ham ketadi. Shuning uchun marketpleys jamoalari kamida ikkita
+metrika bilan ishlaydi — **mehmon konversiyasi** va **uy egasining
+bandligi yoki daromadi** — va har eksperiment ikkalasini ham
+buzmasligi kerak. Intervyuda “nimani optimallashtiramiz?” deb so‘ralsa,
+bitta raqam bilan javob bermang.
+</Callout>
+
+## 17. Intervyu savollari
+
+### 17.1 Mexanizm
+
+<QA q="Bronni qanday modellashtirasiz: kirish va chiqish sanalarimi, yoki tunlar ro'yxati?">
+Ikkalasi ham, turli maqsad uchun. Bron yozuvi yarim ochiq oraliqni
+saqlaydi: `[check_in, check_out)` — chiqish kuni kiritilmaydi, shuning
+uchun bir mehmon ketgan kuni boshqasi kela oladi. Bandlik esa
+**tunlar** bo‘yicha tekshiriladi: 14–17-mart broni 14, 15, 16-mart
+tunlarini egallaydi. Tunlar alohida jadvalda `(listing_id, night)`
+kaliti bilan saqlansa, “bir tun — bir bron” qoidasi oddiy noyob indeksga
+aylanadi. Sanalar `DATE` turida va e’lon joylashgan mahalliy kalendarda —
+timestamp va UTC emas, aks holda vaqt zonasi bronni bir kunga suradi.
+</QA>
+
+<QA q="Ikki mehmon bir vaqtda bir uyni bron qilsa, ikki marta bron bo'lmasligini qanday kafolatlaysiz?">
+Kafolatni kodga emas, bazaga beraman. Tunlar jadvalida
+`PRIMARY KEY (listing_id, night)`: ikkala tranzaksiya tunlarni yozishga
+urinadi, baza birinchisini qabul qiladi, ikkinchisi kalit to‘qnashuvi
+bilan rad etiladi — va u butunlay qaytariladi (tranzaksiya). “Avval
+tekshir, keyin yoz” ilova kodida ishlamaydi: ikkala so‘rov “bo‘sh”
+ko‘radi. Muqobillar: `SELECT ... FOR UPDATE` bilan e’lon qatorini
+qulflash (pessimistik) yoki PostgreSQL’da `EXCLUDE USING gist` bilan
+oraliqlar kesishmasligi. Men noyob cheklovni tanlayman: u tez rad etadi,
+qulf kutishi yo‘q va istalgan bazada ishlaydi.
+</QA>
+
+<QA q="To'lov ma'lumotlar bazasi tranzaksiyasi ichida bo'lishi kerakmi?">
+Yo‘q. Tashqi chaqiruv (sekundlar) tranzaksiya ichida qulflarni ushlab
+turadi va, eng muhimi, atomiklikni bermaydi: baza qaytarilsa ham karta
+yechilgan bo‘lib qoladi. To‘g‘ri tuzilma — holat mashinasi: (1) qisqa
+tranzaksiya — tunlarni `HOLD` holatida yozish; (2) tranzaksiyadan
+tashqarida — idempotentlik kaliti bilan to‘lov avtorizatsiyasi; (3) qisqa
+tranzaksiya — `HOLD → CONFIRMED` yoki `HOLD → EXPIRED` va tunlarni
+bo‘shatish. Har bir uzilish aniq holatda qoladi, fon jarayoni osilib
+qolgan `HOLD` larni provayderdan so‘rab yakunlaydi.
+</QA>
+
+<QA q="Idempotentlik kaliti qanday ishlaydi va uni kim yaratadi?">
+Kalitni **mijoz** yaratadi (masalan, UUID) — bron tugmasi bosilganda,
+bitta niyat uchun bitta kalit. Server kalitni natija bilan birga
+saqlaydi: birinchi so‘rov bajariladi va javobi yoziladi; xuddi shu
+kalit bilan takroriy so‘rov bajarilmaydi, saqlangan javob qaytariladi.
+Muhim nuqtalar: kalitni yozish va amalni bajarish bir tranzaksiyada
+(yoki kalit avval “jarayonda” deb qulflanadi); bir xil kalit, lekin
+boshqa parametrlar — xato; kalit to‘lov provayderiga ham uzatiladi, shunda
+provayder darajasida ham takror yechish bo‘lmaydi. Airbnb’da bu Orpheus
+kutubxonasi.
+</QA>
+
+<QA q="Nega to'lov 'avtorizatsiya' va 'yechish' ga bo'linadi?">
+Avtorizatsiya kartada pulni **band qiladi**, lekin yechmaydi; yechish
+(capture) uni haqiqatan oladi; bekor qilish (void) bandni ozod qiladi.
+Bu bron uchun juda qulay: Request to Book’da uy egasi 24 soat ichida
+javob beradi — rad etsa, faqat void, qaytarish va komissiya yo‘q.
+Instant Book’da avtorizatsiya HOLD bilan bir vaqtda, yechish tasdiqdan
+keyin. Cheklov: avtorizatsiya muddati cheklangan (odatda ~7 kun), shuning
+uchun uzoq kelajakdagi bronlarda pul darhol yechiladi yoki keyinroq
+qayta avtorizatsiya qilinadi.
+</QA>
+
+<QA q="Ikki tomonlama buxgalteriya kitobi nima uchun kerak, oddiy 'balans' ustuni yetmaydimi?">
+Balans ustuni faqat natijani biladi, **sababni** emas. Kitobda har
+pul harakati — bir nechta yozuvdan iborat tranzaksiya, yozuvlar
+yig‘indisi har doim nol: mehmondan $700 kirdi → uy egasi majburiyati
+$620, Airbnb daromadi $80. Yozuvlar faqat qo‘shiladi, hech qachon
+o‘zgartirilmaydi; xato teskari yozuv bilan tuzatiladi. Natijada har
+qanday balansni istalgan sanaga qayta hisoblash, auditga tushuntirish
+va bank bilan solishtirish (rekonsilyatsiya) mumkin. Muvozanatsiz
+tranzaksiya — darhol aniqlanadigan xato, balans ustunida esa u jim
+yo‘qoladi.
+</QA>
+
+<QA q="Qidiruv indeksi bronlar bazasi bilan qanday sinxronlanadi?">
+CDC orqali: bazaning o‘zgarishlar jurnali (binlog/WAL) o‘qiladi, har
+o‘zgarish Kafka’ga hodisa sifatida yoziladi, qidiruv servislari uni
+iste’mol qilib, indeksni yangilaydi. Airbnb’da bu SpinalTap. Afzalligi
+— ilova kodi “indeksni ham yangila” deb eslab qolishi shart emas,
+jurnalda bo‘lgan har bir o‘zgarish oqimga tushadi. Natija — **oxir-oqibat
+moslik**: indeks soniyalar eskirishi mumkin. Bu xavfsiz, chunki indeks
+faqat ko‘rsatish uchun; bronlash baribir bazada tekshiriladi.
+Kuzatish kerak bo‘lgan metrika — CDC kechikishi va “band” rad etishlar
+ulushi.
+</QA>
+
+<QA q="Sanalar bo'yicha bo'sh e'lonlarni qanday tez filtrlaysiz?">
+Har e’lon uchun kelgusi ~365 kunning bandlik **bitseti** — 46 bayt.
+7–8 M e’lon uchun ~350 MB, butunlay xotirada. So‘rov sanalari ham
+bitmaskaga aylanadi; e’lon bo‘sh, agar `bitset AND mask == 0`. Bu
+bir necha protsessor ko‘rsatmasi, shuning uchun geo filtrdan keyingi
+~15 000 nomzodni mikrosekundlarda tekshirish mumkin. Bitset CDC orqali
+yangilanadi. Minimal tun soni, kirish kuni cheklovlari kabi qoidalar
+ikkinchi, sekinroq filtrda tekshiriladi — ular kamroq nomzodda ishlaydi.
+</QA>
+
+<QA q="Xarita oynasidagi e'lonlarni qanday topasiz?">
+Geo kataklar orqali: yer yuzi ierarxik kataklarga bo‘linadi (geohash
+yoki S2), har e’lon o‘z katagi bilan indekslanadi. Xarita oynasi uni
+qoplaydigan bir nechta katakka aylantiriladi, ular bo‘yicha nomzodlar
+olinadi, so‘ng aniq koordinatalar bilan filtrlanadi. Katak o‘lchami
+zoom darajasiga moslanadi: shahar ko‘rinishida katta kataklar, ko‘cha
+ko‘rinishida kichik. Zich shaharlarda katakda juda ko‘p e’lon bo‘lsa —
+kichikroq darajaga o‘tiladi. Muqobil — R-daraxt yoki qidiruv
+dvigatelining geo so‘rovlari; g‘oya bir xil: avval arzon taxminiy
+filtr, keyin aniq.
+</QA>
+
+### 17.2 Miqyos
+
+<QA q="Bronlash tizimi uchun sig'imni baholang.">
+~350 ming bron/kun → ~4/s o‘rtacha, cho‘qqida ~40/s. Har bron ~3–4
+tun qatori, holat yozuvlari, kitobda ~5–10 yozuv — ya’ni sekundiga
+bir necha yuz qator. Bu bitta yaxshi ma’lumotlar bazasi uchun ham
+kichik yuk. Ma’lumot hajmi: yiliga ~450 M tun qatori, ~130 M bron —
+bir necha yilda milliardlar, sharding kerak bo‘ladi. Qidiruv esa butunlay
+boshqa: cho‘qqida minglab so‘rov/s, har biri qimmat, lekin ma’lumot kichik (bir necha GB).
+Xulosa: bronlash — to‘g‘rilik muammosi, qidiruv — o‘tkazuvchanlik
+muammosi. Ularni alohida masshtablash kerak.
+</QA>
+
+<QA q="Bronlar jadvalini qanday shard qilasiz?">
+E’lon ID bo‘yicha. Sabab: asosiy invariant — `(listing_id, night)`
+noyobligi — bitta shard ichida qolishi kerak; aks holda indeks ikki
+shardni ko‘rmaydi va ikki marta bron mumkin. Mehmon ID bo‘yicha bo‘lish
+“mening bronlarim” uchun qulay, lekin kafolatni buzadi. “Mening
+bronlarim” uchun alohida hosila jadval (mehmon → bron ID lari) CDC
+orqali to‘ldiriladi — u bir necha soniya eskirsa ham xavfsiz. Umumiy
+qoida: sharding kaliti — kafolat kaliti.
+</QA>
+
+<QA q="Juda mashhur uyda (yoki Olimpiada shahrida) raqobatni qanday boshqarasiz?">
+Global yuk kichik, muammo — bitta kalitdagi raqobat. Noyob cheklov
+bu yerda qulfdan yaxshi: ikkinchi urinish kutmaydi, darhol rad
+etiladi. Qo‘shimcha choralar: qidiruvda band bo‘lgan e’lonlarni tez
+yashirish (CDC kechikishini kuzatish), HOLD TTL ni voqea paytida
+qisqartirish, bot trafigini cheklash (bir hisobdan ko‘p parallel HOLD
+taqiqlanadi). Mehmonga “afsuski, band” o‘rniga shu hududdagi o‘xshash
+uylarni darhol ko‘rsatish — konversiyani saqlaydi. Navbat (virtual
+kutish xonasi) kamdan-kam kerak: bu chipta sotish emas, e’lonlar ko‘p.
+</QA>
+
+<QA q="Qidiruv kechikishini qanday 200 ms ichida ushlab turasiz?">
+Bosqichli kamaytirish: geo kataklar (~15 000 nomzod, bir necha ms) →
+bitset bilan sanalar (mikrosekundlar) → arzon filtrlar → arzon birinchi
+bosqich modeli (5 000 → 500) → qimmat neyron tarmoq (500 → top 18) →
+faqat top natijalar uchun aniq narx. Indeks xotirada, har serverda
+to‘liq nusxa — tarmoqqa chiqmaydi. Parallel chaqiruvlar va umumiy
+kechikish byudjeti: ixtiyoriy qismlar (masalan, sharhlar soni) kech
+qolsa — yashiriladi. Kesh: mashhur hududlar va sanalar uchun natija
+kesh qilinadi, lekin qisqa muddatga, chunki bandlik o‘zgaradi.
+</QA>
+
+<QA q="Qidiruv yuki bronlashdan 100 barobar ko'p. Arxitekturada buni qanday aks ettirasiz?">
+O‘qish va yozish yo‘llarini to‘liq ajrataman (CQRS ruhida). Bronlash —
+kichik, qat’iy, tranzaksion baza, e’lon ID bo‘yicha shard. Qidiruv —
+alohida, xotiradagi indeks, CDC orqali to‘ldiriladi, replikatsiya bilan
+masshtablanadi. Ular orasida yagona bog‘liqlik — hodisalar oqimi.
+Natijada qidiruv cho‘qqisi bronlashga ta’sir qilmaydi, bronlash
+bazasidagi migratsiya qidiruvni to‘xtatmaydi. Narxi — oxir-oqibat
+moslik, u bronlash paytidagi qayta tekshiruv bilan qoplanadi.
+</QA>
+
+<QA q="Ommaviy bekor qilish to'lqiniga (masalan, pandemiya) tizim qanday tayyorlanishi kerak?">
+Ichki yuk (bekor qilish — bir nechta qator) muammo emas; tor joylar
+tashqarida: to‘lov provayderining qaytarish chegaralari, qo‘llab-quvvatlash
+xizmati, uy egalariga to‘lov hisob-kitoblari. Tayyorgarlik: qaytarishlarni
+navbatga qo‘yish va provayder chegarasiga moslab yuborish; mehmonga
+“qaytarish jarayonda, N kun ichida” aniq holatini ko‘rsatish;
+siyosatni kod o‘zgartirmasdan almashtirish imkoniyati (“ekstremal
+holatlar” siyosati — konfiguratsiya, deploy emas); kitobda teskari
+yozuvlarni guruh bo‘yicha yaratish va rekonsilyatsiya.
+</QA>
+
+<QA q="Kalendar sinxronlash (iCal) bilan ikki marta bronni qanday kamaytirasiz?">
+iCal — so‘rov asosidagi (pull) protokol: boshqa platforma kalendarini
+har N daqiqada o‘qiymiz. Ikki sinxronlash orasidagi oynada ikkala
+platformada bron qilish mumkin — bu kafolat emas, faqat ehtimolni
+kamaytirish. Choralar: so‘rov tezligini oshirish (lekin tashqi
+serverlarni bosib qo‘ymaslik), faol e’lonlarni tezroq so‘rash, API
+integratsiyasi bo‘lgan kanal menejerlariga o‘tish (push). Qolgan
+to‘qnashuvlar uchun — aniqlash va qayta joylash jarayoni. Intervyuda
+muhim: bu yerda kafolat **mumkin emas**, chunki ikkinchi tizim bizning
+nazoratimizda emas.
+</QA>
+
+<QA q="Uy egalariga to'lovni millionlab hisob uchun qanday tashkil qilasiz?">
+Kitobdan boshlanadi: kirishdan ~24 soat o‘tgach, har bron bo‘yicha
+“uy egasi majburiyati” yozuvi “to‘lanadigan” holatga o‘tadi. Kunlik
+ish uy egasi va valyuta bo‘yicha yig‘adi, har to‘lov uchun
+idempotentlik kaliti (masalan, `payout:host:sana`) bilan provayderga
+yuboradi. To‘lov usullari turli (bank, PayPal, mahalliy tizimlar),
+har birining o‘z muddati va xatolari bor — holat mashinasi va qayta
+urinishlar bilan. Xavf: to‘lov manzili yaqinda o‘zgargan bo‘lsa —
+kechiktirish (11.3). Va har kuni bank hisobotlari bilan rekonsilyatsiya.
+</QA>
+
+<QA q="Valyutalar va yaxlitlashni qanday boshqarasiz?">
+Pul — butun sonli minimal birliklarda (sent) va valyuta kodi bilan;
+hech qachon float. Kurs bron paytida **qotiriladi** va bronga yoziladi,
+keyin o‘zgarmaydi. Yaxlitlash qoidasi aniq belgilanadi (masalan,
+banker’s rounding yoki yarmini yuqoriga) va bir joyda amalga oshiriladi.
+Bo‘lishda (komissiya, soliqlar) qoldiq sentlar yo‘qolmasligi uchun
+oxirgi qism “qolgan hammasi” sifatida hisoblanadi — yig‘indi har doim
+aniq. Kitobda har valyuta alohida hisob, konvertatsiya esa alohida
+tranzaksiya.
+</QA>
+
+### 17.3 Dizayn va tajriba
+
+<QA q="Airbnb'ni noldan loyihalashda birinchi 30 daqiqada nimalarga e'tibor berasiz?">
+Birinchi — talablar: bron qilish (to‘g‘rilik), qidiruv (tezlik),
+to‘lov (pul). Keyin raqamlar: ~8 M e’lon, ~350 ming bron/kun, o‘n
+minglab qidiruv/s — o‘qish/yozish nisbati (~100:1). Keyin ma’lumot modeli:
+tun — asosiy birlik, sana va mahalliy kalendar. Keyin kafolat: noyob
+cheklov, HOLD holat mashinasi, idempotentlik. So‘ng qidiruv: CDC, geo,
+bitset, reyting. Oxirida — to‘lov, kitob va to‘lovlar. Intervyuerga
+aytaman: “Ikki marta bron va ikki marta yechish — bu dizaynning ikki
+qat’iy talabi; qolganlari tezlik va sifat bo‘yicha murosalar”.
+</QA>
+
+<QA q="Instant Book yoki Request to Book — qaysi birini standart qilasiz?">
+Mehmon tajribasi va konversiya uchun — Instant Book: kutish yo‘q,
+bron darhol. Lekin uy egasi ishonchi kerak, shuning uchun uni
+himoyalar bilan birga beraman: mehmon talablari (tasdiqlangan
+hisob, ijobiy sharhlar), xavf balli yuqori bo‘lsa — avtomatik ravishda
+so‘rovga o‘tkazish, uy egasiga ma’lum sharoitlarda jarimasiz bekor
+qilish huquqi. Request to Book — noyob yoki qimmat uylar, yangi uy
+egalari uchun. Ko‘rsatkich: ikkala tomon metrikasi — mehmon konversiyasi
+va uy egasi mamnuniyati (bekor qilishlar, shikoyatlar).
+</QA>
+
+<QA q="Sharhlar tizimini qanday loyihalaysiz, ular xolis bo'lishi uchun?">
+Ikki tomonlama ko‘r sharhlar: mehmon ham, uy egasi ham 14 kun ichida
+yozadi, va sharhlar faqat ikkalasi yozgandan yoki muddat tugagandan
+keyin ochiladi. Bu qasos sharhlarini yo‘q qiladi. Sharh faqat
+haqiqiy, yakunlangan bron bilan bog‘lanadi — soxta sharh imkoni yo‘q.
+Texnik jihatdan: holat mashinasi (kutilmoqda → yozildi → ochildi),
+muddat uchun rejalashtirilgan ish, ochilganda CDC orqali qidiruv va
+reytingga uzatish. Qo‘shimcha: sharhlarni siyosat bo‘yicha tekshirish
+(haqoratlar, shaxsiy ma’lumot).
+</QA>
+
+<QA q="Smart Pricing kabi narx tavsiyasini qanday qurasiz?">
+Maqsad — kecha bron bo‘lish ehtimoli va narx o‘rtasidagi muvozanat.
+Belgilar: mavsum, hafta kuni, voqealar, qo‘shni e’lonlar narxi va
+bandligi, qolgan kunlar soni (sana yaqinlashganda bo‘sh kecha qiymati
+tushadi), e’lon sifati. Model har kecha uchun bron ehtimolini narx
+funksiyasi sifatida baholaydi va kutilgan daromadni maksimallashtiradi.
+Uy egasi min va max chegaralarni qo‘yadi — model faqat ular orasida.
+Muhim: bu tavsiya, qaror emas; va tizim offlayn hisoblanib, kechalik
+narxlar jadvaliga yoziladi — qidiruvda real vaqtda hisoblanmaydi.
+</QA>
+
+<QA q="Monolitdan servislarga o'tishni qanday rejalashtirasiz?">
+Katta portlash emas — strangler naqshi: yangi funksiyalar servisda,
+eskilari birma-bir ko‘chiriladi, oldida proksi/marshrutlagich. Birinchi
+bo‘lib o‘qish yo‘llari (xavfsizroq), keyin yozish. Ma’lumotlar: servis
+o‘z bazasiga ega bo‘ladi, o‘tish davrida ikki tomonlama yozish yoki
+CDC orqali sinxronlash, va natijalarni solishtirish (soya trafik).
+Chegaralarni domen bo‘yicha: e’lon, kalendar, bron, to‘lov, foydalanuvchi.
+Kafolatlar (tunlar noyobligi) hech qachon ikki servisga bo‘linmasligi
+kerak. Airbnb’da bu bir necha yil davom etgan — bu normal.
+</QA>
+
+<QA q="Siz navbatchisiz va kuzatuv ikki marta bron topdi. Nima qilasiz?">
+Avval ta’sirni cheklash: ikkinchi mehmonga (odatda keyinroq bron
+qilganiga) qayta joylash va xabar, uy egasiga ogohlantirish. Keyin
+ko‘lamni aniqlash: bu bitta holatmi yoki naqsh — so‘nggi soatlardagi
+barcha kesishmalarni so‘rash. Keyin ildiz sabab: qaysi kod yo‘li
+indeksdan o‘tdi (migratsiya, yangi shard, eski servis, vaqt zonasi).
+Yo‘lni yopish (feature flag, deploy qaytarish). Shundan keyin tarixiy
+ma’lumotni idempotent skript bilan tozalash. Oxirida postmortem va
+tekshiruvchiga yangi invariant qo‘shish — bu turdagi xato endi darhol
+ushlansin.
+</QA>
+
+<QA q="Ziyofatlarga qarshi tizimni qanday loyihalaysiz?">
+Xavf balli modeli bron paytida: yosh va sharhlar tarixi, bir kechalik
+bron, mehmon yashash joyiga yaqinlik, sana (bayramlar), uy turi va
+sig‘imi. Chiqish — uchta qaror: ruxsat, cheklash (butun uy o‘rniga
+boshqa variant yoki uy egasi tasdig‘i), rad etish. Qat’iy qonuniy
+qoidalar (yosh chegarasi) — alohida qatlam. Bron paytidan keyin ham:
+uy egasi uchun shovqin sensorlari integratsiyasi (maxfiylikka mos),
+shikoyat liniyasi. Metrikalar: ziyofat hodisalari soni va noto‘g‘ri
+bloklangan halol mehmonlar ulushi — ikkalasi birga.
+</QA>
+
+<QA q="Airbnb va mehmonxona bron qilish tizimi (Booking kabi) o'rtasida arxitektura farqi nimada?">
+Mehmonxonada **inventar — xona turi**: “standart xona, 30 dona”;
+bandlik — hisoblagich, va ortiqcha sotish (overbooking) ataylab
+qo‘llanadi, chunki mehmonxona qayta joylashtira oladi. Airbnb’da
+**har e’lon — noyob**, bitta dona: hisoblagich emas, tunlar bo‘yicha
+qat’iy noyoblik, ortiqcha sotish mumkin emas. Mehmonxonalar ko‘pincha
+tashqi kanal menejerlari orqali ulanadi — iCal va API sinxronlash
+asosiy muammo. Airbnb’da ikki tomonlama ishonch (sharhlar, xavf)
+ancha muhimroq, chunki uy egasi — jismoniy shaxs.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/airbnb/` da:
+`booking.py` — oltita funksiya TODO; `schema.sql` — tunlar jadvali va
+kitob bilan tayyor sxema; `db.py` — ulanish, tranzaksiya va soxta to‘lov
+provayderi; `check.py` — 25 ta tekshiruv, ularning bir qismi 8 ta
+parallel jarayon bilan. Faqat Python standart kutubxonasi.
+
+<Task title="1-daraja: poygani o'z ko'zingiz bilan">
+3-bo‘limdagi v0 kodini (tekshir, keyin yoz) SQLite ustida yozing va
+uni 8 ta jarayondan bir vaqtda chaqiring: hammasi bitta e’lonning bir
+xil sanalarini bron qilsin. Tekshiruv va yozish orasiga 10 ms uyqu
+qo‘shing — bu tarmoq yoki sekin to‘lov o‘rnini bosadi.
+
+**Tekshiruv mezoni:** (1) ikki marta bron paydo bo‘lgan raundlar ulushi
+— uyqu bilan va uyqusiz; (2) xuddi shu tajriba `booked_nights` jadvali va
+noyob kalit bilan — ulush nolga tushishini ko‘rsating; (3) 4.1-bo‘limdagi
+hisob bilan solishtiring: nega uyqu ulushni keskin oshiradi (“ko‘r
+oyna” kengayadi).
+</Task>
+
+<Task title="2-daraja: bron dvigateli (asosiy topshiriq)">
+`booking.py` dagi `nights`, `create_hold`, `confirm`, `cancel`,
+`expire_holds` va `search_available` ni yozing. `python check.py`
+ularni tun modeli, HOLD va idempotentlik, taymautli to‘lov, kitob,
+qidiruv va parallel jarayonlar bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 25/25 OK`. Shu jumladan: 8 ta jarayon
+bir vaqtda bron qilganda mustaqil tekshiruvchi (14.2) bironta kesishma
+topmaydi; taymautdan keyingi qayta urinish pulni ikkinchi marta
+yechmaydi; parallel `confirm` kitobga aynan bir marta yozadi; oxirida
+provayder va kitob bir xil summani ko‘rsatadi (8.4). Keyin tajriba:
+tunlarni `INSERT OR IGNORE` bilan yozing va “bo‘shmi?” tekshiruvini
+tranzaksiyadan tashqariga chiqaring — qaysi test yiqilishini va nega
+ketma-ket testlar buni sezmasligini tushuntiring.
+</Task>
+
+<Task title="3-daraja: PostgreSQL va uch usul solishtiruvi">
+Xuddi shu dvigatelni PostgreSQL’da uch usulda yozing (7.1): (a) tunlar
+jadvali va noyob kalit; (b) `SELECT ... FOR UPDATE` bilan e’lon qatorini
+qulflash; (c) `daterange` va `EXCLUDE USING gist`. Yuk generatori:
+10 000 e’lon, Zipf taqsimoti bo‘yicha mashhurlik (eng mashhur 1% —
+urinishlarning yarmi), 64 parallel mijoz.
+
+**Tekshiruv mezoni:** (1) uchala usulda ham nol kesishma (mustaqil
+tekshiruvchi bilan); (2) har usul uchun p50/p99 kechikish va sekundiga
+bronlar — mashhur e’lonlarda (b) usul navbatga turishini ko‘rsating
+(13.2); (3) 30 kunlik bronlar ulushini 1% dan 30% gacha oshirib, (a)
+usulning qator soni va yozish tezligi qanday o‘zgarishini o‘lchang
+va 16-bo‘limdagi jadval bilan solishtiring.
+</Task>
+
+<Task title="4-daraja: qidiruv indeksi va CDC kechikishi">
+Xotiradagi qidiruv indeksini yozing: geo kataklar (7-qadam) va 365
+bitlik kalendar (8-qadam). Uni 2-darajadagi bazaning o‘zgarishlaridan
+yangilang: `bookings` va `booked_nights` jadvallariga trigger yoki
+o‘zgarishlar jurnali, va alohida jarayon uni sozlanadigan kechikish
+bilan o‘qib, indeksni yangilasin.
+
+**Tekshiruv mezoni:** (1) 1 M sintetik e’londa bitta qidiruv (xarita
+oynasi + sanalar) 10 ms dan tez; (2) CDC kechikishini 0.1 s dan 300 s
+gacha o‘zgartirib, “qidiruv bo‘sh dedi, bron — band” ulushini o‘lchang
+va 14.1-dagi hisob bilan solishtiring; (3) oqim to‘xtab, qayta ishga
+tushganda indeks o‘z-o‘zidan quvib yetishini va bironta o‘zgarish
+yo‘qolmaganini isbotlang (indeksni bazadan to‘liq qayta qurib, solishtiring).
+</Task>
+
+<Callout type="maslahat" title="Mutatsiya — testlaringizni sinash usuli">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan
+o‘n beshta varianti bilan sinalgan: tekshiruv tranzaksiyadan tashqarida,
+`INSERT OR IGNORE`, chiqish kunini kiritish, muddati o‘tgan HOLD’ni
+e’tiborsiz qoldirish, shartsiz `UPDATE`, taymautni rad etish deb
+hisoblash, kalitga vaqt qo‘shish, provayderni tranzaksiya ichida
+chaqirish va boshqalar. Har biri kamida bitta testni yiqitadi. O‘z
+loyihangizda ham shunday qiling: testlar faqat to‘g‘ri kodni
+o‘tkazishi emas, **xato kodni yiqitishi** ham kerak. Ikki marta bron
+kabi xatolar faqat parallel testda ko‘rinadi — ketma-ket testlar ularni
+hech qachon ushlamaydi.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Tun (night) | Bandlik birligi: e’lonning bitta kalendar sanasi, mahalliy vaqtda |
+| Yarim ochiq oraliq | `[kirish, chiqish)`: kirish kuni kiradi, chiqish kuni — yo‘q |
+| E’lon (listing) | Bron qilinadigan noyob ob’ekt: uy, xona |
+| Tunlar jadvali | `(listing_id, night)` noyob kalitli jadval — ikki marta bronga qarshi kafolat |
+| Noyob cheklov | Baza darajasida bir xil kalitli ikkinchi qatorni rad etish |
+| Exclusion constraint | PostgreSQL: oraliqlar kesishmasligini baza tekshiradi |
+| HOLD | Vaqtincha ushlab turish: tunlar band, to‘lov kutilmoqda, muddatli |
+| TTL | Ushlab turishning amal qilish muddati |
+| Idempotentlik kaliti | Takroriy so‘rovni birinchisi bilan bir deb tanituvchi kalit |
+| Avtorizatsiya / yechish / void | Pulni band qilish / haqiqatan olish / bandni bekor qilish |
+| Ikki tomonlama kitob | Har pul harakati yig‘indisi nol bo‘lgan yozuvlar to‘plami |
+| Rekonsilyatsiya | Kitobni bank va provayder hisobotlari bilan solishtirish |
+| Payout | Uy egasiga to‘lov (kirishdan ~24 soat keyin) |
+| CDC | O‘zgarishlarni bazaning jurnalidan o‘qib, oqimga uzatish |
+| Geo katak | Yer yuzining ierarxik bo‘lagi (geohash, S2) — geo qidiruv indeksi |
+| Bitset kalendar | Har kun — bitta bit; sanalar bo‘yicha filtr AND bilan |
+| Ikki bosqichli reyting | Arzon model ko‘p nomzodda, qimmat model oz nomzodda |
+| Instant Book | Uy egasi tasdig‘isiz darhol bron |
+| Request to Book | Uy egasi tasdiqlaydigan bron so‘rovi |
+| Smart Pricing | Kechalik narx tavsiyasi: bron ehtimoli va narx muvozanati |
+| Ko‘r sharhlar | Ikki tomon yozgunicha yashirin sharhlar |
+| Strangler naqshi | Monolitni qism-qism servislarga almashtirish |
+| iCal | Kalendarlarni platformalar orasida almashish formati (RFC 5545) |
+| Xavf balli | Amalning firibgarlik ehtimoli; ishqalanish darajasini belgilaydi |
+| Invariant tekshiruvchi | Kafolatlarni mustaqil so‘rovlar bilan tekshiruvchi dastur |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Faol e’lonlar | 8 M+ | Airbnb ochiq hisobotlari (2024) |
+| Band qilingan tunlar va tajribalar | ~490 M / yil | Airbnb yillik hisoboti (2024) |
+| Uy egalari | 5 M+ | Airbnb ochiq hisobotlari (2024) |
+| Yillik daromad | ~$11 mlrd | Airbnb yillik hisoboti (2024) |
+| Uy egasiga to‘lov | kirishdan ~24 soat keyin | Airbnb yordam markazi |
+| Sharh yozish muddati | 14 kun | Airbnb yordam markazi |
+| Ziyofatlar taqiqi | 2020 vaqtincha, 2022 doimiy | Airbnb yangiliklari (2020, 2022) |
+| Idempotentlik kutubxonasi (Orpheus) | 2019 | Airbnb muhandislik blogi |
+| CDC (SpinalTap) | 2018 | Airbnb muhandislik blogi |
+| Qidiruvda chuqur o‘rganish | 2019 | Haldar va boshq., KDD 2019 |
+| E’lon vektorlari | 2018 | Grbovic, Cheng, KDD 2018 |
+| Dinamik narx modeli | 2018 | Ye va boshq., KDD 2018 |
+| Xavf tizimi arxitekturasi | 2014 | Airbnb muhandislik blogi |
+| 2-daraja natijalari | 25/25; 15 mutatsiya | `docs/amaliyot/airbnb/`, referens implementatsiya |
+
+Kunlik bronlar va sekundiga so‘rovlar, qidiruvlar soni, o‘rtacha narx
+va komissiya ulushi, xavf chegaralari, tekshiruvchilar soni, TTL
+ta’siri, ikki marta bron narxi, infratuzilma xarajati va sig‘im
+hisoblari — **illyustratsiya uchun taxminiy**. Ular yuqoridagi ochiq
+raqamlardan kelib chiqqan va tartib jihatidan ishonchli, lekin aniq
+emas. Darsning asosiy xulosalari — kafolat bazada, tashqi chaqiruv
+tranzaksiyadan tashqarida, o‘qish va yozish alohida masshtablanadi,
+to‘g‘rilik xatosi uning oldini olishdan ko‘p barobar qimmat — bu
+raqamlarning bir necha barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Jon Chew (2019), “Avoiding Double Payments in a Distributed Payments
+  System”, Airbnb muhandislik blogi (Orpheus)
+- Airbnb muhandislik blogi (2018), “Capturing Data Evolution in a
+  Service-Oriented Architecture” (SpinalTap)
+- Malay Haldar va boshq. (2019), “Applying Deep Learning to Airbnb
+  Search”, KDD
+- Mihajlo Grbovic, Haibin Cheng (2018), “Real-time Personalization
+  using Embeddings for Search Ranking at Airbnb”, KDD
+- Peng Ye va boshq. (2018), “Customized Regression Model for Airbnb
+  Dynamic Pricing”, KDD
+- Naseem Hakim, Aaron Keys (2014), “Architecting a Machine Learning
+  System for Risk”, Airbnb muhandislik blogi
+- Airbnb muhandislik blogi (2018), “Fighting Financial Fraud with
+  Targeted Friction”
+- Airbnb muhandislik blogi, “Building Services at Airbnb” turkumi (2020)
+- Airbnb muhandislik blogi, “Measuring Transactional Integrity in
+  Airbnb’s Distributed Payment Ecosystem”
+- Brandur Leach (2017), “Designing Robust and Predictable APIs with
+  Idempotency”, Stripe blogi
+- PostgreSQL hujjatlari: “Exclusion Constraints” va “Range Types”
+- RFC 5545 (2009), “Internet Calendaring and Scheduling Core Object
+  Specification (iCalendar)”
+- Martin Kleppmann (2017), “Designing Data-Intensive Applications”,
+  7- va 9-boblar (tranzaksiyalar, izchillik)
+- Airbnb yillik hisobotlari va yangiliklar sahifasi (2020–2024)

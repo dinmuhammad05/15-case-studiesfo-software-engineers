@@ -1,0 +1,29 @@
+/* Airbnb skini — e'lon sahifasi uslubi (rasmiy brend materiali emas) */
+[data-skin="airbnb"] {
+  --skin-bg: #ffffff;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f7f7f7;
+  --skin-border: #dddddd;
+  --skin-text: #222222;
+  --skin-muted: #6a6a6a;
+  --skin-accent: #d9134f;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(227, 28, 95, 0.35);
+  --skin-radius: 12px;
+  --skin-font: "Circular", -apple-system, "Helvetica Neue", "Segoe UI", Roboto, Arial, ui-sans-serif, sans-serif;
+  --skin-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --ab-rausch: #ff385c;
+  --ab-grad: linear-gradient(to right, #e61e4d 0%, #e31c5f 50%, #d70466 100%);
+  --ab-hairline: #ebebeb;
+  --ab-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+[data-skin="airbnb"] .lesson-prose h2 {
+  letter-spacing: -0.01em;
+  padding-top: 0.25rem;
+}
+
+body:has([data-skin="airbnb"]) {
+  background: #ffffff;
+}

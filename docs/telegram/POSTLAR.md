@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 10 ta dars tayyor:
+Hozir 11 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -49,8 +49,9 @@ Hozir 10 ta dars tayyor:
 08 — YouTube qanday ishlaydi (19 000 so'z)
 09 — Spotify qanday ishlaydi (20 000 so'z)
 10 — Google Docs qanday ishlaydi (19 000 so'z)
+11 — Airbnb qanday ishlaydi (19 500 so'z)
 
-Yana 7 tasi rejada: Kafka, Amazon S3, Uber ETA, Airbnb, fond birjasi
+Yana 6 tasi rejada: Kafka, Amazon S3, Uber ETA, fond birjasi
 va boshqalar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
@@ -70,8 +71,8 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-10 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
-Slack, WhatsApp, YouTube, Spotify, Google Docs), 7 tasi rejada. Internetsiz ham o'qish mumkin.
+11 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb), 6 tasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/
 ```
@@ -337,6 +338,33 @@ https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/goo
 ```
 
 ---
+
+### 3.11 — Airbnb
+
+```
+Parijdagi bitta kvartira. 14-mart kechasi.
+
+Ikki mehmon bir vaqtda "Band qilish" ni bosadi.
+Server ikkalasi uchun ham tekshiradi: "bo'shmi?" — "ha, bo'sh".
+Ikkalasi ham yoziladi. Ikkalasining ham kartasidan pul yechiladi.
+
+14-mart kechasi eshik oldida ikki oila turibdi.
+
+Airbnb kuniga ~350 ming bron qiladi — va bunday holat nol bo'lishi
+kerak. Yechim kodda emas, bitta jadvalning bitta kalitida.
+
+Yangi dars — Airbnb qanday ishlaydi (19 500 so'z):
+nega bron sanasini UTC'da saqlash xato, tunlar jadvali va noyob kalit,
+15 daqiqalik "ushlab turish", taymautda pulni ikki marta yechmaslik,
+ikki tomonlama buxgalteriya kitobi, xarita va sanalar bo'yicha
+qidiruv 200 ms ichida, firibgarlik va ziyofatlarga qarshi tizim.
+Amaliyotda — o'z bron dvigatelingizni yozasiz va uni 8 ta parallel
+jarayon bilan sinaysiz.
+
+https://dinmuhammad05.github.io/15-case-studiesfo-software-engineers/darslar/airbnb/
+```
+
+---
 ## 4. SO'ROVNOMA (poll) — engagement uchun
 
 Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
@@ -345,9 +373,8 @@ Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 
 - Apache Kafka (commit log, partition, exactly-once)
 - Amazon S3 (erasure coding, 11 ta to'qqizlik)
-- YouTube (transkodlash, CDN, adaptiv bitreyt)
-- Google Docs (OT va CRDT)
 - Uber ETA (graf, geoindeks, real-time ML)
+- Fond birjasi (matching engine, mikrosekundlar)
 
 ---
 
