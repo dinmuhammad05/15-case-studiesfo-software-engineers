@@ -10,7 +10,6 @@ export const site = {
     "Bepul o‘zbekcha system design darsligi: ChatGPT, WhatsApp, YouTube, Airbnb va boshqa tizimlar noldan bugungi arxitekturasigacha. Har bir dars hisob-kitob, intervyu savollari va amaliyot bilan.",
   /** GitHub Pages manzili — OG rasm va sitemap uchun mutlaq havolalar shu yerdan olinadi */
   url: "https://dinmuhammad.uz/15-case-studiesfo-software-engineers",
-  repo: "https://github.com/dinmuhammad05/15-case-studiesfo-software-engineers",
   author: {
     handle: "dinmuhammad05",
     name: "Dinmuhammad",
