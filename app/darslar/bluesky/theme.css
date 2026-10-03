@@ -1,0 +1,28 @@
+/* Bluesky skini — ochiq ijtimoiy tarmoq ilovasi uslubi (rasmiy brend materiali emas) */
+[data-skin="bluesky"] {
+  --skin-bg: #ffffff;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f1f3f5;
+  --skin-border: #d4dbe2;
+  --skin-text: #0b0f14;
+  --skin-muted: #5b7085;
+  --skin-accent: #0a7aff;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(10, 122, 255, 0.3);
+  --skin-radius: 12px;
+  --skin-font: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  --skin-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bs-like: #ec4899;
+  --bs-green: #20bc07;
+  --bs-soft: #e9f3ff;
+}
+
+[data-skin="bluesky"] .lesson-prose h2 {
+  letter-spacing: -0.015em;
+}
+
+body:has([data-skin="bluesky"]) {
+  background: #ffffff;
+  color-scheme: light;
+}

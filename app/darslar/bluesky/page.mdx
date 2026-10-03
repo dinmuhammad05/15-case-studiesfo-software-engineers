@@ -1,0 +1,2382 @@
+## Bu darsda nima o‘rganasiz
+
+Ijtimoiy tarmoqda 10 yil yozdingiz: minglab post, o‘n minglab obunachi.
+Bir kuni platforma qoidalarini o‘zgartirdi, tasmangizni boshqa algoritm
+boshqara boshladi yoki hisobingiz bloklandi. Postlaringizni olib, boshqa
+joyga ketolmaysiz: obunachilar, havolalar, ism — hammasi platformaniki.
+Telefon raqamingizni operatordan operatorga olib o‘tish mumkin, ijtimoiy
+tarmoqdagi hisobingizni esa — yo‘q.
+
+**Bluesky** shu muammoga muhandislik javobi sifatida tug‘ildi. U
+2019-yilda Twitter ichidagi tadqiqot loyihasi sifatida boshlangan, keyin
+mustaqil kompaniyaga aylangan va 2024-yil fevralda hamma uchun ochilgan.
+Uning asosi — ochiq protokol, **AT Protocol** (Authenticated Transfer
+Protocol). Bluesky ilovasi — shu protokol ustidagi ilovalardan bittasi.
+
+AT Protocol uchta va’da beradi va dars ularning har biri qanday texnik
+mexanizmga aylanganini ko‘rsatadi:
+
+**1. Hisobingiz — sizniki.** Postlaringiz imzolangan shaxsiy “repo”da
+turadi. Uni istalgan serverga ko‘chirish mumkin, va hech kim uni
+sezdirmasdan o‘zgartira olmaydi. Bu yerda Merkle daraxti, kriptografik
+imzo va o‘zgarmas identifikator (DID) ishlaydi.
+
+**2. Ismingiz — sizniki.** Handle — domen: `@dinmuhammad.uz`. Ismni domen
+egasi tasdiqlaydi, platforma emas.
+
+**3. Algoritm — tanlovingiz.** Butun tarmoq bitta ochiq oqim (firehose)
+sifatida tarqaladi. Har kim o‘z tasmasini (feed) yoki moderatsiya
+xizmatini yozishi, foydalanuvchi esa ularni tanlashi mumkin.
+
+Har yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan beriladi. Dars oxirida — butun darsning o‘n gaplik
+xulosasi. Oldingi darslardan foydali: Twitter darsidagi tasma qurish
+(fan-out), Kafka darsidagi jurnal va offset (firehose — xuddi shunday
+oqim), Amazon S3 darsidagi nazorat summalari va fond birjasi darsidagi
+“raqamlangan oqim va bo‘shliqni tiklash”.
+
+<Callout type="info" title="Bluesky va AT Protocol — ikki xil narsa">
+**AT Protocol** — ochiq qoidalar to‘plami: ma’lumot qanday saqlanadi,
+imzolanadi, tarqatiladi. **Bluesky** — kompaniya va uning mikroblog ilovasi,
+shu protokolning eng katta foydalanuvchisi. Darsda “Bluesky” deganda
+ko‘pincha ikkalasi birga nazarda tutiladi; farq muhim bo‘lgan joyda aniq
+aytiladi. Protokolni boshqa kompaniyalar ham ishlatadi — blog, video,
+tadbirlar ilovalari bir xil hisob va bir xil repo bilan ishlaydi.
+</Callout>
+
+## 1. Muammo: platforma sizning hisobingiz egasi
+
+### 1.1 Markazlashgan tarmoqning uch qulfi
+
+Oddiy tilda: siz ijarada yashaysiz. Kvartira chiroyli, lekin uy egasi
+qoidalarni o‘zgartirsa, sizni chiqarib yuborsa yoki uyni sotib yuborsa —
+hech narsa qila olmaysiz. Narsalaringizni ham olib chiqolmaysiz: ular
+devorga mixlangan.
+
+Markazlashgan ijtimoiy tarmoqda uchta “qulf” bor:
+
+**Ma’lumot qulfi.** Postlar, obunalar va obunachilar platforma bazasida.
+Eksport qilish mumkin bo‘lsa ham, boshqa joyga **ishlaydigan** holda olib
+o‘tib bo‘lmaydi — obunachilar eski joyda qoladi.
+
+**Identifikator qulfi.** `@ism` — platformaning ichki ma’lumoti. Platforma
+uni olib qo‘yishi yoki boshqaga berishi mumkin. Boshqa joyga ketsangiz —
+ism qolib ketadi, va unga havolalar buziladi.
+
+**Algoritm qulfi.** Nimani ko‘rishingizni bitta kompaniya algoritmi hal
+qiladi. Boshqa tasma xohlasangiz — yagona yo‘l boshqa platformaga ketish
+(va 1-qulfga qaytish).
+
+### 1.2 Talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Ko‘chuvchanlik | Hisob boshqa serverga obunachilar va havolalarni yo‘qotmasdan o‘tadi |
+| Haqiqiylik | Har post muallif imzosi bilan; kim saqlashidan qat’i nazar tekshiriladi |
+| Barqaror identifikator | Server yoki handle o‘zgarsa ham hisob ID si o‘zgarmaydi |
+| Global ko‘rinish | Like soni, javoblar, qidiruv — butun tarmoq bo‘yicha, bitta server emas |
+| Kechikish | Post yozilgandan obunachilar tasmasigacha — soniyalar |
+| Masshtab | O‘nlab million foydalanuvchi, sekundiga minglab yozuv |
+| Tanlov | Tasma algoritmi va moderatsiya — almashtiriladigan xizmatlar |
+
+To‘rtinchi qator AT Protocol’ni boshqa federativ tarmoqlardan ajratadi
+(2.3): “like soni”, “javoblar daraxti”, “qidiruv” kabi narsalar **butun
+tarmoq** ma’lumotini talab qiladi. Har server faqat o‘zi ko‘rgan qismini
+bilsa, foydalanuvchi tajribasi markazlashgan tarmoqdan yomonroq bo‘ladi.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="20 M+" label="Bluesky foydalanuvchilari" hint="2024-yil noyabr" />
+  <Stat value="300" label="Post uzunligi chegarasi (grafema)" hint="Bluesky ilovasi" />
+  <Stat value="72 soat" label="did:plc tiklash oynasi" hint="PLC spetsifikatsiyasi" />
+  <Stat value="~4" label="MST shoxlanishi (o'rtacha)" hint="Kalit xeshidagi 2 bit" />
+</StatGrid>
+
+<Calc title="Butun tarmoq oqimi: sekundiga nechta yozuv" result="20 M foydalanuvchi, 25% faol, har biri kuniga ~20 yozuv: kuniga ~100 M yozuv, o'rtacha ~1 200/s, cho'qqida ~5 000-10 000/s">{`Foydalanuvchilar: 20 000 000
+Kunlik faol (faraz): 25% -> 5 000 000
+Har faol foydalanuvchi kuniga (faraz):
+  2 post + 15 like + 1 repost + 1 follow + boshqa = ~20 yozuv
+Kuniga: 5 M x 20 = ~100 M yozuv
+
+O'rtacha: 100 M / 86 400 = ~1 160 yozuv/s
+Cho'qqi (kechqurun, katta yangilik): 5-10x -> ~5 000-10 000/s
+
+Har yozuv — bitta commit (yoki bir nechta yozuv bitta commitda)
+  -> firehose: sekundiga minglab hodisa`}</Calc>
+
+<Calc title="Butun tarmoqning hajmi" result="Kuniga ~100 M yozuv x ~500 bayt (yozuv + daraxt tugunlari + imzo) = ~50 GB/kun matnli ma'lumot; yiliga ~18 TB — rasmlar va videolarsiz">{`Bitta yozuv (like, post, follow) DAG-CBOR da: ~100-500 bayt
+Commit bilan birga keladigan daraxt tugunlari va imzo: +~300 bayt
+  -> o'rtacha ~500 bayt firehose'da har yozuvga (faraz)
+
+Kuniga: 100 M x 500 B = ~50 GB
+Yiliga: ~18 TB
+
+Bloblar (rasm, video) alohida: ular firehose'da emas, PDS da turadi
+  va CDN orqali tarqatiladi — hajmi matndan o'nlab barobar ko'p
+
+Xulosa: butun tarmoqning MATN qismi — bitta jiddiy serverga sig'adi.
+  Shuning uchun "butun tarmoq nusxasi" (relay, AppView) — mumkin`}</Calc>
+
+Ikkinchi hisob darsning birinchi muhim kuzatuvi: ijtimoiy tarmoqning
+**matnli qismi kichik**. Butun tarmoqni bitta joyga yig‘ish (relay) va
+undan global indeks qurish (AppView) arzon emas, lekin mumkin — va kerak
+bo‘lsa, buni bir nechta mustaqil tashkilot qila oladi.
+
+<Calc title="Hamma hamma bilan gaplashsa" result="1 000 server: har biri boshqalarga to'g'ridan-to'g'ri yuborsa ~1 M ulanish; relay orqali — 1 000 ta kiruvchi va bir nechta chiquvchi">{`Serverlar (PDS): N = 1 000 (faraz)
+Har server o'z yozuvlarini qolganlarga yuborsa: N x (N - 1) = ~1 000 000 ta ulanish
+  + har biri boshqalarning qayta urinishlari, uzilishlari bilan
+
+Relay bilan: har PDS -> 1 ta relay (N ulanish)
+  relay -> iste'molchilar (AppView, feed'lar, tadqiqotchilar): o'nlab
+  -> ~1 000 + o'nlab ulanish
+
+Narxi: relay — markaziy nuqta. Lekin uni ishga tushirishga ruxsat
+  kerak emas: istalgan kishi o'z relay'ini yuritishi mumkin (8-qadam)`}</Calc>
+
+<Check q="Markazlashgan tarmoqda 'ma'lumotni eksport qilish' imkoniyati bor. Nega bu ko'chuvchanlik muammosini hal qilmaydi?">
+Eksport — **arxiv**, ishlaydigan hisob emas. Siz postlaringizni fayl
+sifatida olasiz, lekin: (1) obunachilaringiz eski platformada qoladi — yangi
+joyda sizni hech kim ko‘rmaydi; (2) boshqalarning sizning postlaringizga
+havolalari, javoblari, iqtiboslari eski manzilga ishora qiladi va
+ko‘chmaydi; (3) ismingiz (`@ism`) eski platformaniki; (4) yangi platforma
+eksport fayliga ishonishi uchun asos yo‘q — uni istalgancha tahrirlash
+mumkin edi.
+
+Haqiqiy ko‘chuvchanlik uchun uchta narsa kerak: identifikator platformaga
+bog‘liq emas (DID), ma’lumot o‘z-o‘zini tasdiqlaydi (imzolangan repo), va
+boshqalar sizni **identifikator** orqali topadi, server manzili orqali
+emas. AT Protocol’ning butun dizayni shu uch talabga qurilgan.
+</Check>
+
+## 2. Nol nuqta: o‘z-o‘zini tasdiqlovchi ma’lumot
+
+### 2.1 Xesh va imzo oddiy tilda
+
+Oddiy tilda: **xesh** — hujjatning “barmoq izi”. Hujjatdagi bitta harf
+o‘zgarsa, barmoq izi butunlay boshqacha bo‘ladi. **Imzo** — faqat sizda
+bor kalit bilan qo‘yilgan muhr; uni hamma tekshira oladi (ochiq kalit
+bilan), lekin hech kim soxtalashtira olmaydi.
+
+Ikkalasini birlashtiring: siz butun hujjatlar to‘plamining barmoq izini
+olasiz va **faqat shu izni** imzolaysiz. Endi to‘plam istalgan joyda —
+sizning serveringizda, do‘stingiz kompyuterida, begona arxivda —
+turishidan qat’i nazar, kim bo‘lmasin uni tekshira oladi: “bu aynan siz
+imzolagan to‘plammi?” Ma’lumot **o‘z-o‘zini tasdiqlaydi**.
+
+```
+yozuvlar:   post-1   post-2   like-7   follow-3   ...
+              |        |        |         |
+              v        v        v         v
+           xesh     xesh     xesh      xesh          (har yozuvning barmoq izi)
+              \        |        |        /
+               \_______ daraxt (MST) ___/
+                          |
+                    ildiz xeshi  ----->  commit: {did, rev, ildiz}  + imzo
+```
+
+### 2.2 Repo — kim saqlashidan qat’i nazar
+
+Bluesky’da har foydalanuvchining hamma ommaviy yozuvlari — postlar,
+like’lar, repostlar, obunalar, bloklar, profil — bitta **repo**da. Repo —
+“kolleksiya/kalit → yozuv” lug‘ati:
+
+```
+app.bsky.actor.profile/self           -> {"displayName": "Dinmuhammad", ...}
+app.bsky.feed.post/3l2xq6...          -> {"text": "Salom!", "createdAt": "..."}
+app.bsky.feed.like/3l2xr1...          -> {"subject": {"uri": "at://did:plc:abc/app.bsky.feed.post/3k9..."}}
+app.bsky.graph.follow/3l2xs8...       -> {"subject": "did:plc:xyz"}
+```
+
+E’tibor bering: like va follow — ham **sizning** repo’ngizdagi yozuvlar.
+“A B ning postini yoqtirdi” degan fakt A ning repo’sida turadi va A ning
+imzosi bilan. B ning serveri bu haqda bilmasligi ham mumkin. Postga nechta
+like borligini bilish uchun **butun tarmoqni** ko‘rish kerak — bu AppView
+vazifasi (9-qadam).
+
+Har yozuvning manzili — **AT URI**: `at://<did>/<kolleksiya>/<kalit>`.
+Unda server manzili yo‘q — faqat hisob identifikatori (DID). Hisob boshqa
+serverga ko‘chsa ham, URI o‘zgarmaydi.
+
+<Callout type="info" title="Oddiy tilda: repo — imzolangan daftar">
+Repo — har sahifasi raqamlangan va oxirgi sahifasida egasining imzosi bor
+daftar. Daftarni istalgan kutubxonaga topshirish mumkin; kutubxonachi uni
+o‘zgartirsa, imzo mos kelmay qoladi va buni hamma ko‘radi. Egasi esa
+istalgan vaqtda daftarni boshqa kutubxonaga olib ketishi mumkin — ichidagi
+sahifalar ham, imzo ham o‘zgarmaydi.
+</Callout>
+
+### 2.3 Ikki xil federatsiya
+
+“Markazlashmagan ijtimoiy tarmoq” deganda ko‘pincha **Mastodon** (ActivityPub
+protokoli) tushuniladi. U boshqa yo‘l tutgan:
+
+```
+ActivityPub (Mastodon):
+  server = jamoa. Hisob serverga bog'langan: @ali@server-a.uz
+  server A postni o'z obunachilari turgan serverlarga YUBORADI (push)
+  har server faqat o'z foydalanuvchilari va ular kuzatganlarni biladi
+  -> "kichik dunyolar": like soni va javoblar har serverda boshqacha
+
+AT Protocol (Bluesky):
+  qatlamlar: ma'lumot (PDS) | yig'ish (relay) | ko'rinish (AppView) | tanlov (feed'lar)
+  hisob DID ga bog'langan, server istalgan vaqtda almashadi
+  hamma narsa bitta ochiq oqimga yig'iladi -> "katta dunyo": global ko'rinish
+```
+
+Ikkalasi ham markazlashmagan, lekin markazlashmaslik **turli qatlamda**.
+Mastodon’da jamoalar (serverlar) mustaqil, va har biri o‘z qoidalariga ega.
+AT Protocol’da esa **ma’lumot va identifikator** foydalanuvchiga tegishli,
+“ko‘rinish” qatlami (AppView) esa katta va qimmat, lekin almashtiriladigan.
+Farqlar va har birining narxi — 16-bo‘limda.
+
+<Check q="Nega Bluesky'da like sizning repo'ngizda saqlanadi, postning egasiniki emas?">
+Chunki repo’ga faqat uning **egasi** yoza oladi — har yozuv egasining
+imzosi bilan. “A B ning postini yoqtirdi” degan da’voni faqat A tasdiqlay
+oladi: agar like B ning repo’sida bo‘lsa, B istalgan like’ni o‘ylab topishi
+(yoki olib tashlashi) mumkin edi.
+
+Natija: har bir harakat — harakat qiluvchining imzolangan yozuvi. Like,
+follow, repost, block — hammasi “men qildim” degan da’volar. Buning
+narxi: “bu postga nechta like?” degan savolga javob berish uchun **hamma**
+repo’larni ko‘rib chiqish kerak. Bu savolga AppView javob beradi, u
+butun tarmoq oqimini o‘qib, indeks quradi (9-qadam).
+</Check>
+
+### 2.4 To‘rt rol bitta rasmda
+
+Darsning qolgan qismida to‘rtta so‘z doim uchraydi. Ularni bitta rasm bilan
+eslab qolish oson — **shahar kutubxonalari tarmog‘i**:
+
+**PDS** — sizning **shaxsiy javoningiz**, qaysidir kutubxonada ijaraga
+olingan. Unda faqat sizning daftarlaringiz, sizning imzongiz bilan. Javonni
+boshqa kutubxonaga ko‘chirish mumkin.
+
+**Relay** — **pochta markazi**: har kutubxonadan “bugun qaysi daftarlarga
+qanday sahifa qo‘shildi” degan xabarlarni yig‘ib, bitta umumiy tasmaga
+tizadi va kim so‘rasa, o‘shanga beradi. U daftarlarni o‘zgartira olmaydi —
+imzolar buni darhol ko‘rsatadi.
+
+**AppView** — **katalog bo‘limi**: pochta markazidan kelgan hamma xabarni
+o‘qib, “qaysi kitob haqida kim nima yozgan”, “kim kimga obuna” degan
+kartotekani yuritadi. Siz “menga yangiliklarni ko‘rsat” desangiz — katalog
+bo‘limi javob beradi.
+
+**Feed generator** — **tavsiya qiluvchi kutubxonachi**: katalogdan o‘z
+didiga ko‘ra ro‘yxat tuzadi (“bu hafta eng qiziq ilmiy maqolalar”). Siz
+istalgan kutubxonachining ro‘yxatini tanlaysiz va istalgan vaqtda
+boshqasiga o‘tasiz.
+
+Asosiy farq markazlashgan tarmoqdan: bu yerda to‘rtala rolni **turli**
+tashkilotlar bajarishi mumkin, va ular orasidagi aloqa ochiq qoidalar
+bilan. Javon (ma’lumot) va ism (DID) — sizniki; qolganlari — xizmatlar,
+ularni almashtirish mumkin.
+
+## 3. v0: bitta server, bitta baza
+
+Eng sodda mikroblog — bitta serverda uchta jadval. Twitter darsidagi
+boshlang‘ich nuqta bilan deyarli bir xil:
+
+```python
+import time
+
+class Microblog:
+    def __init__(self):
+        self.users = {}        # ism -> {"parol_xeshi": ..., "yaratildi": ...}
+        self.posts = []        # (id, muallif, matn, vaqt)
+        self.follows = set()   # (kim, kimni)
+        self.likes = set()     # (kim, post_id)
+
+    def post(self, author, text):
+        pid = len(self.posts)
+        self.posts.append((pid, author, text, time.time()))
+        return pid
+
+    def follow(self, who, whom):
+        self.follows.add((who, whom))
+
+    def like(self, who, pid):
+        self.likes.add((who, pid))
+
+    def timeline(self, viewer, limit=50):
+        following = {b for a, b in self.follows if a == viewer} | {viewer}
+        mine = [p for p in self.posts if p[1] in following]
+        return sorted(mine, key=lambda p: p[3], reverse=True)[:limit]
+```
+
+Bu v0 **ishlaydi** va hatto katta bo‘lishi mumkin: Twitter darsida
+ko‘rganimizdek, kesh, fan-out va shardlar bilan bunday tizim yuz
+millionlab foydalanuvchiga xizmat qiladi. Lekin bu darsning savoli boshqa:
+tezlik emas, **egalik**. Va bu yerda v0 birinchi kundanoq “sinib”
+tug‘ilgan.
+
+Darsning oxirigacha v0 dagi har jadval qayerga “ko‘chishini” ko‘ramiz:
+
+| v0 da | AT Protocol’da | Kim boshqaradi |
+| --- | --- | --- |
+| `users` (ism, parol) | DID + handle (domen) + PDS dagi login | Foydalanuvchi (DID, domen), PDS (login) |
+| `posts` | Har muallifning repo’sidagi `app.bsky.feed.post` yozuvlari | Muallif (imzo) |
+| `follows`, `likes` | Harakat qiluvchining repo’sidagi yozuvlar | Harakat qiluvchi |
+| `timeline()` | AppView yoki maxsus feed generator | Almashtiriladigan xizmat |
+| Moderatsiya (yo‘q edi) | Yorliqlovchilar + platforma qoidalari | Bir nechta xizmat, foydalanuvchi tanlaydi |
+
+Ko‘rinib turibdiki, v0 ning **ma’lumot** qismi foydalanuvchilarga
+taqsimlanadi, **hisoblash** qismi (tasma, sonlar) esa xizmatlarga.
+
+## 4. Nima sindi
+
+v0 ga 1-bo‘limdagi talablarni qo‘yamiz. Tezlik muammolari Twitter darsida
+hal qilingan; bu yerda — egalik, ishonch va tanlov muammolari. Har
+muammo 5-bo‘limdagi bir yoki bir nechta qadamga olib keladi.
+
+### 4.1 Hisob serverga mixlangan
+
+v0 da `users` jadvali — server bazasida. Server yopilsa yoki sizni
+chiqarsa — hisob yo‘q. Boshqa server ochilsa ham, u sizning postlaringiz
+**aynan sizniki** ekanini tekshira olmaydi: eksport faylini istalgancha
+tahrirlash mumkin. Kerak: ma’lumot o‘z-o‘zini tasdiqlasin (2–4-qadamlar).
+
+### 4.2 Ism — serverniki
+
+Ism `users` jadvalining kaliti. Server uni boshqaga berishi yoki olib
+qo‘yishi mumkin. Agar `@ali` ismini o‘zgartirsa, unga barcha havolalar
+(javoblar, iqtiboslar) buziladi — chunki ular ismga ishora qiladi.
+Kerak: o‘zgarmas ichki identifikator va o‘zgaruvchan, lekin tasdiqlanadigan
+ko‘rinadigan ism (5–6-qadamlar).
+
+### 4.3 Bitta algoritm, bitta moderator
+
+`timeline` — bitta funksiya. Boshqa tasma kerak bo‘lsa — boshqa platforma.
+Moderatsiya ham shunday: nimani yashirish, nimani belgilash — bitta
+kompaniya qarori. Kerak: tasma va moderatsiya — **tashqi, almashtiriladigan**
+xizmatlar (10–11-qadamlar).
+
+### 4.4 Ko‘p server — kimga ishonish
+
+v0 ni ko‘p serverga bo‘lsak (har kim o‘z serverida), yangi muammo paydo
+bo‘ladi: server A “Ali shu postni yozdi” desa, server B bunga nega
+ishonishi kerak? Server A yolg‘on gapirishi, buzilishi yoki eski
+ma’lumot berishi mumkin. Kerak: ishonch **serverga emas, imzoga** (2-qadam).
+
+<Calc title="Ishonchsiz serverlar: qanchasi xato qiladi" result="10 000 mustaqil serverdan 1% i buzilgan yoki yolg'onchi bo'lsa — 100 ta server. Imzosiz tizimda ularning har biri istalgan foydalanuvchi nomidan 'post' tarqata oladi">{`Mustaqil serverlar (faraz): 10 000
+Ulardan noto'g'ri sozlangan, buzilgan yoki yomon niyatli: ~1% -> 100 ta
+
+Imzosiz: server B ga server A dan "Ali yozdi: ..." keldi
+  B tekshira olmaydi -> 100 ta yomon server istalgan foydalanuvchini
+  "gapirtira" oladi
+
+Imzo bilan: har yozuv Ali ning kaliti bilan
+  B tekshiradi: imzo Ali ning ochiq kalitiga mosmi?
+  yomon server faqat yozuvni YASHIRISHI yoki ESKIRTIRISHI mumkin,
+  soxtalashtira olmaydi -> bu ham aniqlanadi (8-bo'lim)`}</Calc>
+
+### 4.5 Hamma hamma bilan gaplashadi
+
+Ko‘p serverli v0 da like sonini bilish uchun har server boshqa
+hammasidan so‘rashi kerak (1.3 dagi N × N). Tasma qurish uchun —
+obunalaringiz turgan har serverdan. Sekin, qimmat va bitta sekin server
+hammani sekinlashtiradi. Kerak: yig‘uvchi qatlam (relay) va global indeks
+(AppView) — 8–9-qadamlar.
+
+### 4.6 Ko‘chish — havolalar buziladi
+
+Hisob server A dan B ga ko‘chsa, boshqa serverlardagi “Ali A da” degan
+ma’lumot eskiradi: javoblar, obunalar, iqtiboslar A ga ishora qiladi.
+Kerak: boshqalar sizni **joylashuv** emas, **identifikator** orqali
+topsin, identifikator esa joriy joylashuvni aytsin (5, 12-qadamlar).
+
+Bitta aniq misol bilan: Ali v0 serveridan boshqa ko‘p serverli tizimga
+o‘tmoqchi. U postlarini eksport qiladi (JSON fayl) va yangi serverda
+import qiladi. Natija: (1) yangi serverda Ali — **yangi hisob**,
+`ali@yangi-server`; eski obunachilar uni ko‘rmaydi; (2) eski postlarga
+qoldirilgan 3 000 ta javob eski serverda qoladi va endi “hech kimga”
+tegishli; (3) Valining “Ali postini iqtibos qildi” degan posti eski
+manzilga ishora qiladi — havola o‘ladi; (4) yangi server import
+qilingan postlarni “haqiqatan Ali yozganmi” deb tekshira olmaydi. To‘rtala
+muammoning ildizi bitta: hisob va ma’lumot **server**ga bog‘langan,
+o‘z-o‘zini tasdiqlamaydi.
+
+<Callout type="ogoh" title="Markazlashmaslik — o'z-o'zidan maqsad emas">
+Har bir muammoning “markazlashgan” yechimi oddiyroq va tezroq. AT Protocol
+markazlashmaganlikni **foydalanuvchi uchun aniq kafolatlar** bo‘lgan joyda
+ishlatadi: ma’lumot va identifikator egalik, chiqib ketish huquqi, tanlov.
+Indeks va qidiruv kabi qimmat qismlar esa katta, markazlashgan
+xizmatlarda — lekin almashtiriladigan. Bu murosa darsning asosiy
+mavzusi.
+</Callout>
+
+### 4.7 Muammolar ro‘yxati
+
+| Muammo | Nima kerak | Qadam |
+| --- | --- | --- |
+| Yozuvlar formati har serverda boshqacha | Umumiy sxema tili (Lexicon) | 1 |
+| Ma’lumotga ishonib bo‘lmaydi | Imzolangan commit | 2 |
+| Butun repo’ni tez tekshirish va farqini olish | Merkle Search Tree | 3 |
+| Yozuvlar va rasmlarni manzildan qat’i nazar topish | Kontent-adreslash (CID), CAR | 4 |
+| Ism va server o‘zgarsa — hisob yo‘qoladi | DID | 5 |
+| Ism platformaniki | Domen-handle | 6 |
+| Hisob qayerda turadi | PDS | 7 |
+| N × N aloqa | Relay va firehose | 8 |
+| Like soni, javoblar, qidiruv | AppView | 9 |
+| Bitta algoritm | Maxsus feed’lar | 10 |
+| Bitta moderator | Moderatsiya qatlamlari | 11 |
+| Serverdan ketish | Hisob ko‘chirish | 12 |
+| Firehose og‘ir | Jetstream va yengil sinxronizatsiya | 13 |
+| Bitta ilova | Bitta repo — ko‘p ilova | 14 |
+
+<Check q="v0 ni shunchaki ko'p serverga bo'lib, serverlar orasida ma'lumot almashsa, qaysi uchta muammo baribir qoladi?">
+**Ishonch**: server B server A dan kelgan “Ali shuni yozdi” degan da’voni
+tekshira olmaydi — imzo yo‘q, faqat serverga ishonish qoladi (4.4).
+
+**Identifikator**: hisob `ali@server-a` ko‘rinishida serverga bog‘langan.
+Server A yopilsa yoki Ali boshqa serverga o‘tmoqchi bo‘lsa — boshqalardagi
+barcha havolalar va obunalar eski manzilga ishora qiladi (4.2, 4.6).
+
+**Global ko‘rinish**: like soni, javoblar daraxti, qidiruv — har server faqat
+o‘zi ko‘rganini biladi. Butun tarmoq bo‘yicha javob uchun hamma serverlardan
+so‘rash kerak (N × N), bu esa sekin va ishonchsiz (4.5).
+
+Uchala muammo ham “tezlik” muammosi emas — ular **ma’lumot modelida**.
+Shuning uchun AT Protocol yechimi ham ma’lumot modelidan boshlanadi:
+imzolangan repo, DID, va ochiq oqim.
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar mantiqiy tartibda: 1–4 — ma’lumot o‘z-o‘zini tasdiqlashi,
+5–7 — identifikator va uy, 8–9 — butun tarmoqni yig‘ish va ko‘rsatish,
+10–11 — tanlov, 12–14 — chiqib ketish va ekotizim.
+
+<Step n={1} title="Yozuvlar va Lexicon: umumiy sxema tili" gain="Har server va ilova bir xil yozuvlarni bir xil tushunadi; yangi ilova yangi yozuv turini qo'sha oladi" cost="Sxema o'zgarishi — orqaga moslik qoidalari bilan; noto'g'ri yozuvni har iste'molchi o'zi tekshirishi kerak">
+
+Oddiy tilda: pochta jo‘natmasida manzil yozish shakli hamma uchun bir xil:
+ism, ko‘cha, uy, indeks. Har pochta bo‘limi o‘z shaklini o‘ylab topsa,
+xatlar yetib bormaydi. **Lexicon** — AT Protocol’ning “jo‘natma shakllari”
+kitobi.
+
+Har yozuv turi nomlangan sxemaga ega — **NSID**, teskari domen
+ko‘rinishida: `app.bsky.feed.post`, `app.bsky.feed.like`,
+`app.bsky.graph.follow`. Sxema maydonlarni, turlarni va chegaralarni
+aytadi (masalan, post matni — 300 grafemagacha). Domen egasi sxemaning
+egasi: `app.bsky.*` — Bluesky’niki, `com.example.blog.entry` — boshqa
+ilovaniki. Shu tarzda yangi ilova o‘z yozuv turlarini **ruxsatsiz**
+qo‘shadi, va ular xuddi postlar kabi repo’da, firehose’da va boshqa
+ilovalarda ko‘rinadi.
+
+Yozuv kaliti odatda **TID** (timestamp identifier) — vaqtga asoslangan,
+tartiblanadigan qisqa satr:
+
+<Calc title="TID: vaqt + soat identifikatori" result="64 bit: 53 bit mikrosekund va 10 bit soat ID si; 13 belgili satr. Tartiblanadi, deyarli to'qnashmaydi, markaziy hisoblagich kerak emas">{`TID = 64 bitli son, base32-sortable bilan 13 belgi (masalan "3l2xq6zbk2s2a")
+  53 bit: 1970-yildan beri mikrosekundlar
+    2^53 us = ~285 yil — yetarli
+  10 bit: "soat identifikatori" — bir vaqtdagi ikki yozuvchini ajratadi
+    2^10 = 1 024 qiymat
+
+Bir foydalanuvchi bir mikrosekundda ikki yozuv qilsa: to'qnashuv
+  ehtimoli soat ID tasodifiy bo'lsa — 1/1 024, va yozuvchi buni
+  o'zi tekshirib, keyingi mikrosekundni oladi
+
+Afzallik: kalitlar vaqt tartibida -> repo'dagi daraxtda yangi postlar
+  "o'ng chetda" to'planadi, ro'yxatlar tez`}</Calc>
+
+Narxi — **moslik va tekshiruv**. Sxemani o‘zgartirib bo‘lmaydi (eski
+yozuvlar abadiy qoladi), faqat orqaga mos holda kengaytirish mumkin. Va
+har iste’molchi (AppView, feed, boshqa ilova) kelgan yozuvni sxemaga
+qarshi o‘zi tekshirishi kerak: firehose’da istalgan narsa bo‘lishi mumkin.
+</Step>
+
+<Step n={2} title="Imzolangan commit" gain="Repo'ning har versiyasi egasining imzosi bilan; istalgan server yoki o'quvchi tekshira oladi" cost="Har yozuvda imzo va kalit boshqaruvi; kalit yo'qolsa yoki o'g'irlansa — jiddiy muammo">
+
+Oddiy tilda: bank ko‘chirmasi oxiridagi muhr. Ko‘chirmani kim olib kelmasin,
+muhr haqiqiy bo‘lsa — ma’lumotga ishonasiz.
+
+Repo’dagi har o‘zgarish — yangi **commit**: “repo’ning shu holati —
+meniki”. Commit’da: DID (kimniki), `rev` (versiya, TID), ma’lumot
+daraxtining ildiz xeshi (3-qadam) va imzo. Imzo — DID hujjatida e’lon
+qilingan **imzo kaliti** bilan (secp256k1 yoki P-256 egri chizig‘idagi
+kalit). Firehose’dagi har commit hodisasida oldingi versiya ham (`since`)
+bor — iste’molchi “men oxirgi ko‘rgan versiyadan keyingisimi?” deb
+tekshiradi (amaliyotdagi `prev`).
+
+<Calc title="Imzoning narxi" result="Bitta imzo ~64 bayt va ~0.1 ms; sekundiga 10 000 commit — bitta yadroning bir qismi. Tekshirish ham shu tartibda — relay va AppView uchun maqbul">{`Imzo (ECDSA, secp256k1 yoki P-256): ~64 bayt
+Imzolash: ~0.05-0.2 ms (bitta yadro, kutubxonaga bog'liq)
+Tekshirish: ~0.1-0.3 ms
+
+Butun tarmoq cho'qqisi (1.3): ~10 000 commit/s
+  tekshirish: 10 000 x 0.2 ms = 2 s yadro vaqti har soniyaga
+  -> ~2 yadro faqat imzo tekshirishga — relay uchun arzon
+
+Firehose'dagi qo'shimcha hajm: 10 000 x 64 B = ~640 KB/s — sezilmaydi`}</Calc>
+
+Narxi — **kalit**. Imzo kaliti odatda PDS da saqlanadi (foydalanuvchi
+qurilmasida emas), shuning uchun foydalanuvchi PDS ga ishonadi — lekin
+faqat **imzo** bo‘yicha. Kalitni almashtirish va hisobni boshqa PDS ga olib
+ketish huquqi esa alohida, kuchliroq **rotatsiya kaliti**da (5-qadam).
+</Step>
+
+<Step n={3} title="Merkle Search Tree: butun repo — bitta xesh" gain="Butun repo bitta ildiz xeshi bilan; bitta yozuvni isbotlash — bir necha tugun; ikki versiya farqi — faqat o'zgargan tugunlar" cost="Har yozishda daraxt yo'li qayta xeshlanadi; tuzilma qoidasi har implementatsiyada aynan bir xil bo'lishi shart">
+
+Oddiy tilda: kutubxona kartotekasi. Kartochkalar alifbo tartibida
+qutilarda, qutilar katta qutilarda. Har qutining yorlig‘ida — ichidagi
+hamma narsaning barmoq izi. Eng katta qutining yorlig‘i — butun
+kutubxonaning barmoq izi. Bitta kartochka o‘zgarsa, faqat uning yo‘lidagi
+qutilarning yorliqlari o‘zgaradi.
+
+Repo yozuvlari kalit (`kolleksiya/rkey`) bo‘yicha tartiblangan va
+**Merkle Search Tree** (MST) ga joylangan. Oddiy Merkle daraxtidan farqi —
+daraxt shakli **faqat kalitlar to‘plamiga** bog‘liq: qaysi tartibda
+qo‘shilgani ahamiyatsiz. Shuning uchun bir xil repo — har doim bir xil
+ildiz xeshi, kim hisoblamasin.
+
+<Deep title="MST qanday quriladi: kalitning 'balandligi'">
+Har kalitning **darajasi** uning xeshidan olinadi: SHA-256 xeshining
+boshidagi nol bitlar soni, 2 ga bo‘lingan. Taxminan har 4 kalitdan biri
+1-darajada, 16 tadan biri 2-darajada va hokazo.
+
+```
+kalit                          xesh boshi (bit)      daraja
+app.bsky.feed.like/3l2a...     0001 0110 ...          1   (3 ta nol -> 1)
+app.bsky.feed.post/3k9z...     1011 0001 ...          0
+app.bsky.feed.post/3l1b...     0000 0011 ...          3   (6 ta nol -> 3)
+app.bsky.graph.follow/3jx...   0100 1110 ...          0
+
+Qoida: to'plamning eng yuqori darajadagi kalitlari — ildiz tugunida.
+Ular orasidagi kalitlar — pastki daraxtlar, ular ham shu qoida bilan.
+```
+
+Bu qoida ikki muhim xususiyat beradi. **Determinizm**: daraja kalitning
+o‘zidan keladi, shuning uchun bir xil kalitlar har doim bir xil
+tuzilmaga tushadi — ikkita server repo’ni mustaqil qursa, ildizlar mos
+keladi. **Muvozanat**: darajalar tasodifiy taqsimlangani uchun daraxt
+o‘rtacha muvozanatli, chuqurligi kalitlar sonining logarifmi (asosi ~4).
+
+Haqiqiy AT Protocol MST’sida qo‘shimcha tafsilotlar bor (tugun ichida
+kalit prefikslarini siqish, DAG-CBOR kodlash), amaliyotdagi versiya esa
+soddalashtirilgan — lekin asosiy g‘oya va xususiyatlar bir xil.
+</Deep>
+
+<Calc title="MST: chuqurlik, isbot va o'zgarish narxi" result="100 000 yozuvli repo: chuqurlik ~8-9; bitta yozuv isboti ~8 tugun (~5-10 KB); bitta yozuv o'zgarsa ~8 ta yangi tugun — repo hajmidan qat'i nazar">{`Repo: 100 000 yozuv (faol foydalanuvchi: postlar, like'lar, obunalar)
+Shoxlanish ~4 -> chuqurlik ~ log4(100 000) = ~8.3
+
+Inklyuziya isboti: ildizdan yozuvgacha har tugun
+  ~8-9 tugun x ~0.5-1 KB = ~5-10 KB
+  -> "bu like shu repo'da bor" — butun repo'siz isbotlanadi
+
+Yangi like qo'shildi:
+  o'zgaradigan tugunlar: faqat yo'ldagilar (~8-9)
+  qolgan ~33 000 tugun — o'zgarmaydi, xeshlari ham
+  -> firehose'ga faqat ~9 ta yangi tugun ketadi (4-qadam)
+
+Amaliyot: 3 000 kalitda bitta o'zgarish farqi — ~30-35 tugun ochiladi,
+  butun daraxt esa ~800 tugun`}</Calc>
+
+Narxi — **qat’iy qoida**. Daraja hisoblash, tartiblash yoki kodlashda
+bitta farq — boshqa ildiz xeshi va “imzo mos emas”. Shuning uchun
+protokolda test vektorlari bor (amaliyotdagi “aniq javob” testi kabi):
+har implementatsiya bir xil kirishdan aynan bir xil xesh olishi shart.
+</Step>
+
+<Step n={4} title="Kontent-adreslash: CID, bloblar va CAR" gain="Ma'lumot manzili — uning xeshi: qayerdan olinmasin, tekshiriladi; bir xil ma'lumot bir marta saqlanadi; o'zgarishlar faqat yangi bloklar" cost="Xesh-manzillar odam uchun o'qilmaydi; o'chirish murakkab — eski nusxalar boshqa joylarda qolishi mumkin">
+
+Oddiy tilda: kitobni nomi bilan emas, **mazmunining barmoq izi** bilan
+so‘raysiz: “barmoq izi shunday bo‘lgan kitobni bering”. Kim bersa ham —
+kutubxona, do‘st, notanish odam — barmoq izini tekshirib, aynan o‘sha
+kitob ekanini bilasiz.
+
+AT Protocol’da har yozuv, har daraxt tuguni va har rasm (blob) **CID**
+(content identifier) bilan — mazmunining xeshi bilan aniqlanadi. Tugunlar
+bolalariga CID orqali ishora qiladi, shuning uchun MST — CID lar zanjiri.
+Repo’ni eksport qilish — **CAR fayli** (content-addressed archive):
+hamma bloklar va ildiz. Firehose’dagi commit hodisasi ham kichik CAR:
+faqat **shu commitda yangi** bo‘lgan bloklar.
+
+<Calc title="Firehose commit: to'liq repo emas, faqat farq" result="100 000 yozuvli repo ~50 MB; bitta like commit'i ~2-5 KB (yangi yozuv + ~8 tugun + commit). 10 000 barobar kam">{`To'liq repo (100 000 yozuv): ~100 000 x ~300 B + ~33 000 tugun x ~600 B
+  = ~30 MB + ~20 MB = ~50 MB (CAR)
+
+Bitta like commit'i:
+  yangi like yozuvi:               ~200 B
+  o'zgargan MST tugunlari (~8-9):  ~8 x 500 B = ~4 KB
+  commit obyekti + imzo:           ~200 B
+  -> ~2-5 KB
+
+Iste'molchi: oldingi holat + shu bloklar -> yangi ildizni tekshira oladi
+  (oldingi holat bo'lmasa — butun repo'ni so'raydi: resinxronizatsiya)`}</Calc>
+
+Bloblar (rasmlar, videolar) repo daraxtida emas: yozuv faqat blob CID
+sini saqlaydi, blobning o‘zi PDS da. AppView ularni CDN orqali
+tarqatadi — CID tufayli keshlash oson: bir xil CID — har doim bir xil
+fayl.
+
+Narxi — **o‘chirish**. Ma’lumot nusxalanadi (relay, AppView, arxivlar),
+va CID “bu nusxa haqiqiymi” degan savolga javob beradi, “bu nusxa
+o‘chirilishi kerakmi” degan savolga emas. Yozuv o‘chirilganda firehose’da
+“o‘chirildi” hodisasi tarqaladi va halol iste’molchilar uni o‘chiradi —
+lekin bu protokol emas, xulq kafolati (11-bo‘lim).
+</Step>
+
+<Step n={5} title="DID: o'zgarmas identifikator" gain="Hisob ID si server, domen va ismdan mustaqil; joriy kalitlar va manzil DID hujjatida" cost="DID katalogi (did:plc) — markaziy xizmat; rotatsiya kalitlarini yo'qotish — hisobni yo'qotish">
+
+Oddiy tilda: pasport raqami. Ismingizni o‘zgartirsangiz, boshqa shaharga
+ko‘chsangiz ham raqam o‘sha. Raqam bo‘yicha “hozir qayerda yashaydi,
+imzosi qanday” degan ma’lumotni rasmiy reyestrdan olish mumkin.
+
+Har hisobning ichki identifikatori — **DID** (decentralized identifier):
+`did:plc:ewvi7nxzyoun6zhxrhs64oiz` kabi. DID **hujjat**ga ishora qiladi:
+unda joriy imzo kaliti (2-qadam), PDS manzili (7-qadam) va handle
+(6-qadam). Hisob boshqa PDS ga ko‘chsa, faqat DID hujjati yangilanadi —
+DID ning o‘zi, va u bilan barcha AT URI lar, obunalar, like’lar —
+o‘zgarmaydi.
+
+Ikki turi ishlatiladi: **did:web** — domen ustida (`did:web:example.com`),
+sodda, lekin domenni yo‘qotsangiz — hisobni ham; va **did:plc** — Bluesky
+yaratgan, maxsus katalogda saqlanadigan tur. Ko‘pchilik hisoblar did:plc.
+
+<Deep title="did:plc: imzolangan operatsiyalar jurnali va 72 soatlik oyna">
+did:plc ning DID hujjati — **operatsiyalar jurnali**dan hosil bo‘ladi.
+Birinchi (genezis) operatsiya: boshlang‘ich kalitlar, handle va PDS.
+DID ning o‘zi — shu genezis operatsiya xeshidan olinadi: uni oldindan
+tanlab yoki boshqa hisob bilan almashtirib bo‘lmaydi.
+
+```
+op 0 (genezis): rotatsiya kalitlari [R1 (foydalanuvchi), R2 (PDS)],
+                imzo kaliti S1, handle, PDS manzili         — R1 yoki R2 imzosi
+op 1:           PDS manzili o'zgardi (ko'chish)              — R2 imzosi
+op 2:           imzo kaliti S1 -> S2                          — R2 imzosi
+...
+did = "did:plc:" + base32(sha256(op 0)) dan 24 belgi
+```
+
+Har operatsiya oldingisiga ishora qiladi va **rotatsiya kaliti** bilan
+imzolanadi. Rotatsiya kalitlari ustuvorlik tartibida: ro‘yxatda oldinroq
+turgan kalit keyingisining operatsiyasini **72 soat ichida** bekor qila
+oladi. Amaliy ma’nosi: agar PDS (yoki uning kaliti) buzilib, hisobingizni
+“o‘g‘irlasa”, sizning ustuvor rotatsiya kalitingiz uch kun ichida buni
+bekor qilib, hisobni qaytarib oladi.
+
+Katalogning o‘zi (plc.directory) — operatsiyalarni qabul qiladi,
+tekshiradi va saqlaydi; u imzolarni **soxtalashtira olmaydi**, lekin
+operatsiyani rad etishi yoki yashirishi mumkin. Bu — tizimning ochiq
+tan olingan markaziy nuqtasi; uni mustaqil boshqaruvga o‘tkazish va
+jurnalni hamma tekshira oladigan qilish rejalashtirilgan.
+</Deep>
+
+Narxi — **katalog va kalitlar**. did:plc katalogi bitta xizmat: u ishlamasa,
+yangi hisoblar va ko‘chishlar to‘xtaydi (mavjud DID hujjatlari keshda
+qoladi). Rotatsiya kalitlarini (va PDS ni) yo‘qotgan foydalanuvchi hisobni
+yo‘qotadi — markazlashgan “parolni tiklash” tugmasi yo‘q, faqat PDS
+yordami.
+</Step>
+
+<Step n={6} title="Handle — domen" gain="Ismni domen egasi tasdiqlaydi; tashkilotlar o'z domeni bilan 'tasdiqlangan' ko'rinadi; ismni o'zgartirish havolalarni buzmaydi" cost="Domen va DNS tushunchasi oddiy foydalanuvchi uchun murakkab; domen muddati tugasa — ism ham ketadi">
+
+Oddiy tilda: ko‘k “tasdiqlangan” belgi o‘rniga — **domen**. `@nasa.gov`
+deb yozilgan hisob — haqiqatan NASA, chunki faqat NASA o‘z domeniga yozuv
+qo‘ya oladi. Platforma “tasdiqlash” uchun hujjat so‘ramaydi — DNS buni
+allaqachon biladi.
+
+Handle — domen nomi: `dinmuhammad.uz`, `alice.bsky.social` (Bluesky
+bergan subdomen). Tekshirish **ikki tomonlama**:
+
+```
+1. handle -> DID:   DNS TXT yozuvi  _atproto.dinmuhammad.uz  "did=did:plc:abc..."
+                    yoki HTTPS:     https://dinmuhammad.uz/.well-known/atproto-did
+2. DID -> handle:   DID hujjatida   alsoKnownAs: ["at://dinmuhammad.uz"]
+ikkalasi mos -> handle tasdiqlangan
+```
+
+<Calc title="Handle tekshirish: qancha so'rov" result="DNS va DID hujjatini keshlash bilan AppView kuniga millionlab handle'ni bir necha o'n ming so'rov bilan tekshiradi; keshsiz — har ko'rishda ikki tarmoq so'rovi">{`AppView kuniga 5 M faol hisobni ko'rsatadi (faraz)
+Keshsiz: har ko'rsatishda DNS + DID hujjat -> 2 so'rov x ~50 ms
+  -> imkonsiz: sahifa sekinlashadi, DNS serverlar ezilib qoladi
+
+Kesh bilan (masalan, 1-24 soat):
+  kuniga yangilanadigan handle'lar: ~5 M / 24 soat kesh = ~5 M tekshiruv
+  lekin ko'pchiligi firehose'dagi #identity hodisasi bo'yicha
+    (handle o'zgarganda) yangilanadi — kuniga ~o'n minglab
+
+Xavf: kesh muddati ichida o'g'irlangan domen eski handle'ni ko'rsatib turadi
+  -> qisqa kesh muhim hisoblar uchun, #identity hodisasida darhol yangilash`}</Calc>
+
+<Callout type="ogoh" title="Faqat bir tomonni tekshirish — yolg'on handle">
+Agar faqat DID hujjatidagi `alsoKnownAs` ga ishonilsa, istalgan kishi o‘z
+DID hujjatiga “men `nasa.gov` man” deb yozib qo‘yishi mumkin. Agar faqat
+DNS ga ishonilsa, domen egasi istalgan DID ni ko‘rsatib, boshqa odamning
+hisobiga “ism qo‘yishi” mumkin. Ikkala yo‘nalish mos kelganda va
+yozuvlar **joriy** bo‘lganda (kesh yangilangan) gina handle ko‘rsatiladi;
+aks holda ilova “handle tasdiqlanmagan” deb ko‘rsatadi.
+</Callout>
+
+Narxi — **foydalanuvchi tajribasi**. Ko‘pchilik o‘z domeniga ega emas,
+shuning uchun standart handle — `ism.bsky.social` (Bluesky domenidagi
+subdomen). Domen muddati tugasa yoki boshqaga sotilsa, handle ham ketadi —
+lekin DID va hamma ma’lumot qoladi, faqat ko‘rinadigan ism o‘zgaradi.
+</Step>
+
+<Check q="Foydalanuvchi handle'ini alice.bsky.social dan alice.uz ga o'zgartirdi. Unga oldin yozilgan javoblar va obunalar buziladimi?">
+**Yo‘q.** Javoblar, obunalar, like’lar va iqtiboslar handle’ga emas, **DID**
+ga ishora qiladi: `at://did:plc:abc/app.bsky.feed.post/...`. Handle faqat
+ko‘rsatish uchun — “bu DID ning hozirgi ismi”.
+
+O‘zgarishdan keyin: (1) alice `alice.uz` domeniga `_atproto` TXT yozuvini
+qo‘yadi; (2) DID hujjatidagi `alsoKnownAs` yangilanadi; (3) firehose’ga
+`#identity` hodisasi chiqadi; (4) AppView va boshqalar DID hujjatni qayta
+o‘qib, ikki tomonlama tekshiruvdan keyin yangi ismni ko‘rsatadi.
+
+Eski `alice.bsky.social` esa endi alice’ga ishora qilmaydi — kimdir uni
+olsa, u boshqa DID bo‘ladi. Shuning uchun ilovalar matndagi `@ism`
+eslatmalarini ham yozish paytida DID ga “bog‘lab” saqlaydi (facets):
+eski postdagi eslatma ham to‘g‘ri hisobga olib boradi.
+</Check>
+
+<Step n={7} title="PDS: hisobning uyi" gain="Repo, bloblar, imzo kaliti va login — bitta, almashtiriladigan joyda; o'z serveringizni yuritish mumkin" cost="Kimdir PDS ni yuritishi kerak; ko'pchilik Bluesky PDS'ida — amalda markazlashgan 'uy'">
+
+Oddiy tilda: PDS — ijaraga olingan seyf. Ichida hujjatlaringiz va
+muhringiz. Seyfni boshqa bankka ko‘chirish mumkin — hujjatlar va muhr
+o‘zgarmaydi.
+
+**PDS** (Personal Data Server) — hisobning uyi: repo’ni saqlaydi va
+yangilaydi, imzo kaliti bilan commitlarni imzolaydi, bloblarni saqlaydi,
+login va sessiyalarni boshqaradi, ilovaning so‘rovlarini qabul qiladi.
+Ilova (telefondagi Bluesky) **faqat o‘z PDS iga** yozadi: “post yarat” —
+PDS yozuvni repo’ga qo‘shadi, MST ni yangilaydi, commit imzolaydi va
+o‘z firehose’iga e’lon qiladi.
+
+Bitta PDS minglab hisobni saqlaydi. Ochiq kodli PDS implementatsiyasi har
+hisob uchun **alohida SQLite fayli** ishlatadi: hisob — bitta fayl,
+uni ko‘chirish, zaxiralash va o‘chirish oson. Bluesky’ning o‘zi millionlab
+hisobni ko‘plab PDS serverlariga taqsimlagan.
+
+<Calc title="Bitta PDS nechta hisobni ko'taradi" result="O'rtacha hisob ~5-20 MB (matn) + bloblar; 100 000 hisobli PDS ~1-2 TB matn va o'nlab TB rasm; yozish yuki sekundiga o'nlab commit — oddiy server yetadi">{`O'rtacha hisob (faraz): 10 000 yozuv -> ~5 MB repo
+Faol hisob: 100 000+ yozuv -> ~50 MB
+Bloblar (rasmlar): o'rtacha ~100 MB, juda farq qiladi
+
+PDS, 100 000 hisob:
+  repo'lar: ~0.5-2 TB
+  bloblar: ~10 TB (ko'pincha ob'ekt omborida — S3 darsi)
+  yozish: 100 000 x 20 yozuv/kun / 86 400 = ~23 commit/s, cho'qqida ~100-200/s
+  o'qish: o'z hisoblarining so'rovlari — AppView'ga nisbatan kam
+
+O'z PDS ingiz (bitta hisob): eng arzon VPS yetadi
+  -> PDS — "kichik" komponent; qimmatlari — relay va AppView (12-bo'lim)`}</Calc>
+
+Narxi — **haqiqiy markazlashuv**. Protokol PDS ni almashtirishga ruxsat
+beradi, lekin ko‘pchilik foydalanuvchi standart Bluesky PDS ida qoladi.
+Farq shundaki, ketish **imkoniyati** bor va texnik jihatdan arzon — bu
+bozorni “halol” ushlab turadi: PDS foydalanuvchiga yomon munosabatda
+bo‘lsa, ular hisoblari bilan birga ketadi (12-qadam).
+</Step>
+
+<Step n={8} title="Relay va firehose" gain="Butun tarmoq — bitta tartibli oqim; iste'molchi minglab PDS bilan emas, bitta oqim bilan ishlaydi" cost="Relay — katta va qimmat yig'uvchi; amalda bir nechta; u yozuvni yashirishi yoki kechiktirishi mumkin">
+
+Oddiy tilda: har gazeta har o‘quvchiga alohida yetkazilmaydi — ular
+**tarqatish markazi**ga keladi, markazdan esa hammaga. Relay — AT
+Protocol’ning tarqatish markazi.
+
+Har PDS o‘z firehose’ini e’lon qiladi: `com.atproto.sync.subscribeRepos` —
+WebSocket oqimi, har hodisa tartib raqami (`seq`) bilan. **Relay** hamma
+ma’lum PDS larga obuna bo‘ladi, har commitning imzosini (va imkon qadar
+MST farqini) tekshiradi va hammasini **bitta** oqimga birlashtiradi —
+o‘zining `seq` raqamlari bilan. Iste’molchi (AppView, feed generator,
+tadqiqotchi) faqat relay’ga ulanadi.
+
+Hodisa turlari: `#commit` (repo o‘zgardi: o‘zgarishlar va yangi bloklar),
+`#identity` (DID hujjati yoki handle o‘zgardi), `#account` (hisob
+o‘chirildi, to‘xtatildi, qaytdi). Iste’molchi **kursor** — oxirgi ko‘rgan
+`seq` ni saqlaydi va uzilishdan keyin shu joydan davom etadi (Kafka
+darsidagi offset kabi).
+
+<Deep title="Nega relay, va u nimani kafolatlamaydi">
+Relay’siz har iste’molchi minglab PDS ga alohida ulanishi kerak edi
+(1.3, N × N). Relay buni N + M ga keltiradi. Lekin u **ishonchli
+tomon emas**:
+
+```
+Relay QILA OLMAYDI:
+  - post yoki like'ni soxtalashtirish  (imzo - 2-qadam)
+  - repo mazmunini sezdirmasdan o'zgartirish (MST ildizi imzo ostida)
+
+Relay QILA OLADI:
+  - ba'zi hisoblar hodisalarini yashirish yoki kechiktirish
+  - oqimni to'xtatish
+  - tartibni o'zgartirish (turli repo'lar orasida)
+
+Himoya:
+  - bir nechta mustaqil relay (hamma o'z relay'ini yurita oladi)
+  - iste'molchi shubha qilsa, to'g'ridan-to'g'ri PDS dan butun repo'ni
+    so'raydi (resinxronizatsiya) va o'zi tekshiradi
+  - repo versiyalari zanjiri (rev, since): bo'shliq ko'rinadi
+```
+
+Bu Kafka darsidagi brokerdan farqli: Kafka’da broker — ishonchli tizim
+qismi. AT Protocol’da relay — **ishonchsiz tarqatuvchi**, va kafolatlar
+imzo va xeshlardan keladi. Fond birjasi darsidagi bozor ma’lumotlari
+oqimiga o‘xshash: raqamlangan oqim, bo‘shliqni sezish va suratdan tiklash.
+</Deep>
+
+<Calc title="Firehose o'tkazish qobiliyati" result="Cho'qqida ~10 000 commit/s x ~3 KB = ~30 MB/s (~240 Mbit/s); kuniga ~1-2 TB to'liq firehose. 50 ta iste'molchiga — relay chiqishi ~1.5 GB/s">{`Commitlar: o'rtacha ~1 200/s, cho'qqida ~10 000/s (1.3)
+Bitta commit firehose'da (yozuv + MST bloklari + imzo): ~2-5 KB (4-qadam)
+
+O'rtacha: 1 200 x 3 KB = ~3.6 MB/s -> kuniga ~300 GB
+Cho'qqi:  10 000 x 3 KB = ~30 MB/s (~240 Mbit/s)
+
+Relay iste'molchilari (faraz): 50 ta (AppView'lar, feed'lar, tadqiqot)
+  chiqish: 50 x 30 MB/s = ~1.5 GB/s cho'qqida
+  -> relay — tarmoq jihatidan qimmat (12-bo'lim); yengil oqim — 13-qadam`}</Calc>
+
+Narxi — **qimmat va kam sonli**. Butun tarmoqni qabul qilib, tekshirib,
+tarqatish — katta tarmoq va CPU xarajati. Amalda relay’lar kam (asosiysi —
+Bluesky’niki), garchi ularni yuritish uchun ruxsat kerak bo‘lmasa ham.
+</Step>
+
+<Step n={9} title="AppView: butun tarmoq ko'rinishi" gain="Like soni, javoblar daraxti, tasmalar, qidiruv, bildirishnomalar — butun tarmoq bo'yicha, millisekundlarda" cost="Eng qimmat komponent: butun tarmoq indeksi; amalda Bluesky'ning AppView'i asosiy"> 
+
+Oddiy tilda: gazeta arxivlari hamma joyda — kutubxonalarda, uylarda. Lekin
+“shu maqola haqida qancha gazeta yozgan” degan savolga javob berish uchun
+kimdir **hammasini** o‘qib, katalog tuzishi kerak. AppView — shu katalog.
+
+**AppView** relay oqimini o‘qiydi va o‘z bazasiga **indeks** quradi:
+postlar va ularning like, repost, javob sonlari; kim kimni kuzatadi;
+javoblar daraxtlari; bloklar; qidiruv indeksi. Ilova “tasmani ber”,
+“bu postning javoblarini ber” degan so‘rovlarni AppView’ga yuboradi.
+
+AppView ishining ikki qismi: **indekslash** (firehose → jadvallar,
+hisoblagichlar) va **“to‘ldirish”** (hydration): javob uchun post
+URI lari ro‘yxatini olib, har biriga muallif profili, rasmlar, sonlar,
+ko‘ruvchi uchun holat (“siz like bosganmisiz?”), bloklar va
+moderatsiya yorliqlarini qo‘shish.
+
+To‘ldirishning kichik misoli. Feed generator yoki tasma indeksi faqat
+URI lar beradi; AppView har biriga ko‘ruvchi uchun to‘liq “karta” yasaydi:
+
+```
+kirish:  at://did:plc:ali/app.bsky.feed.post/3l2x...
+chiqish: {
+  muallif:  {did, handle: "ali.uz", ism: "Ali", avatar: CDN havola},
+  matn:     "Salom, dunyo!",  rasmlar: [CDN havolalar],
+  sonlar:   {like: 120, repost: 8, javob: 14},
+  ko'ruvchi: {like_bosganmi: true, repost_qilganmi: false},
+  yorliqlar: ["..."],     <- obuna bo'lingan yorliqlovchilardan
+  ko'rinadimi: blok va mute hisobga olingan
+}
+```
+
+Bitta tasma sahifasi (30 post) — o‘nlab jadvallardan yuzlab o‘qish.
+Shuning uchun AppView’ning eng katta optimallashtirishi — to‘ldirish
+keshlari va ommaviy (batch) o‘qishlar.
+
+<Calc title="AppView indeksi hajmi" result="Butun tarmoq: ~10 mlrd yozuv x ~200 B indeks = ~2 TB, nusxalar va qo'shimcha indekslar bilan ~10 TB; o'qish yuki — sekundiga o'n minglab so'rov">{`Tarmoq yozuvlari (faraz, bir necha yillik): ~10 000 000 000
+  like'lar ~60%, postlar ~15%, follow ~10%, repost va boshqalar
+
+Indeks qatori (yozuv + ikkilamchi indekslar): ~200 B
+  -> ~2 TB; 3 nusxa va qidiruv indeksi bilan: ~8-10 TB
+
+O'qish: 5 M faol x kuniga ~200 so'rov (tasma, profil, javoblar...)
+  = 1 mlrd so'rov/kun -> ~12 000/s o'rtacha, cho'qqida ~50 000/s
+  har so'rov o'nlab qatorni "to'ldiradi" -> bazaga ~0.5-1 M o'qish/s
+
+-> taqsimlangan baza, keshlar (Twitter darsi) — tarmoqning eng qimmat qismi`}</Calc>
+
+Narxi — **eng katta xarajat va amaliy markaz**. Protokol bo‘yicha istalgan
+kishi AppView yuritishi mumkin (firehose ochiq), lekin bu qimmat — shuning
+uchun foydalanuvchilarning aksariyati Bluesky AppView’i orqali ko‘radi.
+Farq: AppView **ma’lumot egasi emas** — u faqat ko‘rinish. Boshqa AppView
+xuddi shu ma’lumotdan boshqa qoidalar bilan ko‘rinish qura oladi.
+</Step>
+
+<Step n={10} title="Maxsus feed'lar: algoritm — tanlov" gain="Har kim tasma algoritmi yozib, e'lon qila oladi; foydalanuvchi ularni almashtiradi va birlashtiradi" cost="Feed generator o'zi firehose'ni o'qishi va indeks yuritishi kerak; sifatsiz yoki zararli feed'lar">
+
+Oddiy tilda: televizor kanallari. Pult — sizda. Har kim o‘z kanalini
+ocha oladi; siz qaysi kanallarni ko‘rishni tanlaysiz.
+
+**Feed generator** — alohida xizmat: u firehose’ni o‘qiydi (yoki faqat
+kerakli qismini), o‘z mantiqi bilan postlarni tanlaydi va
+`getFeedSkeleton` so‘roviga **post URI lari ro‘yxati**ni qaytaradi — faqat
+“skelet”. AppView bu ro‘yxatni oladi va to‘ldiradi (9-qadam): matn,
+rasmlar, sonlar, moderatsiya. Feed’ning o‘zi yaratuvchining repo’sida
+yozuv sifatida e’lon qilinadi, shuning uchun uni topish va ulashish oson.
+
+```
+ilova -> AppView: "feed X ni ber, kursor = ..."
+AppView -> feed generator X: getFeedSkeleton(ko'ruvchi, limit, kursor)
+feed X -> AppView: [at://.../post/1, at://.../post/2, ...] + yangi kursor
+AppView: bloklar va moderatsiya bo'yicha filtrlaydi, to'ldiradi -> ilovaga
+```
+
+<Calc title="Oddiy mavzuli feed narxi" result="'Mushuklar' feed'i: firehose'dan sekundiga ~1 200 postdan kalit so'z bilan ~1/1 000 qismi — kuniga ~100 000 post indeksi; bitta kichik server yetadi">{`Firehose: ~100 M yozuv/kun, shundan postlar ~15% -> ~15 M post/kun (~170/s)
+Feed: "mushuk" so'zi yoki rasm belgisi bor postlar: ~0.5% -> ~75 000 post/kun
+
+Saqlash: post URI + vaqt + ball: ~100 B -> 7 kun = ~50 MB
+So'rovlar: 50 000 obunachi x kuniga 10 ochish = 500 000 so'rov/kun (~6/s)
+  har so'rov — tartiblangan ro'yxatdan 30 ta URI
+
+-> bitta kichik VPS. Murakkab "mashinaviy o'rganish" feed'lari esa
+   embedding va modellar bilan — qimmatroq, lekin baribir alohida xizmat`}</Calc>
+
+Narxi — **sifat va xavfsizlik**. Feed generator xohlagan postni taklif
+qilishi mumkin — shuning uchun AppView skeletni **o‘zi** filtrlaydi:
+ko‘ruvchining bloklari, o‘chirilgan hisoblar, moderatsiya yorliqlari.
+Feed faqat “nima”ni tanlaydi, “ko‘rsatish mumkinmi”ni emas.
+</Step>
+
+<Step n={11} title="Moderatsiya qatlamlari" gain="Moderatsiya — bir nechta mustaqil xizmat; foydalanuvchi qaysi yorliqlarga ishonishini tanlaydi; platforma darajasidagi minimal qoidalar qoladi" cost="Murakkablik: yorliqlar to'qnashadi; foydalanuvchi sozlamalari ko'payadi; zararli kontent baribir tarqalishi mumkin">
+
+Oddiy tilda: oziq-ovqat yorliqlari. Bir tashkilot “halol”, boshqasi
+“organik”, uchinchisi “allergen bor” deb belgilaydi. Siz qaysi
+yorliqlarga e’tibor berishni o‘zingiz tanlaysiz — lekin zaharli mahsulot
+umuman sotuvga chiqmasligi ham kerak.
+
+Moderatsiya bir necha qatlamda:
+
+**Platforma qatlami.** Bluesky o‘z xizmatlarida (PDS, AppView) qonunga zid
+kontentni olib tashlaydi va hisoblarni to‘xtatadi — bu `#account` va
+o‘chirish orqali butun tarmoqqa tarqaladi.
+
+**Yorliqlovchilar** (labelers). Mustaqil moderatsiya xizmatlari postlar
+va hisoblarga imzolangan **yorliqlar** qo‘yadi (“spam”, “zo‘ravonlik”,
+“siyosiy reklama”). Foydalanuvchi qaysi yorliqlovchilarga obuna bo‘lishini
+va har yorliq bilan nima qilishni (yashirish, ogohlantirish, ko‘rsatish)
+tanlaydi. Bluesky o‘z moderatsiya vositasini (Ozone) ochiq kod sifatida
+chiqargan.
+
+**Shaxsiy vositalar.** Blok — ommaviy yozuv (repo’da), mute — shaxsiy
+(faqat siz va xizmat biladi). Moderatsiya ro‘yxatlari — bir bosishda
+ko‘p hisobni blok qilish yoki yashirish.
+
+<Calc title="Yorliqlar oqimi" result="Kuniga ~15 M post, avtomatik tasniflagich ~2% ga yorliq qo'yadi: ~300 000 yorliq/kun; odam ko'rib chiqishi kerak bo'lgan shikoyatlar — o'n minglab">{`Postlar: ~15 M/kun (10-qadam)
+Avtomatik yorliqlar (spam, nomaqbul rasm va h.k.): ~2% -> ~300 000/kun
+  har yorliq: subyekt (URI yoki DID), qiymat, vaqt, imzo -> ~200 B
+  -> ~60 MB/kun — yengil oqim (alohida obuna)
+
+Shikoyatlar (foydalanuvchilardan): 0.1% -> ~15 000/kun
+  bitta moderator soatiga ~100 ta ko'rib chiqsa -> ~150 soat/kun
+  -> ~20 kishilik navbatchi jamoa faqat shu oqim uchun
+
+Ko'p yorliqlovchi: har biri o'z oqimi; AppView ularni so'rov paytida qo'llaydi`}</Calc>
+
+Narxi — **murakkablik va bo‘shliqlar**. Yorliqlovchilar har xil qaror
+qiladi, foydalanuvchi sozlamalari ko‘payadi, va ochiq firehose tufayli
+zararli kontent baribir kimningdir indeksiga tushadi. “Moderatsiya
+qatlamlari” — tanlov beradi, lekin markaziy moderatsiyani to‘liq
+almashtirmaydi.
+</Step>
+
+<Step n={12} title="Hisob ko'chirish" gain="PDS ni almashtirish — DID, handle, obunachilar va havolalar saqlanib; PDS 'yomon' bo'lsa ham chiqish mumkin" cost="Murakkab va xavfli jarayon; eski PDS hamkorlik qilmasa — zaxira nusxa va rotatsiya kaliti kerak">
+
+Oddiy tilda: bir bankdan boshqasiga o‘tganda hisob raqamingiz o‘zgarmaydi,
+faqat “qaysi bankda” degan yozuv yangilanadi. Pul ham, to‘lov tarixi ham
+ko‘chadi.
+
+Ko‘chish bosqichlari:
+
+```
+1. Yangi PDS da hisob ochish (xuddi shu DID bilan, hali faol emas)
+2. Repo'ni ko'chirish: eski PDS dan CAR eksport -> yangi PDS ga import
+3. Bloblarni ko'chirish (rasmlar, video)
+4. Shaxsiy sozlamalarni ko'chirish (mute, feed tanlovlari)
+5. DID hujjatini yangilash: yangi PDS manzili va yangi imzo kaliti
+   (PLC operatsiyasi, rotatsiya kaliti bilan imzolangan)
+6. Yangi PDS da hisobni faollashtirish, eskisida o'chirish
+   -> firehose: #identity, #account; relay va AppView yangi PDS dan o'qiydi
+```
+
+<Calc title="Ko'chish hajmi va vaqti" result="Faol hisob: ~50 MB repo + ~500 MB rasm; 100 Mbit/s da ~1 daqiqa. Obunachilar va havolalar hech qanday ish talab qilmaydi — ular DID ga ishora qiladi">{`Repo (CAR): ~50 MB (100 000 yozuv)
+Bloblar: ~500 MB (rasm va video, faol foydalanuvchi)
+Jami: ~550 MB
+
+Tarmoq 100 Mbit/s (~12 MB/s): ~45 s
+Repo importi va tekshiruv (MST qayta qurish, xeshlar): ~10-30 s
+DID yangilash va tarqalish: soniyalar - daqiqalar (keshlar)
+
+Boshqalar tomonidan kerak bo'lgan ish: 0
+  obunalar, like'lar, javoblar — DID ga; DID o'zgarmadi`}</Calc>
+
+Narxi — **eng yomon holat**. Agar eski PDS yopilgan yoki hamkorlik
+qilmasa, repo eksport qilinmaydi. Himoya: foydalanuvchi o‘z repo’sining
+**zaxira nusxasi**ni saqlashi (CAR — oddiy fayl) va o‘ziga tegishli
+**rotatsiya kaliti**ga ega bo‘lishi. Shunda u DID ni eski PDS ruxsatisiz
+yangi joyga o‘tkaza oladi (5-qadam Deep). Amalda ko‘pchilik buni qilmaydi —
+bu protokol bergan imkoniyat va real foydalanish orasidagi farq.
+</Step>
+
+<Step n={13} title="Jetstream va yengil sinxronizatsiya" gain="Ko'p iste'molchi uchun oqim o'nlab barobar yengil; relay'lar to'liq repo nusxasisiz ham commitlarni tekshira oladi" cost="Yengil oqimda kriptografik tekshiruv yo'q — iste'molchi oqim beruvchiga ishonadi">
+
+Oddiy tilda: har kim gazetaning to‘liq nusxasini emas, faqat o‘ziga kerakli
+rukni — masalan, sport sahifasini — oladi. Arzon va tez, lekin sahifa
+haqiqiyligini o‘zi tekshira olmaydi: tarqatuvchiga ishonadi.
+
+To‘liq firehose og‘ir: har commitda MST bloklari va imzolar, CBOR va CAR
+formatlari. Ko‘p iste’molchiga (oddiy bot, kichik feed) faqat “kim qanday
+yozuv yaratdi” kerak. 2024-yilda Bluesky **Jetstream**ni chiqardi: firehose’ni
+oddiy JSON ga aylantiradi, daraxt bloklari va imzolarni tashlaydi,
+kolleksiya va DID bo‘yicha filtrlashga va siqishga imkon beradi.
+
+<Calc title="Jetstream: qancha tejaladi" result="Commit ~3 KB o'rniga JSON ~0.4 KB, siqish bilan ~0.1 KB; faqat postlar kerak bo'lsa — yana ~7 barobar kam. Jami o'n-yuz barobar yengil">{`To'liq firehose commit: ~3 KB (yozuv + ~8 MST tuguni + commit + imzo)
+Jetstream hodisasi (JSON): faqat did, vaqt, kolleksiya, rkey, yozuv
+  -> ~300-500 B
+zstd siqish (umumiy lug'at bilan): yana ~3-5 barobar -> ~100 B
+
+Filtr: faqat app.bsky.feed.post (~15% hodisalar)
+  -> 1 200 commit/s x 15% x 100 B = ~18 KB/s
+
+To'liq firehose: 1 200 x 3 KB = ~3.6 MB/s
+-> ~200 barobar kam — kichik feed generator uchun uy interneti yetadi`}</Calc>
+
+Parallel ravishda protokolning o‘zi ham yengillashmoqda: 2025-yilgi
+sinxronizatsiya yangilanishlari bilan commit hodisalari oldingi holatni
+tekshirish uchun yetarli ma’lumotni o‘zi tashiydi, va relay har repo’ning
+to‘liq nusxasini saqlamasdan ham har yangi commitni tekshira oladi.
+Natija — relay yuritish arzonlashadi, mustaqil relay’lar ko‘payishi mumkin.
+
+Narxi — **ishonch**. Jetstream’da imzo yo‘q: iste’molchi Jetstream
+serveriga ishonadi. Kichik feed uchun bu maqbul; pul yoki obro‘ga
+tegadigan qarorlar uchun — to‘liq firehose yoki repo’ni bevosita tekshirish.
+</Step>
+
+<Step n={14} title="Bitta repo — ko'p ilova" gain="Bitta hisob va bitta repo bilan blog, video, tadbirlar, havolalar ilovalari; foydalanuvchi ma'lumoti ilovadan ilovaga ko'chadi" cost="Har ilova o'z Lexicon'i va o'z AppView'i; bir ilova yozuvlari boshqa ilovada noto'g'ri ko'rinishi yoki suiiste'mol qilinishi mumkin">
+
+Oddiy tilda: bitta pasport bilan bankka ham, kutubxonaga ham, aeroportga
+ham borasiz. Har biri uchun alohida “hisob” ochish shart emas.
+
+Repo’da istalgan Lexicon’dagi yozuvlar turishi mumkin (1-qadam). Shuning
+uchun AT Protocol ustida Bluesky’dan boshqa ilovalar ham paydo bo‘ldi:
+uzun maqolalar (blog), tadbirlar va taklifnomalar, havolalar agregatori,
+fotosuratlar va qisqa videolar uchun ilovalar. Ular **o‘sha** hisob,
+o‘sha DID, o‘sha PDS va o‘sha firehose bilan ishlaydi — yangi ilovada
+“ro‘yxatdan o‘tish” yo‘q, obunalar grafi esa (`app.bsky.graph.follow`)
+boshidanoq tayyor.
+
+<Calc title="Yangi ilova uchun 'sovuq start'" result="Markazlashgan tarmoqda yangi ilova nol foydalanuvchi va nol grafdan boshlaydi; AT Protocol ustida — millionlab tayyor hisob va obunalar grafi bilan, faqat o'z yozuv turlari va AppView'i kerak">{`Yangi ilova (masalan, tadbirlar):
+  Markazlashgan yo'l: ro'yxatdan o'tish, do'stlarni topish, graf — noldan
+    foydalanuvchining birinchi tajribasi: "bo'm-bo'sh"
+
+  AT Protocol yo'li:
+    login: mavjud hisob (PDS orqali)
+    graf: firehose'dan app.bsky.graph.follow -> kim kimni kuzatadi
+    o'z yozuvlari: com.example.event.* — foydalanuvchi repo'siga
+    o'z AppView'i: faqat o'z kolleksiyalarini indekslaydi
+      (Jetstream filtri: ~1% oqim)
+
+  -> birinchi kundan "do'stlaringiz ham shu yerda"`}</Calc>
+
+Narxi — **koordinatsiya**. Har ilova o‘z sxemasi, o‘z indeksi, o‘z
+moderatsiyasi bilan. Bir ilovaning yozuvlari boshqasida noto‘g‘ri
+talqin qilinishi yoki spam uchun ishlatilishi mumkin. Va foydalanuvchi
+uchun: “bu yozuv qaysi ilovaga tegishli va kim uni ko‘radi” degan savol
+murakkablashadi — repo’dagi hamma narsa **ommaviy**.
+</Step>
+
+## 6. Bitta postning hayoti
+
+### 6.1 Qadam-baqadam
+
+Ali telefonda “Salom, dunyo!” deb yozib, “Post” tugmasini bosdi. Uning
+obunachisi Vali shu postni tasmasida ko‘radi va like bosadi:
+
+<Flow nodes={["Ilova: createRecord", "Ali PDS: yozuv, MST, commit, imzo", "PDS firehose: #commit seq 9 120", "Relay: imzo tekshiruvi, seq 8 812 004 117", "AppView: indeks, sonlar", "Vali tasmasi: AppView'dan", "Vali like: Vali PDS -> relay -> AppView", "Ali: bildirishnoma"]} caption="Yozuv — muallifning PDS'iga; o'qish — AppView'dan. Like — Valining o'z repo'sidagi yozuv, Alining PDS'i bu haqda bilishi shart emas" />
+
+1. **Ilova** Ali’ning PDS iga `createRecord` yuboradi: kolleksiya
+   `app.bsky.feed.post`, yozuv (matn, vaqt, til).
+2. **PDS** yozuvni Lexicon bo‘yicha tekshiradi, TID kalit beradi, MST ga
+   qo‘shadi, yangi ildiz bilan commit yaratadi va imzolaydi, o‘z
+   firehose’iga e’lon qiladi.
+3. **Relay** hodisani oladi, imzoni DID hujjatidagi kalit bilan tekshiradi,
+   o‘z oqimiga o‘z `seq` raqami bilan qo‘shadi.
+4. **AppView** hodisani indekslaydi: yangi post, muallif, vaqt; obunachilar
+   tasmalariga kirishi mumkin.
+5. **Vali** tasmasini ochadi — ilova AppView’dan so‘raydi, post ko‘rinadi.
+6. **Vali like bosadi**: ilova **Valining** PDS iga `app.bsky.feed.like`
+   yozuvini yaratadi; u ham relay orqali AppView’ga keladi, va AppView
+   post like sonini oshiradi va Ali’ga bildirishnoma tayyorlaydi.
+
+<Calc title="Postdan obunachi tasmasigacha" result="PDS ~20-50 ms, relay ~10-100 ms, AppView indekslash ~50-500 ms: odatda bir soniyadan kam; yuk ostida — bir necha soniya">{`Ilova -> PDS (internet):           ~50-200 ms
+PDS: tekshirish, MST, imzo, yozish: ~10-50 ms
+PDS firehose -> relay:              ~10-100 ms (tarmoq + tekshiruv navbati)
+relay -> AppView:                   ~10-50 ms
+AppView indekslash:                 ~50-500 ms (yuk va navbatga qarab)
+-------------------------------------------------------------
+yozilgandan "ko'rinadigan"gacha:    ~0.2-1 s odatda
+
+Muhim farq: Ali o'z postini darhol ko'radi (ilova PDS javobidan),
+  Vali — AppView indeksidan keyin. Bu "keyinchalik izchillik":
+  yuk cho'qqisida soniyalar, nosozlikda — daqiqalar`}</Calc>
+
+### 6.2 O‘qish va yozish turli joylarda
+
+AT Protocol’ning asosiy arxitektura xususiyati: **yozish** — muallifning
+PDS iga (manba haqiqati), **o‘qish** — AppView’dan (hosila ko‘rinish).
+Bu ma’lumotlar bazalaridagi CQRS naqshiga o‘xshaydi: yozish modeli va
+o‘qish modeli alohida, ular orasida — jurnal (firehose). Kafka darsidagi
+“jurnal — haqiqat, jadval — hosila” tamoyili, faqat bu yerda jurnal
+minglab mustaqil PDS lardan yig‘iladi.
+
+Natija — **o‘z yozuvingizni o‘qish** muammosi: Ali post yozdi va darhol
+profilini yangiladi; AppView hali indekslamagan bo‘lsa, post ko‘rinmaydi.
+Yechim: ilova (yoki PDS) foydalanuvchining **o‘z** so‘nggi yozuvlarini
+AppView javobiga qo‘shib beradi — yozuvchi o‘z o‘zgarishlarini darhol
+ko‘radi, boshqalar esa bir oz keyin.
+
+<Check q="Vali Alining postiga like bosdi. Bu like qayerda saqlanadi va Alining PDS'i bu haqda bilishi kerakmi?">
+Like — **Valining** repo’sidagi yozuv (`app.bsky.feed.like`, subyekti —
+Alining post URI si), Valining imzosi bilan, Valining PDS ida. Alining
+PDS i bu haqda **bilishi shart emas** va odatda bilmaydi ham.
+
+Like haqidagi ma’lumot relay orqali firehose’ga chiqadi, AppView uni ko‘rib,
+post hisoblagichini oshiradi va Ali uchun bildirishnoma yozuvini o‘z
+bazasida yaratadi. Ali ilovasi bildirishnomalarni AppView’dan so‘raydi.
+
+Bu dizaynning ma’nosi: har “harakat” — harakat qiluvchining imzolangan
+da’vosi. Alining serveri Vali nomidan like qo‘sha yoki o‘chira olmaydi.
+Narxi: “bu postda nechta like” — faqat butun tarmoqni ko‘radigan joyda
+(AppView) javob topadi.
+</Check>
+
+### 6.3 O‘chirish va tahrir qanday tarqaladi
+
+Ali postini o‘chirdi. PDS repo’dan yozuvni olib tashlaydi, MST ni
+yangilaydi va yangi commit chiqaradi: firehose’da `delete` amali — faqat
+yo‘l (`app.bsky.feed.post/3l2x...`), yozuvning o‘zi yo‘q. AppView postni
+indeksdan olib tashlaydi, tasmalardan va qidiruvdan yo‘qotadi.
+
+Lekin boshqalarning yozuvlari qoladi: Valining like’i, Salimning javobi va
+iqtibosi — **ularning** repo’larida, va ular o‘chirilgan postga ishora
+qiladi. AppView ularni “o‘chirilgan postga javob” deb ko‘rsatadi. Bu
+dizaynning tabiiy natijasi: Ali faqat o‘z repo’sini boshqaradi, boshqalarning
+yozuvlarini — yo‘q. Amaliyotdagi like hisobi ham shuni aks ettiradi: post
+o‘chsa ham, unga qilingan like yozuvlari sanaladi (ular hali bor).
+
+**Tahrir** protokol darajasida mumkin — `update` amali: yozuv o‘zgaradi,
+yangi commit, firehose’da yangi qiymat. Bluesky ilovasi esa uzoq vaqt
+postlarni tahrirlashni ko‘rsatmagan: javoblar va iqtiboslar asl matnga
+yozilgan, va tahrir ularning ma’nosini o‘zgartirishi mumkin. Bu protokol
+cheklovi emas — ilova va jamiyat qarori. Profil, ro‘yxatlar va boshqa
+yozuvlar esa bemalol yangilanadi.
+
+## 7. Identifikatsiya: handle’dan kalitgacha
+
+### 7.1 Kim bu?
+
+Ilova `@dinmuhammad.uz` ni ko‘rsatishdan oldin yoki uning postini
+tekshirishdan oldin, uchta savolga javob kerak: bu handle qaysi DID ga
+tegishli, bu DID ning joriy imzo kaliti qaysi, va repo qaysi PDS da.
+
+<Flow nodes={["Handle: dinmuhammad.uz", "DNS TXT _atproto -> did:plc:abc", "PLC katalogi: DID hujjati", "Hujjat: alsoKnownAs = at://dinmuhammad.uz", "Imzo kaliti va PDS manzili", "Ikki tomon mos: tasdiqlangan", "Commit imzosini tekshirish"]} caption="Handle -> DID (DNS yoki HTTPS) va DID -> handle (DID hujjati): ikkala yo'nalish mos bo'lishi shart" />
+
+<Calc title="Identifikatsiya keshi: AppView uchun" result="20 M hisob x ~1 KB DID hujjati = ~20 GB kesh; #identity hodisalari kuniga o'n minglab — kesh yangilanib turadi, katalogga yuk kichik">{`Hisoblar: 20 000 000
+DID hujjati (kalitlar, PDS, handle): ~1 KB
+Kesh: ~20 GB — bitta serverning xotirasiga yoki tez kesh klasteriga sig'adi
+
+Yangilanish manbalari:
+  #identity hodisasi firehose'da (handle, kalit yoki PDS o'zgardi): kuniga ~10 000-50 000
+  muddat tugashi (masalan, 24 soat) -> fon yangilanishi: ~230 hujjat/s
+
+Katalog (plc.directory) yuki: asosan yangi hisoblar va o'zgarishlar,
+  AppView'lar va relay'lar keshdan foydalanadi`}</Calc>
+
+### 7.2 Kalit almashtirilganda
+
+Imzo kaliti almashtirildi (masalan, PDS kalitni yangiladi yoki hisob
+ko‘chdi). Firehose’da `#identity` hodisasi chiqadi. Iste’molchi o‘z
+keshidagi kalitni tashlab, DID hujjatini qayta o‘qishi kerak — aks holda
+yangi kalit bilan imzolangan commitlar “soxta” ko‘rinadi va tashlanadi.
+Amaliyotdagi AppView aynan shuni qiladi: `Identity` hodisasida keshni
+tozalaydi.
+
+<Deep title="Nima uchun handle ham, DID ham: odam va mashina uchun ikki nom">
+Bitta nom bilan ikkita qarama-qarshi talabni bajarib bo‘lmaydi. Odamga
+**o‘qiladigan, eslab qolinadigan va o‘zgartiriladigan** nom kerak:
+`dinmuhammad.uz`. Mashinaga **o‘zgarmas, noyob va tekshiriladigan**
+identifikator kerak: `did:plc:ewvi7nxzyoun6zhxrhs64oiz`.
+
+```
+                 odam uchun        mashina uchun
+o'qiladi          ha                yo'q
+o'zgaradi         ha (domen)        yo'q
+noyob             DNS kafolati      xesh kafolati
+tekshiriladi      DNS orqali        imzolangan jurnal (PLC)
+havolalarda       YO'Q (ko'rsatish) HA (at://did/...)
+```
+
+Xuddi shu naqsh hamma joyda: veb-saytlar nomi (domen) va IP manzil;
+fayl nomi va inode; foydalanuvchi ismi va ichki ID. Twitter ham ichkarida
+raqamli ID ishlatadi — farqi shundaki, AT Protocol’da ichki ID ning
+o‘zi ham platformaga bog‘liq emas.
+
+Yon ta’sir: matnda `@ism` yozilsa, ilova uni yozish paytida DID ga
+aylantirib, yozuvga qo‘shib qo‘yadi (facet). Keyin ism o‘zgarsa ham,
+eslatma to‘g‘ri hisobga olib boradi.
+</Deep>
+
+<Check q="AppView firehose'dan imzosi mos kelmaydigan commit oldi. Bu har doim soxta commit degani emas — nega, va AppView nima qilishi kerak?">
+Ikki sabab bo‘lishi mumkin. **Soxta** commit: kimdir boshqa hisob nomidan
+yozuv tarqatmoqchi (relay yoki tarmoqdagi hujumchi). Yoki **eskirgan
+kalit**: hisob imzo kalitini almashtirgan, lekin AppView keshida eski
+kalit qolgan (`#identity` hodisasi o‘tkazib yuborilgan yoki hali
+kelmagan).
+
+To‘g‘ri xulq: commitni **qo‘llamaslik**. Agar AppView `#identity`
+hodisasini ko‘rgan bo‘lsa, keshni yangilab, keyingi commitlarni yangi
+kalit bilan tekshiradi. Commit tashlangani uchun repo versiyalari
+zanjirida bo‘shliq qoladi — keyingi haqiqiy commit kelganda AppView
+bo‘shliqni ko‘radi va butun repo’ni PDS dan qayta so‘raydi
+(resinxronizatsiya), so‘ng uni joriy kalit bilan tekshiradi. Shunday
+qilib xato o‘z-o‘zidan tuzaladi va soxta ma’lumot indeksga tushmaydi.
+</Check>
+
+### 7.3 did:web yoki did:plc
+
+Ikki DID turi ikki xil murosa:
+
+**did:web** — `did:web:dinmuhammad.uz`. DID hujjati domendagi faylda turadi.
+Hech qanday katalog kerak emas, to‘liq mustaqil. Lekin DID domenning
+o‘zi: domenni yo‘qotsangiz (muddati tugadi, sotildi, buzildi) — butun
+identifikatorni yo‘qotasiz, va uni boshqa domenga ko‘chirib bo‘lmaydi.
+Kalit almashtirish tarixi ham yo‘q: hujjat shunchaki o‘zgaradi.
+
+**did:plc** — katalog orqali, lekin domendan mustaqil: handle’ni istalgancha
+almashtirish mumkin, DID o‘zgarmaydi. Hujjat tarixi imzolangan va
+tekshiriladi, ustuvor rotatsiya kaliti bilan tiklash mumkin. Narxi —
+katalogga bog‘liqlik.
+
+Ko‘pchilik foydalanuvchi uchun did:plc amaliyroq: domen ixtiyoriy, hisob
+xavfsizroq. did:web esa o‘z domenini o‘nlab yillar boshqaradigan
+tashkilotlar uchun mantiqli. Muhim: tanlov **hisob yaratilganda** qilinadi
+va keyin o‘zgarmaydi — chunki DID ning o‘zi o‘zgarmaydi.
+
+## 8. Sinxronizatsiya va ishonch
+
+### 8.1 Bo‘shliqni sezish va tiklash
+
+Firehose ishonchsiz tarqatuvchidan keladi: hodisalar yo‘qolishi,
+takrorlanishi, kechikishi mumkin. Iste’molchi har repo uchun **oxirgi
+qo‘llangan versiya**ni (rev) eslab qoladi va har yangi commitning `since`
+(oldingi versiya) maydonini tekshiradi:
+
+<Flow nodes={["Commit: rev 41, since 40", "Bizda oxirgisi: 39", "40 yo'q: bo'shliq", "Repo'ni so'rash (getRepo), keyingilarini buferlash", "Surat: rev 43 holati", "Buferdan 44+ ni qo'llash", "Sinxron"]} caption="Fond birjasi darsidagi L2 oqimi bilan bir xil naqsh: raqamlangan oqim, bo'shliq, surat, bufer" />
+
+Uch qoida (amaliyotdagi `appview.py`):
+
+1. `since` == oxirgi versiya → qo‘llash.
+2. `rev` ≤ oxirgi versiya → eski yoki takror, tashlash.
+3. Aks holda — bo‘shliq: butun repo so‘raladi, shu repo’ning keyingi
+   commitlari buferga, surat kelgach — suratdan **yangilari** qo‘llanadi.
+
+Bundan tashqari, butun oqim uchun **kursor** (oxirgi `seq`): uzilishdan
+keyin relay’ga “shu seq dan keyingilarni ber” deyiladi. Relay o‘z
+tarixini cheklangan muddat (masalan, bir necha kun) saqlaydi; undan uzoq
+uzilishda — to‘liq **qayta to‘ldirish** (backfill): har repo’ni alohida
+yuklab olish.
+
+<Calc title="Butun tarmoqni qayta to'ldirish" result="20 M repo, o'rtacha ~5 MB: ~100 TB yuklab olish; 10 Gbit/s da ~1 sutka, va PDS'larning so'rov chegaralari tufayli amalda bir necha kun">{`Hisoblar: 20 000 000
+O'rtacha repo (CAR): ~5 MB (faol hisoblar katta, ko'pchilik kichik)
+Jami: ~100 TB
+
+Tarmoq: 10 Gbit/s = ~1.2 GB/s -> 100 TB / 1.2 GB/s = ~23 soat
+Lekin: minglab PDS, har birining so'rov chegarasi (rate limit)
+  -> parallel, lekin cheklangan: amalda bir necha kun
+
+Shuning uchun:
+  relay'lar firehose tarixini saqlaydi (qisqa uzilishlar uchun)
+  yangi AppView — avval qayta to'ldirish, keyin "jonli" oqimga ulanish,
+    va ikkalasi orasidagi oraliqni kursor bilan yopish`}</Calc>
+
+### 8.2 Kimga ishonamiz
+
+<Deep title="Ishonch zanjiri: imzodan indeksgacha">
+AT Protocol’da kafolatlar imzolar va xeshlardan keladi, lekin har qatlam
+o‘z “ishonch narxi”ga ega:
+
+```
+Qatlam            Nimani kafolatlaydi               Nimani kafolatlamaydi
+PDS (yozish)      yozuv egasining kaliti bilan      PDS kalitni boshqaradi —
+                  imzolangan                        foydalanuvchi PDS ga ishonadi
+DID / PLC         kalit va manzil tarixi imzolangan katalog operatsiyani yashirishi mumkin
+Relay             tartibli, imzolari tekshirilgan   to'liqlik: hodisani yashirishi,
+                  oqim                              kechiktirishi mumkin
+AppView           butun tarmoq ko'rinishi           sonlar va tasmalar — AppView
+                                                    hisoblagani; tekshirib bo'lmaydi
+Feed generator    tanlov                            nimani tanlaganini tushuntirmaydi
+```
+
+Kriptografiya **mazmunni** himoya qiladi: hech kim sizning nomingizdan
+yozolmaydi, yozuvingizni sezdirmasdan o‘zgartira olmaydi. **To‘liqlikni**
+(hamma narsa ko‘rsatildimi?) va **hisoblarni** (like soni to‘g‘rimi?)
+kriptografiya kafolatlamaydi — ular uchun raqobat va almashtirish
+imkoniyati javob beradi: relay yoki AppView yomon ishlasa, boshqasini
+ishga tushirish mumkin, chunki ma’lumot ochiq va o‘z-o‘zini tasdiqlaydi.
+</Deep>
+
+<Callout type="ogoh" title="Hamma narsa ommaviy">
+Repo’dagi yozuvlar — postlar, like’lar, obunalar, **bloklar** — ommaviy:
+firehose orqali har kim ko‘radi va arxivlaydi. “Kimni blok qildim” —
+ommaviy ma’lumot (ilova uni yashiradi, lekin protokol emas). O‘chirilgan
+post firehose’da “o‘chirildi” hodisasi bilan tarqaladi, lekin uni
+allaqachon nusxalab olganlar o‘chirishga majbur emas. Shaxsiy narsalar
+(mute, sozlamalar, to‘g‘ridan-to‘g‘ri xabarlar) repo’dan tashqarida —
+boshqa mexanizmlar bilan saqlanadi.
+</Callout>
+
+<Check q="Relay ba'zi hisoblarning commitlarini atayin yashirsa, AppView buni qanday sezadi va nima qila oladi?">
+**Qisman sezadi.** Agar relay hisobning **bir qismi** commitlarini
+yashirsa, keyingi yetkazilgan commitda `since` AppView biladigan oxirgi
+versiyaga mos kelmaydi — bo‘shliq. AppView repo’ni to‘g‘ridan-to‘g‘ri
+**PDS dan** so‘raydi (DID hujjatidagi manzil), imzo va MST ni o‘zi
+tekshiradi — relay chetlab o‘tiladi.
+
+Agar relay hisobni **butunlay** yashirsa (hech qanday commit kelmasa),
+bo‘shliq ko‘rinmaydi: AppView “bu hisob shunchaki jim” deb o‘ylaydi. Buni
+sezish uchun: bir nechta mustaqil relay’dan o‘qib solishtirish, PDS lardan
+davriy ravishda “oxirgi versiya qanday?” deb so‘rash (tekshiruv
+namunasi), yoki foydalanuvchi shikoyatlari.
+
+Himoyaning asosi — **almashtirish**: relay ochiq protokol bo‘yicha
+ishlaydi, uni har kim yurita oladi, va AppView boshqa relay’ga yoki
+to‘g‘ridan-to‘g‘ri PDS larga o‘tishi mumkin. Relay soxtalashtira olmaydi —
+faqat yashira oladi, va bu ko‘rinadigan, tuzatiladigan xato.
+</Check>
+
+### 8.3 Ikki xil tartib: seq va rev
+
+Amaliyotdagi AppView ikkita “raqam” bilan ishlaydi va ularni adashtirish —
+eng ko‘p uchraydigan xato:
+
+```
+seq — relay oqimidagi tartib raqami (butun tarmoq uchun bitta)
+      vazifasi: "qayerdan davom etaman" (kursor), takrorlarni tashlash
+      relay almashsa — seq ham boshqacha (har relay o'z raqamlari)
+
+rev — bitta repo versiyasi (shu foydalanuvchi uchun)
+      vazifasi: "bu commit mening oxirgi ko'rganimdan keyingisimi"
+      PDS beradi, imzo ostida — relay o'zgartira olmaydi
+```
+
+`seq` — **tarqatish** tartibi, `rev` — **mazmun** tartibi. Relay boshqa
+relay bilan almashtirilsa, kursor (`seq`) noldan boshlanadi, lekin har
+repo’ning `rev` i o‘sha — AppView qaysi commitlar yangi ekanini baribir
+biladi. Va aksincha: `seq` bo‘yicha takrorni tashlash oson, lekin u
+“bu repo’dan biror commit yo‘qolganmi” degan savolga javob bermaydi —
+buni faqat `rev` zanjiri (`since`) ko‘rsatadi. Shuning uchun amaliyotda
+ikkala tekshiruv ham bor: kursor bo‘yicha dedup va `rev`/`prev` bo‘yicha
+bo‘shliq. Fond birjasi darsida ikkalasi bitta raqam edi (bitta oqim,
+bitta manba); bu yerda manbalar ko‘p — raqamlar ham ikkita.
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="AT Protocol tarmog'i: ma'lumotdan ko'rinishgacha"
+  layers={[
+    { name: "Identifikatsiya", boxes: ["DID (did:plc, did:web)", "PLC katalogi", "Handle: DNS / .well-known"], note: "O'zgarmas ID, joriy kalitlar va PDS manzili; handle ikki tomonlama tekshiriladi (5-6-qadamlar)." },
+    { name: "Ma'lumot (PDS)", boxes: ["Bluesky PDS'lari", "Mustaqil PDS'lar", "Repo: MST + imzolangan commit", "Bloblar"], note: "Yozish — faqat shu yerga; har hisob — alohida, ko'chiriladigan repo (2-4, 7, 12-qadamlar)." },
+    { name: "Yig'ish", boxes: ["Relay(lar)", "Firehose (seq, kursor)", "Jetstream (yengil JSON)"], note: "Butun tarmoq — bitta tartibli oqim; relay ishonchsiz tarqatuvchi (8, 13-qadamlar)." },
+    { name: "Ko'rinish", boxes: ["AppView (indeks, to'ldirish)", "Maxsus feed'lar", "Yorliqlovchilar (moderatsiya)"], note: "Almashtiriladigan xizmatlar: tasma va moderatsiya — tanlov (9-11-qadamlar)." },
+    { name: "Ilovalar", boxes: ["Bluesky ilovasi", "Boshqa mijozlar", "Boshqa Lexicon ilovalari"], note: "Bitta hisob — ko'p ilova (14-qadam)." },
+  ]}
+/>
+
+Rasmning asosiy g‘oyasi — **qatlamlarni ajratish**. Markazlashgan
+tarmoqda bu besh qatlam bitta kompaniyaning bitta tizimi. AT Protocol’da
+har qatlam ochiq interfeys bilan ajratilgan va almashtirilishi mumkin:
+ma’lumot qatlami (PDS) arzon va ko‘p, yig‘ish va ko‘rinish qatlamlari
+(relay, AppView) qimmat va kam — lekin almashtiriladigan.
+
+Twitter darsidagi arxitektura bilan solishtirish foydali — vazifalar o‘sha,
+faqat tashkilotlar orasida bo‘lingan:
+
+| Vazifa | Twitter darsida | AT Protocol’da |
+| --- | --- | --- |
+| Yozishni qabul qilish | Yozish API si, tweet saqlovchi | PDS (har hisob — o‘z repo’si) |
+| O‘zgarishlarni tarqatish | Ichki xabarlar navbati | Ochiq firehose (relay) |
+| Tasma qurish | Fan-out xizmati, tasma keshi | AppView va maxsus feed’lar |
+| Sonlar, javoblar, qidiruv | Ichki indekslar | AppView indeksi |
+| Identifikator | Ichki foydalanuvchi ID si | DID (ochiq, ko‘chiriladigan) |
+| Moderatsiya | Ichki jamoa va tizimlar | Platforma + yorliqlovchilar |
+
+Texnik jihatdan AT Protocol “ichki xabarlar navbati”ni **ommaviy** qildi:
+kompaniya ichidagi Kafka oqimi o‘rniga — hamma o‘qiy oladigan firehose.
+Shu bitta qaror global ko‘rinish, maxsus feed’lar va mustaqil ilovalarni
+mumkin qiladi — va maxfiylik bilan bog‘liq yangi savollarni tug‘diradi.
+
+<Timeline
+  rows={[
+    { when: "2019-dekabr", what: "Twitter markazlashmagan protokol tadqiqotini e'lon qiladi", why: "Bluesky loyihasi: ijtimoiy tarmoq uchun ochiq standart g'oyasi." },
+    { when: "2021", what: "Bluesky mustaqil kompaniya bo'ladi", why: "Jey Greyber rahbarligida; AT Protocol ishlab chiqilishi boshlanadi." },
+    { when: "2022-2023", what: "AT Protocol e'lon qilinadi; taklif bilan beta", why: "Imzolangan repo, DID, PDS va AppView arxitekturasi; birinchi foydalanuvchilar." },
+    { when: "2023-may", what: "Maxsus feed'lar", why: "Tasma algoritmini har kim yozishi mumkin (10-qadam)." },
+    { when: "2024-fevral", what: "Hamma uchun ochiq; mustaqil PDS lar bilan federatsiya", why: "Taklifsiz ro'yxatdan o'tish; o'z serveringizni ulash mumkin (7-qadam)." },
+    { when: "2024", what: "Ozone va yorliqlovchilar; Jetstream; tez o'sish", why: "Moderatsiya qatlamlari (11-qadam); yengil oqim (13-qadam); noyabrda 20 M foydalanuvchidan oshdi." },
+    { when: "2025", what: "Sinxronizatsiya yangilanishlari, relay'lar yengillashadi", why: "Commit tekshiruvi to'liq repo nusxasisiz; mustaqil relay va AppView'lar uchun to'siq pasayadi." },
+  ]}
+/>
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Oqibat | Himoya |
+| --- | --- | --- |
+| Bitta PDS ishlamay qoldi | Uning hisoblari yoza olmaydi; o‘qish (AppView) ishlaydi | Ko‘p PDS; zaxira; foydalanuvchi ko‘chishi mumkin (12-qadam) |
+| Relay uzildi yoki orqada qoldi | Yangi postlar tasmalarga kechikib tushadi | Kursor bilan davom etish; bir nechta relay; to‘g‘ridan-to‘g‘ri PDS |
+| AppView indekslash orqada qoldi | Like sonlari, javoblar eskiradi; yozish ishlaydi | Navbat monitoringi, gorizontal masshtab, ustuvorliklar |
+| PLC katalogi ishlamayapti | Yangi hisoblar va ko‘chishlar to‘xtaydi | Keshlar; mavjud hisoblar ishlaydi |
+| Firehose’da yo‘qolgan hodisa | Indeksda bo‘shliq | rev zanjiri, resinxronizatsiya (8.1) |
+| Imzo kaliti buzildi | Hisob nomidan soxta yozuvlar | Kalit almashtirish; rotatsiya kaliti bilan 72 soat ichida qaytarish |
+| Keskin o‘sish (yangi foydalanuvchilar to‘lqini) | Hamma qatlamga bir vaqtda yuk | Sig‘im zaxirasi, navbatlar, cheklovlar (10.2) |
+
+Muhim xususiyat — **qisman ishlash**. Markazlashgan tarmoqda baza
+to‘xtasa — hamma narsa to‘xtaydi. AT Protocol’da qatlamlar ajratilgan:
+AppView orqada qolsa ham foydalanuvchilar yozishda davom etadi (yozuvlar
+PDS da xavfsiz), AppView keyin yetib oladi — Kafka darsidagi “lag”
+kabi.
+
+### 10.2 O‘sish to‘lqinlari
+
+Bluesky’ning eng og‘ir sinovlari — texnik nosozliklar emas, **keskin o‘sish**
+to‘lqinlari: boshqa platformadagi voqealar tufayli bir necha kun ichida
+millionlab yangi foydalanuvchi.
+
+<Timeline
+  rows={[
+    { when: "2024-yil 6-fevral", what: "Taklifsiz ro'yxatdan o'tish ochildi", why: "Birinchi kunlarda millionga yaqin yangi hisob: PDS'larda hisob yaratish, PLC operatsiyalari, profil yozuvlari bir vaqtda." },
+    { when: "2024-yil avgust oxiri", what: "Braziliyada X bloklanadi", why: "Bir necha kunda millionlab yangi foydalanuvchi, asosan bitta mamlakat va bitta til: portugal tilidagi feed'lar va moderatsiya yuki keskin oshadi." },
+    { when: "2024-yil noyabr", what: "AQSh saylovidan keyingi to'lqin", why: "Kuniga million atrofida yangi hisob; foydalanuvchilar soni 20 M dan oshadi; 'starter pack' orqali ommaviy obunalar." },
+    { when: "Har to'lqinda", what: "Firehose va AppView yuklamasi bir necha barobar", why: "Yangi hisob — ko'p yozuv: profil, o'nlab-yuzlab obuna, birinchi postlar; feed generatorlar va yorliqlovchilar ham shu oqimni ko'taradi." },
+  ]}
+/>
+
+<Calc title="Yangi foydalanuvchi to'lqini: yozish kuchayishi" result="Kuniga 1 M yangi hisob, har biri starter pack orqali ~100 obuna: kuniga ~100 M qo'shimcha follow yozuvi — butun tarmoqning odatdagi kunlik oqimiga teng">{`Yangi hisoblar: 1 000 000 / kun (to'lqin cho'qqisi)
+  -> ~12 hisob/s o'rtacha, cho'qqida ~100/s
+
+Har yangi hisob (faraz):
+  PLC genezis operatsiyasi:              1
+  profil yozuvi:                         1
+  starter pack "hammasini kuzatish":    ~100 follow yozuvi
+  birinchi postlar va like'lar:          ~20
+  -> ~120 yozuv
+
+Kuniga: 1 M x 120 = ~120 M yozuv — odatdagi ~100 M ga QO'SHIMCHA (1.3)
+  -> firehose 2x, AppView follow grafi va bildirishnomalar keskin oshadi
+  (har follow — bitta bildirishnoma: kuniga 100 M qo'shimcha)`}</Calc>
+
+<Calc title="Sig'im zaxirasi: qancha kerak" result="Odatdagi cho'qqi 10 000 commit/s; to'lqin 2-3x — 30 000/s. Indekslash 15 000/s ga mo'ljallangan bo'lsa, orqada qolish soatiga ~54 M hodisaga o'sadi">{`Odatdagi cho'qqi: 10 000 commit/s
+To'lqin: 2-3x -> 20 000-30 000/s bir necha soat
+
+AppView indekslash sig'imi (faraz): 15 000/s
+  ortiqcha: 30 000 - 15 000 = 15 000/s
+  1 soatda orqada qolish: 15 000 x 3 600 = 54 M hodisa
+  tunda yuk 3 000/s ga tushsa: 54 M / 12 000 = ~1.25 soatda yetib oladi
+
+Natija foydalanuvchi uchun: like sonlari va tasmalar 10-60 daqiqa
+  "orqada", lekin hech narsa yo'qolmaydi — PDS va relay'da saqlangan
+-> zaxira: odatdagi cho'qqining kamida 3-5x i`}</Calc>
+
+<Callout type="maslahat" title="Orqada qolish — rejali holat bo'lsin">
+Firehose iste’molchisi uchun “orqada qolish” — nosozlik emas, normal rejim.
+Uni rejalashtiring: ustuvorliklar (follow va bloklar like’lardan oldin,
+chunki ular xavfsizlik va tasmaga ta’sir qiladi), lag’ni **vaqtda**
+o‘lchash (“30 soniya orqada”), foydalanuvchiga ko‘rsatish (“hisoblar
+yangilanmoqda”), va to‘lqindan keyin tezroq yetib olish uchun vaqtincha
+qo‘shimcha ishchilar.
+</Callout>
+
+<Check q="AppView yuk ostida 20 daqiqa orqada qoldi. Foydalanuvchilar nima ko'radi va hech narsa yo'qolmasligini nima kafolatlaydi?">
+Foydalanuvchilar **yozishda davom etadi**: post, like, follow — o‘z PDS iga
+yoziladi va darhol imzolangan repo’da saqlanadi. Ular o‘z yozuvlarini
+ko‘radi (6.2: ilova o‘z yozuvlarini qo‘shib ko‘rsatadi). Lekin boshqalarning
+yangi postlari tasmada kechikadi, like sonlari va bildirishnomalar 20
+daqiqa eski bo‘ladi.
+
+Hech narsa yo‘qolmaydi, chunki **manba haqiqati PDS larda**: AppView —
+faqat hosila. Relay hodisalarni o‘z tarixida saqlaydi, AppView esa
+kursoridan davom etadi va yetib oladi. Agar orqada qolish relay tarixidan
+uzun bo‘lsa (masalan, bir necha kun), AppView yo‘qolgan oraliq uchun
+repo’larni to‘g‘ridan-to‘g‘ri PDS lardan qayta yuklaydi (8.1).
+
+Markazlashgan tizimdan farq: u yerda “baza orqada qoldi” ko‘pincha “yozish
+ham to‘xtadi” degani. Bu yerda yozish va o‘qish qatlamlari alohida, va
+yozish qatlami — eng sodda, eng ishonchli qism.
+</Check>
+
+## 11. Xavfsizlik va spam
+
+### 11.1 Kalitlar va hisob o‘g‘irlanishi
+
+Ikki xil kalit — ikki xil xavf (5-qadam). **Imzo kaliti** PDS da: u
+o‘g‘irlansa, hujumchi hisob nomidan post yozadi, lekin DID ni o‘zgartira
+olmaydi. **Rotatsiya kaliti** — DID egaligi: kim uni boshqarsa, hisobni
+boshqa joyga olib keta oladi. Shuning uchun ehtiyotkor foydalanuvchi
+o‘ziga tegishli, oflayn saqlanadigan **ustuvor** rotatsiya kalitini qo‘shadi:
+PDS buzilib, DID boshqa joyga ko‘chirilsa ham, 72 soat ichida bekor qilish
+mumkin.
+
+Ilovalar uchun esa oddiy tajriba: parol va ikki faktorli autentifikatsiya,
+uchinchi tomon ilovalari uchun **ilova parollari** yoki OAuth — asosiy
+parolni bermasdan, cheklangan huquqli kirish.
+
+### 11.2 Ochiq tarmoqda spam
+
+Ochiq tarmoqda hisob yaratish arzon, firehose esa hammaga ochiq — spam
+uchun ideal muhit. Himoya qatlamlari: hisob yaratishda tekshiruvlar
+(PDS darajasida), PDS va relay darajasida tezlik chegaralari (bir
+hisobdan sekundiga N ta yozuv), relay’ning yangi va noma’lum PDS larga
+ehtiyotkorligi (dastlab hisoblar soni va yozish tezligiga cheklov),
+AppView va yorliqlovchilarning avtomatik tasniflagichlari.
+
+<Calc title="Spam iqtisodi: hisob qancha turadi" result="Hisob yaratish bepul bo'lsa, 10 000 bot bir soatda 1 M spam yozuvi; tezlik chegarasi (hisobga soatiga 30 yozuv) va yangi hisoblar uchun past ishonch — 300 000 ga tushiradi, ko'pi tasniflagich bilan yashiriladi">{`Bot tarmog'i: 10 000 hisob
+Cheklovsiz: har hisob soatiga 100 post/javob -> 1 000 000 spam/soat
+
+Himoya qatlamlari:
+  PDS tezlik chegarasi: yangi hisobga soatiga 30 yozuv -> 300 000/soat
+  AppView: yangi, obunachisiz hisoblarning javoblari "pastga" (ishonch bali)
+  yorliqlovchi: avtomatik tasniflagich 90% ini belgilaydi -> 30 000 ko'rinadi
+  foydalanuvchi shikoyatlari va hisob to'xtatish -> daqiqalar ichida
+
+Spamerning narxi: har to'xtatilgan hisob uchun yangisi
+  -> hisob yaratish narxi (tekshiruv, telefon, CAPTCHA) — asosiy dastak`}</Calc>
+
+<Deep title="Ochiq firehose: tadqiqot, arxiv va maxfiylik">
+Firehose — butun tarmoqning ommaviy oqimi. Bu kuchli imkoniyat:
+tadqiqotchilar ijtimoiy tarmoqni API ruxsatlarisiz o‘rgana oladi, mustaqil
+arxivlar va qidiruv tizimlari quriladi, yangi ilovalar birinchi kundan
+butun graf bilan ishlaydi (14-qadam).
+
+Teskari tomoni — **maxfiylik** kutishlari. Markazlashgan tarmoqda
+foydalanuvchi “postimni o‘chirdim — yo‘qoldi” deb o‘ylaydi (aslida u ham
+kafolat emas). Ochiq firehose’da o‘chirish — bu **iltimos**: halol
+iste’molchilar uni bajaradi, lekin allaqachon nusxalab olganlar
+bajarmasligi mumkin. Like’lar va bloklar ham ommaviy: kim nimani
+yoqtirgani, kim kimni blok qilgani — ochiq ma’lumot.
+
+Muhandislik javobi uch yo‘nalishda: (1) **aniq aloqa** — foydalanuvchiga
+nima ommaviy ekanini tushuntirish; (2) **shaxsiy ma’lumotni repo’dan
+chiqarish** — mute, sozlamalar, to‘g‘ridan-to‘g‘ri xabarlar boshqa
+kanallarda; (3) **xulq qoidalari** — Bluesky va boshqa xizmatlar
+o‘chirish hodisalarini hurmat qilishni talab qiladi, lekin protokol buni
+majburlay olmaydi. Bu — “ochiq va tekshiriladigan” va “shaxsiy va
+o‘chiriladigan” orasidagi asosiy murosa.
+</Deep>
+
+<Check q="Hujumchi PDS serverini buzib, undagi imzo kalitlarini o'g'irladi. U nima qila oladi va nima qila olmaydi?">
+**Qila oladi**: o‘sha PDS dagi hisoblar nomidan yangi yozuvlar yaratish va
+imzolash (post, like, follow) — ular haqiqiy imzo bilan firehose’ga
+chiqadi; mavjud yozuvlarni o‘chirish. Agar PDS rotatsiya kalitlari ham
+o‘g‘irlangan bo‘lsa — DID hujjatini o‘zgartirib, hisoblarni boshqa joyga
+“ko‘chirish”.
+
+**Qila olmaydi**: boshqa PDS lardagi hisoblarga tegish; foydalanuvchining
+**ustuvor** rotatsiya kaliti bilan qilingan bekor qilishni to‘xtatish —
+agar foydalanuvchi o‘z kalitiga ega bo‘lsa, 72 soat ichida DID ni qaytarib
+oladi; o‘g‘irlikdan oldingi tarixni sezdirmasdan o‘zgartirish — eski
+commitlar va ularning nusxalari boshqa joylarda bor.
+
+Tiklash: PDS imzo kalitlarini almashtiradi (DID hujjatida yangi kalit,
+`#identity` hodisasi), soxta yozuvlar o‘chiriladi. Saboq — PDS
+foydalanuvchi uchun ishonchli tomon bo‘lib qoladi, lekin uning ta’siri
+o‘z hisoblari bilan cheklangan va ustuvor kalit bilan qaytariladigan.
+</Check>
+
+## 12. Iqtisod: kim to‘laydi
+
+### 12.1 Qatlamlar narxi
+
+Markazlashmagan tarmoqda savol: qimmat qatlamlarni kim yuritadi va nega?
+
+<Calc title="Har qatlamning oylik narxi (taxminiy)" result="PDS: hisobga oyiga sentlar; relay: oyiga bir necha ming dollar; to'liq AppView: o'n-yuz minglab dollar. Eng qimmati — ko'rinish, eng arzoni — ma'lumot">{`PDS (100 000 hisob, faraz):
+  server + disk (2 TB) + bloblar ob'ekt omborida (10 TB): ~1 000-2 000 $/oy
+  -> hisobga ~0.01-0.02 $/oy; o'z PDS ingiz — ~5 $/oy VPS
+
+Relay (butun tarmoq):
+  kiruvchi ~300 GB/kun, tekshiruv uchun bir necha yadro
+  chiqish: 50 iste'molchi x 300 GB = ~15 TB/kun = ~450 TB/oy
+  bulut trafigi 0.02-0.05 $/GB bo'lsa -> ~10 000-20 000 $/oy
+  o'z uskunasida va arzon trafikda — bir necha ming $
+
+AppView (to'liq, butun tarmoq, millionlab foydalanuvchiga xizmat):
+  taqsimlangan baza (~10 TB, 3 nusxa), keshlar, qidiruv, CDN
+  -> o'n minglab - yuz minglab $/oy, foydalanuvchilar soniga qarab`}</Calc>
+
+<Calc title="Bitta foydalanuvchiga xarajat" result="AppView va moderatsiya bilan faol foydalanuvchiga oyiga ~0.05-0.2 $; 20 M foydalanuvchida — oyiga ~1-4 M $. Jamoa maoshlari bunga qo'shiladi">{`Infratuzilma (faraz, butun tizim): oyiga ~300 000 - 1 000 000 $
+  AppView va kesh: ~60%
+  CDN (rasm, video): ~25%
+  PDS, relay, boshqalar: ~15%
+
+Faol foydalanuvchilar: ~5 M
+  -> 0.06 - 0.2 $ / faol foydalanuvchi / oy
+
+Moderatsiya (odamlar): 20-50 kishi x ~5 000 $ = 100 000-250 000 $/oy
+  -> ko'pincha infratuzilmadan kam emas
+
+Taqqoslash: reklama bilan ishlaydigan tarmoqlar foydalanuvchidan
+  oyiga bir necha dollar daromad oladi — Bluesky reklamasiz modelda
+  boshqa manbalar qidiradi (obuna, domenlar, xizmatlar)`}</Calc>
+
+<Deep title="Nega AppView'lar kam: 'katta dunyo'ning tabiiy markazi">
+Protokol bo‘yicha istalgan kishi AppView yuritishi mumkin. Lekin to‘liq
+AppView — butun tarmoq indeksi, millionlab foydalanuvchiga past kechikish
+bilan xizmat, moderatsiya va spamga qarshi kurash. Bu katta va doimiy
+xarajat, va unga to‘g‘ridan-to‘g‘ri daromad yo‘q.
+
+```
+Qatlam       Yuritish narxi    Kim yuritadi (amalda)       Almashtirish narxi
+PDS          juda past         Bluesky + minglab mustaqil   past: hisob ko'chadi
+Relay        o'rtacha          bir nechta                  o'rtacha
+AppView      yuqori            asosan Bluesky; bir nechta   yuqori: indeks noldan
+                               ixtisoslashgan              (lekin ma'lumot ochiq)
+Feed         past-o'rtacha     minglab                     juda past: bitta bosish
+```
+
+Bu Mastodon’dan teskari: u yerda har server o‘z “kichik AppView”si, shuning
+uchun serverlar ko‘p, lekin har biri faqat o‘z ko‘ringanini biladi. AT
+Protocol’da global ko‘rinish arzon emas — shuning uchun u kam joyda.
+Muhim farq — **qulf yo‘q**: AppView ma’lumot egasi emas, va yangi AppView
+butun tarmoqni firehose va repo’lardan qayta qura oladi. Raqobat
+imkoniyati — mavjud raqobatchilar soni emas — bozorni “halol” ushlaydi.
+</Deep>
+
+## 13. Sig‘im rejalashtirish
+
+### 13.1 Firehose va indeks o‘sishi
+
+<Calc title="Ikki yil: oqim va indeks qanday o'sadi" result="Foydalanuvchilar 2x, faollik 1.5x — firehose 3x (~30 000/s cho'qqi); indeks har yili ~3-4 mlrd yozuvga o'sadi va hech qachon kichraymaydi">{`Hozir (faraz): 1 200 commit/s o'rtacha, 10 000/s cho'qqi, indeks ~10 mlrd yozuv
+2 yildan keyin: foydalanuvchilar 2x, har biri 1.5x faol
+  firehose: 3x -> ~3 600/s o'rtacha, ~30 000/s cho'qqi
+  har yili indeksga: ~100 M x 365 x (1..3) = ~4-10 mlrd yozuv
+  2 yildan keyin indeks: ~25-30 mlrd yozuv (~6 TB asosiy, ~25 TB nusxalar bilan)
+
+Indeks faqat o'sadi (like va follow o'chirilishi kam):
+  -> qismlarga bo'lish (sharding) va eski ma'lumotni arzon qatlamga
+     ko'chirish rejasi boshidanoq`}</Calc>
+
+### 13.2 Tasma: qachon quriladi
+
+“Following” tasmasini qurishning ikki yo‘li Twitter darsida batafsil
+ko‘rilgan: **yozishda tarqatish** (har post obunachilarning tayyor
+tasmalariga yoziladi) va **o‘qishda yig‘ish** (so‘rov paytida kuzatilganlar
+postlari birlashtiriladi). Amaliyotdagi AppView ikkinchisini ishlatadi:
+har muallif postlari tartiblangan ro‘yxatda, so‘rovda — `heapq.merge`.
+
+<Deep title="Yozishda yoki o'qishda: firehose iste'molchisi uchun tanlov">
+Markazlashgan tarmoqda tanlov odatda yuklamaga qarab qilinadi. Firehose
+iste’molchisi uchun qo‘shimcha omil bor — **orqada qolish** va **qayta
+qurish**:
+
+```
+Yozishda tarqatish:
+  + o'qish juda tez (tayyor ro'yxat)
+  - har post x obunachilar soni yozuv: mashhur hisob (1 M obunachi) —
+    bitta post = 1 M yozuv -> to'lqinda indekslash orqada qoladi
+  - follow/unfollow, blok, hisob o'chirilishi — tayyor tasmalarni tuzatish
+  - AppView ni noldan qayta qurish — juda qimmat
+
+O'qishda yig'ish:
+  + yozish arzon: post — bitta yozuv
+  + blok, o'chirish, moderatsiya — so'rov paytida qo'llanadi
+  - o'qishda N ta ro'yxatni birlashtirish (kuzatilganlar soni)
+  - 5 000 kishini kuzatadigan foydalanuvchi — og'ir so'rov
+```
+
+Amalda — aralash: oddiy hisoblar uchun yozishda tarqatish (tez o‘qish),
+juda mashhur hisoblar uchun o‘qishda qo‘shish (Twitter darsidagi
+“mashhurlar” muammosi). AT Protocol’da qo‘shimcha dalil o‘qishda yig‘ish
+foydasiga: moderatsiya va bloklar **so‘rov paytida** qo‘llanishi kerak,
+chunki ular ham firehose bilan kechikib keladi.
+</Deep>
+
+<Check q="Nega firehose'dan indeks quruvchi AppView 'har bir obunachi tasmasiga yozish' (fan-out on write) usulida to'lqinlarda qiynaladi?">
+Chunki yozish kuchayishi **eng mashhur hisoblar** atrofida to‘planadi:
+1 million obunachili hisobning bitta posti — tasmalarga 1 million yozuv.
+To‘lqin paytida (10.2) mashhur hisoblar ko‘p yozadi, yangi foydalanuvchilar
+ularni ommaviy kuzatadi (starter pack’lar), va indekslash navbati portlaydi.
+
+Bundan tashqari, AT Protocol’da tasmaga ta’sir qiladigan hodisalar —
+follow, unfollow, blok, hisob o‘chirilishi, moderatsiya yorlig‘i — ham
+firehose orqali **kechikib** keladi. Tayyor tasmalarda ularni tuzatish —
+yana millionlab yozuv. O‘qishda yig‘ishda esa bu qoidalar so‘rov paytida,
+joriy holat bo‘yicha qo‘llanadi.
+
+Shuning uchun amaliy yechim aralash: kichik hisoblar uchun tarqatish,
+mashhurlar uchun o‘qishda qo‘shish, va har doim so‘rov paytida
+filtrlash (bloklar, moderatsiya).
+</Check>
+
+### 13.3 Qayerda cheklov
+
+Har qatlamning o‘z chegarasi bor, va ular turlicha o‘sadi: **PDS** —
+hisoblar soni va bloblar hajmi bilan (arzon, gorizontal: yangi PDS
+qo‘shiladi); **relay** — butun tarmoq commitlari va iste’molchilar soni
+bilan (asosan tarmoq trafigi); **AppView** — butun tarmoq yozuvlari
+(indeks, faqat o‘sadi) va o‘quvchilar soni (so‘rovlar) bilan. Eng tez
+o‘sadigani — AppView o‘qish yuki: har yangi faol foydalanuvchi kuniga
+yuzlab so‘rov qiladi, ko‘pi tasma va bildirishnomalar. Shuning uchun
+AppView’da keshlar (Twitter darsi) va “to‘ldirish” qatlamini optimallash
+eng katta tejash beradi; PDS va relay esa ko‘pincha tarmoq va disk
+narxi bilan cheklanadi.
+
+## 14. Kuzatuv
+
+### 14.1 Nima o‘lchanadi
+
+| Metrika | Qatlam | Nima ko‘rsatadi |
+| --- | --- | --- |
+| Firehose lag (soniyalarda) | AppView, feed’lar | Indeks qanchalik orqada |
+| Relay kiruvchi va chiquvchi hodisalar/s | Relay | Tarmoq faolligi va relay sog‘ligi |
+| Imzo xatolari ulushi | Relay, AppView | Kalit almashtirishlar, hujumlar yoki xatolar |
+| Resinxronizatsiya so‘rovlari/daqiqa | AppView | Yo‘qolgan hodisalar, relay muammolari |
+| Commit xatolari va kechikishi | PDS | Yozish yo‘lining sog‘ligi |
+| PLC va DNS hal qilish vaqti, xatolari | Hammasi | Identifikatsiya qatlami |
+| So‘rov kechikishi (p50, p99) | AppView | Foydalanuvchi tajribasi |
+| Moderatsiya navbati uzunligi | Yorliqlovchilar | Shikoyatlarga javob tezligi |
+
+<Calc title="Lag'ni vaqtga aylantirish" result="Navbatda 3 M hodisa, oqim 1 500/s, indekslash 4 000/s: ~33 daqiqa orqada, ~20 daqiqada yetib oladi">{`Navbatdagi hodisalar: 3 000 000
+Kiruvchi oqim: 1 500/s
+Indekslash tezligi: 4 000/s
+
+"Qancha orqada": eng eski ishlanmagan hodisaning vaqti
+  -> 3 000 000 / 1 500 = ~2 000 s = ~33 daqiqa (oqim tezligida)
+Yetib olish: 3 000 000 / (4 000 - 1 500) = 1 200 s = 20 daqiqa
+
+Ogohlantirish (faraz):
+  lag > 60 s — ish vaqtida ko'rib chiqish
+  lag > 10 daqiqa yoki o'sish tezligi musbat 15 daqiqa — darhol
+  (hodisalar soni emas — VAQT: tunda va kunduzda bir xil ma'no)`}</Calc>
+
+### 14.2 Uchidan-uchiga tekshiruv
+
+Ichki metrikalar har qatlamni alohida ko‘rsatadi; foydalanuvchi esa
+butun zanjirni ko‘radi. Shuning uchun **sintetik hisob**: maxsus hisob har
+daqiqada post yozadi (o‘z PDS iga) va o‘lchanadi: (1) PDS javob vaqti;
+(2) post relay oqimida qachon paydo bo‘ldi; (3) AppView’da qachon
+ko‘rinadigan bo‘ldi (boshqa sintetik hisobning tasmasidan so‘rab);
+(4) feed generator va qidiruvda qachon. Har bosqich uchun gistogramma —
+“yozilgandan ko‘rinadigan”gacha bo‘lgan haqiqiy vaqt. Xuddi shunday
+sintetik like va follow: hisoblagich bir necha soniyada o‘zgarishi kerak.
+
+<Callout type="maslahat" title="Haqiqatni namunalab tekshiring">
+Indeks to‘g‘riligini faqat ichki metrikalar bilan bilib bo‘lmaydi. Har
+soatda tasodifiy 1 000 ta repo’ni to‘g‘ridan-to‘g‘ri PDS lardan yuklab,
+AppView indeksi bilan solishtiring: yozuvlar soni, oxirgi versiya, like va
+follow hisoblari. Farqlar ulushi — indeks sifatining eng halol metrikasi
+(amaliyotdagi xaos testining “jonli” varianti).
+</Callout>
+
+<Check q="AppView'da resinxronizatsiya so'rovlari soni keskin oshdi. Qanday sabablar bo'lishi mumkin va qanday ajratasiz?">
+Uch asosiy sabab: (1) **relay muammosi** — hodisalar yo‘qolyapti yoki
+tartibi buzilyapti (tarmoq, relay qayta ishga tushishi); (2) **AppView o‘zi**
+— kalit keshi eskirgan (`#identity` hodisalari ishlanmayapti), imzo
+tekshiruvi xato rad etyapti va bo‘shliq paydo bo‘lyapti; (3) **haqiqiy
+voqea** — ommaviy hisob ko‘chishi yoki PDS kalit almashtirishi.
+
+Ajratish: resinxronizatsiyalarni PDS bo‘yicha guruhlang. Hammasi bitta PDS
+dan bo‘lsa — o‘sha PDS (kalit almashtirish, nosozlik). Hamma PDS lardan
+teng — relay yoki AppView. Imzo xatolari bilan bir vaqtda oshgan bo‘lsa —
+kalit keshi. Ikkinchi relay’dan parallel o‘qib solishtirish relay
+muammosini tez tasdiqlaydi.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Like yoki follow sonini yozuvlar soni bo'yicha hisoblash", pro: "Oddiy: har yozuv +1", con: "Bitta odamning ikki yozuvi — ikki like; o'chirish va takrorlarda sonlar suriladi (amaliyot)" },
+    { choice: "Delete hodisasida faqat yo'lni bilib, eski yozuvni eslab qolmaslik", pro: "Kam xotira", con: "O'chirilgan like qaysi postniki ekani noma'lum — hisoblagich hech qachon tuzalmaydi" },
+    { choice: "Firehose'dagi hodisaga imzosiz ishonish", pro: "Tez va oddiy", con: "Relay yoki tarmoqdagi har kim istalgan hisob nomidan 'yozadi' (8.2)" },
+    { choice: "Bo'shliqni e'tiborsiz qoldirib, keyingi commitni qo'llash", pro: "Hech qachon kutmaydi", con: "Yo'qolgan yozuvlar abadiy indeksdan tashqarida; sonlar jimgina noto'g'ri" },
+    { choice: "Handle bo'yicha havola va obuna saqlash", pro: "O'qilishi oson", con: "Ism o'zgarsa yoki domen sotilsa — havolalar boshqa odamga ketadi (6-qadam)" },
+    { choice: "Shaxsiy ma'lumotni repo'ga yozish", pro: "Bitta joyda saqlash", con: "Repo — ommaviy va nusxalanadi; o'chirish kafolatlanmaydi (11.2 Deep)" },
+  ]}
+/>
+
+<Deep title="Nega har AppView ham o'z 'haqiqati'ni hisoblaydi">
+AppView A postda 1 204 like ko‘rsatadi, AppView B — 1 198. Qaysi biri
+to‘g‘ri? Ikkalasi ham bo‘lishi mumkin: biri spam hisoblarni sanamaydi,
+boshqasi bir necha soniya orqada, uchinchisi o‘chirilgan hisoblarning
+like’larini hisobdan chiqaradi.
+
+Like soni — **hosila**, va hosilani hisoblash qoidasi AppView’ga tegishli.
+Protokol kafolatlaydigani: har like — haqiqiy imzolangan yozuv. Qaysilarini
+sanash — siyosat. Bu markazlashgan tarmoqda ham shunday (Twitter ham spam
+like’larni olib tashlaydi), farqi — bu yerda qoidalar turlicha bo‘lishi
+mumkin va **tekshiriladi**: istalgan kishi firehose’dan o‘zi sanab ko‘ra
+oladi.
+
+Muhandislik saboq: hisoblagichni “haqiqat” deb emas, “indeks ko‘rinishi”
+deb loyihalang. Uni istalgan vaqtda manbadan (repo’lardan) qayta hisoblash
+mumkin bo‘lsin — shunda xatolar, qoida o‘zgarishlari va spam tozalash
+qayta hisoblash bilan tuzatiladi, qo‘lda tahrir bilan emas.
+</Deep>
+
+<Callout type="xato" title="Ettinchi antinaqsh: 'firehose — buyruqlar navbati'">
+Firehose’dagi hodisani “bajarilishi kerak bo‘lgan buyruq” deb qabul qilish
+(“like keldi — +1 qil”) xavfli. Hodisa — **repo holati o‘zgargani haqida
+xabar**, va manba haqiqati — repo. Xabar yo‘qolishi, takrorlanishi,
+soxta bo‘lishi mumkin. To‘g‘ri model: har repo uchun holatni (yozuvlar va
+versiya) saqlash, hodisalarni shu holatga **qo‘llash**, va shubha bo‘lsa —
+holatni manbadan qayta olish. Amaliyotdagi AppView aynan shunday quriladi.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Hamma ma'lumot imzolangan va ommaviy", pro: "Ko'chuvchanlik, tekshiriluvchanlik, ochiq ekotizim", con: "Maxfiylik kutishlari; o'chirish — iltimos, kafolat emas" },
+    { choice: "Global ko'rinish (relay + AppView)", pro: "Like sonlari, javoblar, qidiruv — butun tarmoq bo'yicha", con: "Qimmat qatlamlar kam joyda — amaliy markazlashuv" },
+    { choice: "did:plc katalogi", pro: "Barqaror ID, kalit almashtirish, 72 soatlik tiklash", con: "Markaziy xizmat; uni mustaqil qilish — ochiq vazifa" },
+    { choice: "Domen-handle", pro: "Ismni domen tasdiqlaydi; tashkilotlar uchun tabiiy", con: "Oddiy foydalanuvchi uchun murakkab; domen muddati" },
+    { choice: "Maxsus feed'lar va yorliqlovchilar", pro: "Algoritm va moderatsiya — tanlov", con: "Sifat va xavfsizlik nazorati qiyin; AppView baribir filtrlashi kerak" },
+    { choice: "PDS da imzo kaliti", pro: "Qulay: qurilmalar sinxron, kalit yo'qolmaydi", con: "Foydalanuvchi PDS ga ishonadi; to'liq 'o'z kalitim' — qo'shimcha qadam" },
+  ]}
+/>
+
+<Versus
+  left={{ title: "AT Protocol (Bluesky)", points: [
+    "Hisob — DID, server almashadi",
+    "Ma'lumot imzolangan repo'da",
+    "Butun tarmoq — bitta oqim, global ko'rinish",
+    "Qatlamlar: PDS, relay, AppView, feed",
+    "Tasma va moderatsiya — tanlov",
+  ] }}
+  right={{ title: "ActivityPub (Mastodon)", points: [
+    "Hisob — ism@server, serverga bog'liq",
+    "Ma'lumot server bazasida",
+    "Serverlar bir-biriga yuboradi (push), har biri o'z ko'rinishi",
+    "Server — jamoa va qoidalar birligi",
+    "Moderatsiya — server ma'muriyati",
+  ] }}
+/>
+
+<Versus
+  left={{ title: "Markazlashgan tarmoq", points: [
+    "Bitta baza, bitta kompaniya",
+    "Tez va izchil: 'o'z yozuvingizni o'qish' oson",
+    "Algoritm va moderatsiya — yagona",
+    "Chiqib ketish — hammasini yo'qotish",
+  ] }}
+  right={{ title: "AT Protocol", points: [
+    "Qatlamlangan, ko'p tashkilot",
+    "Keyinchalik izchil: firehose orqali",
+    "Algoritm va moderatsiya — almashtiriladigan",
+    "Chiqib ketish — hisob bilan birga",
+  ] }}
+/>
+
+<Deep title="Nega ochiq protokol va katta kompaniya birga">
+Bluesky — kompaniya va AT Protocol’ning asosiy implementatori. Ochiq
+protokolning paradoksi: uni eng ko‘p ishlatadigan kompaniya amalda eng
+katta ta’sirga ega (AppView, relay, PLC, standart PDS). Bu holat tarixda
+ko‘p uchragan: elektron pochta ochiq protokol, lekin pochtaning katta
+qismi bir necha yirik provayderda; veb ochiq, lekin brauzerlar va
+qidiruv bir necha kompaniyada.
+
+Farq — **chiqish narxi**da. Elektron pochtani provayderdan provayderga
+ko‘chirish (manzil o‘zgaradi) og‘riqli. AT Protocol’da hisob DID bilan
+ko‘chadi, ma’lumot imzolangan va to‘liq eksport qilinadi, firehose
+ochiq — raqobatchi AppView yoki ilova butun tarmoqqa “kirish” uchun
+ruxsat so‘ramaydi. Dizayn “yaxshi kompaniya”ga emas, **“kompaniya
+yomonlashsa, chiqish arzon bo‘lsin”** degan farazga qurilgan. Bu
+kafolat qanchalik ishlashi — protokol emas, ekotizimning (mustaqil
+relay, AppView, PDS lar) yetukligiga bog‘liq.
+</Deep>
+
+### Butun dars o‘nta gapda
+
+1. **Muammo — egalik, tezlik emas**: ma’lumot, ism va algoritm
+   platformaga mixlangan; ko‘chish — hammasini yo‘qotish (1-bo‘lim).
+2. **Ma’lumot o‘z-o‘zini tasdiqlaydi**: yozuvlar xeshlanadi, daraxtga
+   joylanadi, ildiz imzolanadi — kim saqlashidan qat’i nazar (2-bo‘lim, 2-qadam).
+3. **MST — butun repo bitta xeshda**: shakli kalitlarning o‘zidan;
+   isbot va farq — faqat yo‘ldagi tugunlar (3-qadam).
+4. **Har harakat — harakat qiluvchining yozuvi**: like va follow sizning
+   repo’ngizda; sonlar — butun tarmoqni ko‘ruvchida (2.2, 6-bo‘lim).
+5. **DID — o‘zgarmas ID, handle — domen**: havolalar DID ga; ism ikki
+   tomonlama tekshiriladi; rotatsiya kaliti — hisob egaligi (5–6-qadamlar).
+6. **Yozish — PDS ga, o‘qish — AppView’dan**: manba va hosila ajratilgan,
+   orasida — firehose (6.2, 7–9-qadamlar).
+7. **Relay — ishonchsiz tarqatuvchi**: soxtalashtira olmaydi, faqat
+   yashira oladi; bo‘shliq rev zanjiri bilan ko‘rinadi (8-bo‘lim).
+8. **Firehose iste’molchisi — holat saqlovchi**: imzo, takror, bo‘shliq,
+   resinxronizatsiya; hodisa — buyruq emas, holat haqida xabar (8, 15-bo‘limlar).
+9. **Tanlov — qatlamlar orqali**: feed’lar va yorliqlovchilar
+   almashtiriladi, AppView baribir filtrlaydi (10–11-qadamlar).
+10. **Kafolat — chiqish narxi past**: qimmat qatlamlar kam joyda, lekin
+    ma’lumot ochiq va ko‘chiriladi — raqobat imkoniyati bozorni ushlaydi (12, 16-bo‘limlar).
+
+## 17. Intervyu savollari
+
+<Callout type="info" title="'Markazlashmagan ijtimoiy tarmoq loyihalang' savoliga qanday yondashish">
+Birinchi daqiqalarni uch narsaga bering: (1) **egalik modeli** — ma’lumot va
+identifikator kimniki, nimani imzolaymiz (repo, DID); (2) **ma’lumot oqimi** —
+yozish qayerga, o‘qish qayerdan, ular orasida nima (PDS, firehose,
+AppView); (3) **ishonch** — har qatlam nimani kafolatlaydi va nimani yo‘q.
+Keyin raqamlar: yozuvlar/s, firehose hajmi, indeks hajmi. Feed’lar,
+moderatsiya va ko‘chish — oxirida, chunki ular yuqoridagilarga tayanadi.
+</Callout>
+
+### 17.1 Ma’lumot va identifikator
+
+<QA q="AT Protocol'da 'repo' nima va u nega imzolanadi?">
+Repo — foydalanuvchining barcha ommaviy yozuvlari (postlar, like’lar,
+obunalar, bloklar, profil) “kolleksiya/kalit → yozuv” ko‘rinishida, Merkle
+Search Tree’da. Har o‘zgarish — yangi commit: DID, versiya (rev) va daraxt
+ildiz xeshi, foydalanuvchining imzo kaliti bilan imzolangan. Imzo tufayli
+repo kim saqlashidan qat’i nazar tekshiriladi va ko‘chiriladi: hech kim
+sezdirmasdan o‘zgartira olmaydi.
+</QA>
+
+<QA q="Merkle Search Tree oddiy Merkle daraxti yoki B-daraxtdan nimasi bilan farq qiladi?">
+Shakli faqat kalitlar to‘plamiga bog‘liq: har kalitning darajasi uning
+xeshidan (boshidagi nol bitlar) olinadi, shuning uchun qo‘shish tartibi
+ahamiyatsiz — bir xil kalitlar har doim bir xil daraxt va bir xil ildiz.
+B-daraxtda shakl qo‘shish tarixiga bog‘liq. Oddiy Merkle daraxtidan farqi —
+kalit bo‘yicha qidiruv va tartiblangan aylanish mumkin. Natija: ikki
+nusxani solishtirish, isbotlash va farqini olish arzon.
+</QA>
+
+<QA q="Bitta yozuv repo'da borligini butun repo'siz qanday isbotlash mumkin?">
+Inklyuziya isboti: ildizdan yozuv turgan tugungacha bo‘lgan tugunlar
+(~log4 N ta). Tekshiruvchi faqat imzolangan ildiz xeshini biladi: birinchi
+tugun xeshi ildizga, har keyingisi oldingi tugundagi bola ko‘rsatkichiga
+mos keladimi, oxirgi tugunda kalit va qiymat bormi. Yo‘qlik ham shunday
+isbotlanadi: qidiruv bo‘sh bolaga yetadi. 100 000 yozuvda ~8–9 tugun.
+</QA>
+
+<QA q="DID nima va nega handle yetarli emas?">
+DID — o‘zgarmas, noyob identifikator (`did:plc:...`), DID hujjatiga ishora
+qiladi: imzo kaliti, PDS manzili, handle. Handle — odam uchun ism (domen),
+o‘zgaradi va domen bilan birga yo‘qolishi mumkin. Havolalar, obunalar va
+like’lar DID ga ishora qiladi, shuning uchun ism yoki server o‘zgarsa ham
+buzilmaydi. Handle faqat ko‘rsatish uchun va ikki tomonlama tekshiriladi.
+</QA>
+
+<QA q="Handle qanday tekshiriladi va bir tomonlama tekshiruv nega xavfli?">
+Handle → DID: DNS TXT (`_atproto.domen`) yoki HTTPS `/.well-known/atproto-did`.
+DID → handle: DID hujjatidagi `alsoKnownAs`. Ikkalasi mos bo‘lsagina
+handle ko‘rsatiladi. Faqat DID hujjatiga ishonilsa — istalgan kishi o‘zini
+istalgan domen deb e’lon qiladi; faqat DNS ga ishonilsa — domen egasi
+boshqa birovning DID iga ism “yopishtiradi”.
+</QA>
+
+<QA q="did:plc da rotatsiya kalitlari va 72 soatlik oyna nima uchun kerak?">
+DID hujjati imzolangan operatsiyalar jurnalidan hosil bo‘ladi; har
+o‘zgarishni rotatsiya kaliti imzolaydi. Kalitlar ustuvorlik tartibida:
+yuqori ustuvor kalit pastroq kalit qilgan operatsiyani 72 soat ichida
+bekor qila oladi. PDS (yoki uning kaliti) buzilib hisob “o‘g‘irlansa”,
+foydalanuvchining oflayn saqlangan ustuvor kaliti uni qaytaradi.
+</QA>
+
+<QA q="Like nega like qiluvchining repo'sida saqlanadi?">
+Repo’ga faqat egasi yoza oladi va har yozuv uning imzosi bilan. “A B ning
+postini yoqtirdi” — A ning da’vosi, shuning uchun A ning repo’sida. Agar
+B ning repo’sida bo‘lsa, B like’larni o‘ylab topishi yoki o‘chirishi
+mumkin edi. Narxi: like sonini bilish uchun butun tarmoqni ko‘rish kerak
+— buni AppView qiladi.
+</QA>
+
+<QA q="Kontent-adreslash (CID) qanday muammolarni hal qiladi va qaysisini hal qilmaydi?">
+Hal qiladi: ma’lumot qayerdan olinmasin, xeshi bo‘yicha tekshiriladi;
+bir xil blok bir marta saqlanadi va keshlanadi; firehose commit’i faqat
+yangi bloklarni tashiydi. Hal qilmaydi: o‘chirish (nusxalar boshqa
+joylarda qoladi) va to‘liqlik (kimdir blokni bermasligi mumkin) — ular
+uchun boshqa mexanizmlar kerak.
+</QA>
+
+### 17.2 Oqim, indeks va ishonch
+
+<QA q="PDS, relay va AppView vazifalarini tushuntiring.">
+PDS — hisob uyi: repo’ni saqlaydi va imzolaydi, bloblar, login, yozish
+so‘rovlari. Relay — butun tarmoq yig‘uvchisi: hamma PDS firehose’larini
+o‘qib, imzolarni tekshirib, bitta tartibli oqimga birlashtiradi. AppView —
+ko‘rinish: oqimdan indeks quradi (sonlar, javoblar, tasmalar, qidiruv) va
+ilovalar so‘rovlariga javob beradi. Yozish — PDS ga, o‘qish — AppView’dan.
+</QA>
+
+<QA q="Firehose iste'molchisi yo'qolgan hodisani qanday sezadi va tiklanadi?">
+Har repo uchun oxirgi qo‘llangan versiya (rev) saqlanadi; har commitda
+oldingi versiya (since) bor. since oxirgi versiyaga teng — qo‘llash; rev
+eski — tashlash; aks holda bo‘shliq: repo’ni PDS dan butunlay so‘rash,
+shu repo’ning keyingi commitlarini buferga olish, surat kelgach — suratdan
+yangilarini qo‘llash. Butun oqim uchun esa kursor (seq) — uzilishdan
+keyin davom etish uchun.
+</QA>
+
+<QA q="Relay qanday kafolat beradi va qaysi kafolatni bermaydi?">
+Beradi: tartibli oqim, imzolari tekshirilgan commitlar. Bermaydi:
+to‘liqlik — relay hodisalarni yashirishi yoki kechiktirishi mumkin.
+Soxtalashtira olmaydi (imzo), lekin “jim” bo‘la oladi. Himoya: bir nechta
+relay, shubhada to‘g‘ridan-to‘g‘ri PDS dan o‘qish, rev zanjiri, va relay’ni
+almashtirish imkoniyati.
+</QA>
+
+<QA q="AppView like sonini qanday hisoblaydi va qanday tuzoqlar bor?">
+Har like — like qiluvchi repo’sidagi yozuv; AppView firehose’dan “post →
+like qilganlar” indeksini yuritadi va sonni kim bo‘yicha sanaydi (bitta
+odamning ikki like yozuvi — bitta like). Tuzoqlar: delete’da yozuv kelmaydi
+(eski yozuvni eslab qolish kerak); takrorlar va bo‘shliqlar; hisob
+o‘chirilganda uning like’larini chiqarish; spam hisoblarni sanash yoki
+sanamaslik siyosati.
+</QA>
+
+<QA q="Kalit almashtirilganda AppView nima qilishi kerak?">
+Firehose’da `#identity` hodisasi keladi: keshdagi DID hujjati (kalit,
+PDS, handle) tashlanadi va qayta o‘qiladi. Aks holda yangi kalit bilan
+imzolangan commitlar “soxta” deb tashlanadi. Agar hodisa o‘tkazib
+yuborilsa, keyingi commitlarda bo‘shliq paydo bo‘ladi va resinxronizatsiya
+— joriy kalit bilan — holatni tuzatadi.
+</QA>
+
+<QA q="Maxsus feed qanday ishlaydi va nega u faqat 'skelet' qaytaradi?">
+Feed generator firehose’ni (yoki uning qismini) o‘qiydi, o‘z mantiqi bilan
+postlarni tanlaydi va `getFeedSkeleton` ga post URI lari ro‘yxatini va
+kursorni qaytaradi. AppView ro‘yxatni to‘ldiradi: matn, rasm, sonlar,
+ko‘ruvchi holati, va **filtrlaydi**: bloklar, o‘chirilgan hisoblar,
+moderatsiya. Skelet feed’ni arzon qiladi va xavfsizlik qarorlarini
+AppView’da qoldiradi.
+</QA>
+
+<QA q="Moderatsiya qatlamlari qanday ishlaydi?">
+Platforma darajasi: noqonuniy kontentni olib tashlash, hisoblarni
+to‘xtatish (butun tarmoqqa `#account` orqali). Yorliqlovchilar: mustaqil
+xizmatlar post va hisoblarga imzolangan yorliqlar qo‘yadi; foydalanuvchi
+qaysilariga obuna bo‘lishini va har yorliq bilan nima qilishni tanlaydi.
+Shaxsiy: blok (ommaviy yozuv), mute (shaxsiy), moderatsiya ro‘yxatlari.
+AppView yorliqlarni so‘rov paytida qo‘llaydi.
+</QA>
+
+<QA q="'O'z yozuvingizni o'qish' muammosi qayerdan chiqadi va qanday hal qilinadi?">
+Yozish PDS ga, o‘qish AppView’dan, ular orasida firehose kechikishi bor.
+Foydalanuvchi post yozib, darhol profilini ochsa, AppView hali
+indekslamagan bo‘lishi mumkin. Yechim: PDS yoki ilova foydalanuvchining
+o‘z so‘nggi yozuvlarini AppView javobiga qo‘shadi. Boshqalar esa postni
+indekslashdan keyin ko‘radi — keyinchalik izchillik.
+</QA>
+
+<QA q="Butun tarmoqni noldan indekslaydigan yangi AppView qanday ishga tushiriladi?">
+Avval jonli firehose’ga ulanib, kursorni yozib qo‘yish (va hodisalarni
+buferlash yoki keyinroq kursordan o‘qish); keyin hamma repo’larni PDS lardan
+yuklab olish (backfill) — kunlar; har repo uchun suratdan keyingi
+commitlarni qo‘llash; nihoyat jonli oqimga to‘liq o‘tish. Muhim: har repo
+uchun versiya (rev) bo‘yicha “surat va oqim” chegarasini aniq yuritish.
+</QA>
+
+### 17.3 Masshtab, iqtisod va dizayn
+
+<QA q="Butun tarmoq firehose'i qancha va relay qancha turadi?">
+Faraziy hisob: 20 M foydalanuvchi, kuniga ~100 M yozuv, commit ~3 KB — o‘rtacha
+~3–4 MB/s, cho‘qqida ~30 MB/s, kuniga ~300 GB. Relay’ning asosiy xarajati —
+chiqish: o‘nlab iste’molchiga bir xil oqim (kuniga o‘nlab TB). Jetstream
+kabi yengil oqim kichik iste’molchilar uchun hajmni o‘n-yuz barobar
+kamaytiradi.
+</QA>
+
+<QA q="Qaysi qatlam eng qimmat va nega?">
+AppView: butun tarmoq indeksi (o‘nlab TB nusxalar bilan), millionlab
+foydalanuvchiga past kechikishli so‘rovlar, to‘ldirish, qidiruv,
+bildirishnomalar, moderatsiya. PDS — eng arzon (hisobga oyiga sentlar),
+relay — o‘rtacha (asosan trafik). Shuning uchun AppView’lar kam, PDS lar
+ko‘p.
+</QA>
+
+<QA q="'Following' tasmasini yozishda tarqatish yoki o'qishda yig'ish — AT Protocol uchun qaysi biri va nega?">
+Ko‘pincha aralash. O‘qishda yig‘ish foydasiga qo‘shimcha dalil: bloklar,
+unfollow, hisob o‘chirilishi va moderatsiya yorliqlari firehose orqali
+kechikib keladi va so‘rov paytida qo‘llanishi kerak; tayyor tasmalarni
+tuzatish qimmat. Yozishda tarqatish — tez o‘qish uchun oddiy hisoblarga;
+mashhur hisoblar postlari o‘qishda qo‘shiladi.
+</QA>
+
+<QA q="Yangi foydalanuvchilar to'lqini tizimga qanday ta'sir qiladi?">
+Har yangi hisob — PLC operatsiyasi, profil va ko‘pincha yuzlab obuna
+(starter pack): yozish kuchayadi, follow va bildirishnoma indekslari
+portlaydi. AppView orqada qoladi (sonlar va tasmalar kechikadi), lekin
+yozish PDS larda xavfsiz. Himoya: sig‘im zaxirasi, ustuvorliklar (follow
+va blok like’dan oldin), lag’ni vaqtda kuzatish, vaqtinchalik ishchilar.
+</QA>
+
+<QA q="Hisob boshqa PDS'ga qanday ko'chiriladi va eski PDS hamkorlik qilmasa nima bo'ladi?">
+Yangi PDS da xuddi shu DID bilan nofaol hisob; eski PDS dan repo (CAR) va
+bloblar eksporti, yangisiga import; shaxsiy sozlamalar; DID hujjatini
+yangilash (yangi PDS manzili va imzo kaliti, rotatsiya kaliti bilan
+imzolangan PLC operatsiyasi); yangi hisobni faollashtirish. Obunachilar
+va havolalar hech qanday ish talab qilmaydi — ular DID ga ishora qiladi.
+Eski PDS hamkorlik qilmasa: foydalanuvchining o‘z repo zaxira nusxasi va
+o‘ziga tegishli rotatsiya kaliti kerak — shunda DID ni ruxsatsiz ko‘chiradi.
+</QA>
+
+<QA q="AT Protocol va ActivityPub (Mastodon) farqi nima?">
+ActivityPub’da hisob serverga bog‘liq (`ism@server`), serverlar bir-biriga
+push qiladi va har biri o‘z ko‘rinishiga ega — “kichik dunyolar”. AT
+Protocol’da hisob DID bilan serverdan mustaqil, ma’lumot imzolangan
+repo’da, hamma narsa bitta oqimga yig‘iladi va global ko‘rinish (AppView)
+quriladi — “katta dunyo”. Narxi: AT da qimmat global qatlamlar kam joyda;
+AP da har server o‘z jamoasi va qoidalari bilan mustaqilroq.
+</QA>
+
+<QA q="Repo'dagi hamma narsa ommaviy bo'lsa, shaxsiy ma'lumot qayerda?">
+Repo’dan tashqarida: mute’lar, sozlamalar, feed tanlovlari — PDS va
+AppView’dagi shaxsiy saqlashda; to‘g‘ridan-to‘g‘ri xabarlar — alohida
+xizmatda. Repo faqat ommaviy, imzolangan va ko‘chiriladigan narsalar
+uchun. Foydalanuvchiga nima ommaviy ekanini aniq ko‘rsatish — dizaynning
+majburiy qismi (bloklar ham ommaviy).
+</QA>
+
+<QA q="Noldan AT Protocol ustida yangi ilova (masalan, tadbirlar) qursangiz, nimadan boshlaysiz?">
+O‘z Lexicon’ingiz (`com.example.event.*` — tadbir, ishtirok yozuvlari);
+login — foydalanuvchining mavjud hisobi orqali (OAuth, PDS); yozish — uning
+PDS iga; o‘z AppView’ingiz — Jetstream yoki firehose’dan faqat o‘z
+kolleksiyalaringiz va kerakli follow grafi; bo‘shliq va
+resinxronizatsiya mantiqi; moderatsiya — yorliqlovchilarga obuna va o‘z
+qoidalari. Birinchi kundan foydalanuvchilar va ularning grafi tayyor.
+</QA>
+
+<QA q="Bu dizayn foydalanuvchi uchun nimani kafolatlaydi va nimani kafolatlamaydi?">
+Kafolatlaydi: ma’lumot va identifikator egalik — hisobni DID va hamma
+yozuvlar bilan boshqa joyga olib ketish; hech kim nomingizdan yozolmaydi;
+algoritm va moderatsiyani tanlash. Kafolatlamaydi: maxfiylik (ommaviy
+ma’lumot nusxalanadi), to‘liqlik (relay yoki AppView yashirishi mumkin),
+va amaliy raqobat — ekotizimda mustaqil relay, AppView va PDS lar
+qanchalik ko‘p bo‘lishiga bog‘liq.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/bluesky/` da:
+`repo.py` — soddalashtirilgan Merkle Search Tree, to‘rtta funksiya TODO;
+`appview.py` — firehose indeksi, oltita joy TODO; `model.py` — tayyor xesh,
+kalit darajasi, o‘quv imzosi va hodisa turlari; `sim.py` — foydalanuvchilar,
+PDS lar va “yomon” relay simulyatori; `check.py` — 19 ta tekshiruv,
+taxminan 5 soniya. Faqat Python standart kutubxonasi.
+
+<Deep title="O'quv imzosi: Schnorr bir sahifada">
+Amaliyotda haqiqiy imzo kutubxonasi o‘rniga `pow` bilan yozilgan
+**Schnorr imzosi** ishlatiladi. Matematikasi haqiqiy, lekin guruh juda
+kichik (128 bit) — xavfsiz emas, faqat tushunish uchun:
+
+```
+Ochiq parametrlar: tub P = 2Q + 1, generator G (Q tartibli guruh)
+Maxfiy kalit: x (tasodifiy son),  ochiq kalit: Y = G^x mod P
+
+Imzolash (xabar m):
+  k = xesh(x, m)           # har xabar uchun bir martalik son (deterministik)
+  R = G^k mod P
+  e = xesh(R, m) mod Q
+  s = (k + x * e) mod Q    -> imzo: (R, s)
+
+Tekshirish:   G^s == R * Y^e  (mod P) ?
+  chunki G^s = G^(k + x e) = G^k * (G^x)^e = R * Y^e
+```
+
+Imzoni yaratish uchun `x` kerak; tekshirish uchun faqat `Y`. `k` ni
+tasodifiy emas, xabar va kalitdan hisoblash — muhim amaliy saboq: bir xil
+`k` ikki xil xabarda ishlatilsa, ikki tenglamadan `x` ni topish mumkin
+(real tizimlarda bunday xato tufayli maxfiy kalitlar oshkor bo‘lgan).
+Haqiqiy AT Protocol secp256k1 yoki P-256 egri chiziqlaridagi ECDSA dan
+foydalanadi — g‘oya o‘xshash, guruh boshqa va ancha katta.
+</Deep>
+
+<Task title="1-daraja: kanonik kodlash va TID">
+Ikki kichik skript. (1) Yozuvni (lug‘atni) JSON ga aylantirib, sha256
+xeshini oling; kalitlar tartibini, bo‘shliqlarni va son ko‘rinishini
+(`1` va `1.0`) o‘zgartirib, xesh qanday o‘zgarishini ko‘ring. Kanonik
+kodlash qoidasini yozing (masalan, `sort_keys`, ixcham ajratgichlar, float
+yo‘q). (2) TID generatori: mikrosekundlar va 10 bitli soat ID si,
+base32-sortable (2-3-4-5-6-7-a-z alifbosi) bilan 13 belgi.
+
+**Tekshiruv mezoni:** (1) bir xil ma’noli 5 xil yozuv ko‘rinishi kanonik
+kodlashda bir xil xesh beradi; (2) 1 000 000 TID ketma-ket yaratilganda
+satr sifatida ham, son sifatida ham qat’iy o‘sadi; (3) bir mikrosekundda
+ikki chaqiruv to‘qnashmaydi; (4) TID dan vaqtni qayta tiklash funksiyasi.
+</Task>
+
+<Task title="2-daraja: repo va AppView (asosiy topshiriq)">
+`repo.py` dagi `build_tree`, `prove`, `verify_proof`, `diff` va
+`appview.py` dagi `_index`, `_put`, `_valid`, `on_event`, `on_resync`,
+`timeline` ni yozing. `python check.py` ularni MST qoidalari va isbotlari,
+AppView birlik testlari, “yomon relay” xaosi va tasma tezligi bilan
+tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 19/19 OK`. Shu jumladan: 200 kalitli repo’ning
+ildiz xeshi aniq javobga teng; 8 xil soxta isbot rad etiladi; 3 000
+kalitda bitta o‘zgarish farqi 60 tugundan kam ochadi; like va follow
+“kim” bo‘yicha sanaladi; soxta imzo, takror va bo‘shliqlar to‘g‘ri
+ishlanadi; 25 ta xaos stsenariysida yakuniy indeks haqiqiy repolar bilan
+aynan bir xil; 100 000 postli tasma 300 so‘rovda 3 soniyadan tez. Keyin
+tajriba: `on_event` dagi bo‘shliq tekshiruvini olib tashlang va xaos
+testida qanday farqlar paydo bo‘lishini ko‘ring.
+</Task>
+
+<Task title="3-daraja: did:plc operatsiyalar jurnali">
+`model.keypair` va `model.sign` bilan did:plc ning soddalashtirilgan
+katalogini yozing (5-qadam Deep): genezis operatsiya (rotatsiya
+kalitlari ro‘yxati, imzo kaliti, handle, PDS), DID — genezis xeshidan;
+keyingi operatsiyalar oldingisiga ishora qiladi va rotatsiya kaliti bilan
+imzolanadi; ustuvorroq kalit pastroq kalit operatsiyasini 72 soat ichida
+bekor qila oladi.
+
+**Tekshiruv mezoni:** (1) noto‘g‘ri imzoli yoki zanjirdan uzilgan
+operatsiya rad etiladi; (2) “PDS kaliti o‘g‘irlandi” stsenariysi: hujumchi
+PDS manzilini o‘zgartiradi, foydalanuvchi 71-soatda ustuvor kalit bilan
+bekor qiladi — hujjat qaytadi; 73-soatda — rad etiladi; (3) hujjatni
+istalgan vaqt nuqtasi uchun jurnaldan qayta hisoblash; (4) katalog
+operatsiyani yashirsa, buni qaysi ma’lumot bilan aniqlash mumkin?
+</Task>
+
+<Task title="4-daraja: tarmoq sig'imi va narxi">
+Skript yoki jadval: kirish — foydalanuvchilar, faollik ulushi, yozuv
+turlari taqsimoti, o‘rtacha yozuv va commit hajmi, relay iste’molchilari
+soni, AppView indeks qatori hajmi va nusxalar soni, trafik va disk narxi.
+Chiqish — firehose (o‘rtacha va cho‘qqi), relay trafigi, AppView indeksi
+(yil bo‘yicha o‘sish), har qatlam oylik narxi.
+
+**Tekshiruv mezoni:** (1) 1.3, 8-qadam, 9-qadam va 12.1 hisoblarini
+takrorlang; (2) “to‘lqin” stsenariysi: bir hafta davomida kuniga 1 M
+yangi hisob va starter pack’lar — firehose, indeks va bildirishnomalar
+qanchaga oshadi (10.2); (3) Jetstream bilan nechta kichik feed generator
+bitta relay chiqishiga sig‘adi?
+</Task>
+
+<Deep title="check.py qanday tekshiradi: haqiqat — PDS'dagi repolar">
+Xaos testining g‘oyasi oddiy: simulyatorda **haqiqat** ma’lum — har
+foydalanuvchining PDS idagi yakuniy repo’si. Undan “to‘g‘ri javob”
+to‘g‘ridan-to‘g‘ri hisoblanadi: kim nimani like qilgan, kim kimni
+kuzatadi, kimning postlari bor (faqat faol hisoblar). AppView esa bu
+haqiqatni faqat **yomon** oqim orqali ko‘radi:
+
+```
+har qadamda:
+  tasodifiy foydalanuvchi: post / tahrir / o'chirish / like / follow (1-3 amal)
+  ba'zan: kalit almashtirish (#identity), hisobni o'chirish/qaytarish (#account),
+          soxta commit (begona kalit bilan)
+tarmoq: commitlarning 3% i yo'qoladi, 3% i takrorlanadi, qo'shnilar o'rni almashadi
+resinxronizatsiya: so'ralgan repo 1-25 qadamdan keyin yetkaziladi
+oxirida: har PDS joriy kalit bilan bo'sh commit yuboradi (bo'shliqlar ochiladi)
+tekshiruv: like_count, follower_count, timeline — haqiqat bilan AYNAN
+```
+
+Test oraliq holatlarni emas, **yakuniy** holatni tekshiradi: bu
+“keyinchalik izchillik” kafolatining aniq ta’rifi — oqim tinchlangach,
+indeks manbaga teng. Oraliqdagi xatolar (masalan, soxta commitni
+vaqtincha qabul qilish) ko‘pincha keyingi resinxronizatsiyada “o‘z-o‘zidan
+tuzaladi” — shuning uchun ular uchun alohida birlik testlari bor.
+</Deep>
+
+<Deep title="Diff: ikki daraxtni bir vaqtda aylanish">
+`diff` ning sodda yo‘li — ikkala repo’ning hamma kalitlarini yig‘ib,
+lug‘atlarni solishtirish: 3 000 kalitda ~800 tugun ochiladi. MST
+determinizmi tufayli tejamkor yo‘l bor: bir xil kalitlar to‘plami — bir
+xil pastki daraxt va **bir xil xesh**.
+
+```
+ikki stek, har biri kalitlar tartibida aylanadi:
+  navbatdagi element: ("daraxt", tugun) yoki ("yozuv", kalit, qiymat)
+
+ikkalasi ham daraxt va xeshlari teng   -> ikkalasini ochmasdan tashla
+bir tomonda daraxt                     -> o'sha daraxtni och (bolalari stekka)
+ikkalasi ham yozuv:
+  kalitlar teng   -> qiymat farqli bo'lsa: o'zgargan
+  chapdagi kichik -> o'chirilgan; o'ngdagi kichik -> qo'shilgan
+```
+
+Bitta o‘zgarish faqat o‘z yo‘lidagi tugunlarni o‘zgartiradi, qolgan
+pastki daraxtlar ikki tomonda bir xil joyda va bir xil xesh bilan uchraydi —
+ular ochilmaydi. Natija ~30–35 tugun. Firehose’dagi “faqat yangi bloklar”
+(4-qadam) va relay’ning commitni tekshirishi aynan shu xususiyatga tayanadi.
+</Deep>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan yigirma
+yettita varianti bilan sinalgan. Repo uchun: darajasiz “tekis” daraxt, eng
+yuqori o‘rniga eng past daraja, bo‘sh ichki tugunlar, isbotni bir tugun
+erta to‘xtatish, ildiz xeshini yoki bola xeshlari zanjirini tekshirmaslik,
+yo‘q kalit uchun istalgan qiymatni qabul qilish, ortiqcha tugunli isbotni
+qabul qilish, qiymatni tekshirmaslik, diff’da bir xil pastki daraxtlarni
+o‘tkazib yubormaslik, o‘chirilgan yoki o‘zgargan kalitlarni ko‘rmaslik.
+AppView uchun: like va follow’ni yozuvlar soni bo‘yicha sanash, o‘chirishda
+indeksni yangilamaslik, imzoni tekshirmaslik, kursorsiz ishlash, bo‘shliqni
+e’tiborsiz qoldirish, kutishda commitlarni tashlab yuborish, resinxronizatsiyada
+eski yozuvlarni qoldirish, o‘chirilgan hisobni indeksda qoldirish, kalit
+keshini yangilamaslik, tasmada teng vaqtni uri bo‘yicha tartiblamaslik,
+tasmani har so‘rovda to‘liq saralash, tahrirda postni ikki marta
+indekslash, suratdan eski commitlarni qayta qo‘llash va suratdan keyingi
+bo‘shliqda qayta so‘ramaslik. Har biri kamida bitta testni yiqitadi.
+Referens yechim esa 340 ta xaos stsenariysidan xatosiz o‘tadi.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| AT Protocol | Bluesky asosidagi ochiq protokol (Authenticated Transfer Protocol) |
+| Repo | Foydalanuvchining hamma ommaviy yozuvlari: imzolangan daraxt |
+| Yozuv (record) | Repo’dagi bitta element: post, like, follow, profil... |
+| Kolleksiya / NSID | Yozuv turi nomi, teskari domen: `app.bsky.feed.post` |
+| Lexicon | Yozuvlar va API sxemalari tili |
+| TID | Vaqtga asoslangan, tartiblanadigan yozuv kaliti |
+| Commit | Repo versiyasi: DID, rev, ildiz xeshi va imzo |
+| rev / since | Commit versiyasi / oldingi versiya |
+| MST | Merkle Search Tree: shakli faqat kalitlarga bog‘liq Merkle daraxti |
+| Inklyuziya isboti | Yozuv repo’da borligini ko‘rsatuvchi tugunlar zanjiri |
+| CID | Ma’lumot xeshiga asoslangan manzil |
+| CAR | Kontent-adreslangan bloklar arxivi (repo eksporti, commit bloklari) |
+| Blob | Rasm yoki video: repo’dan tashqarida, CID orqali |
+| DID | O‘zgarmas, markazlashmagan identifikator |
+| DID hujjati | Joriy imzo kaliti, PDS manzili va handle |
+| did:plc | Imzolangan operatsiyalar jurnali asosidagi DID turi |
+| did:web | Domen asosidagi DID turi |
+| Rotatsiya kaliti | DID hujjatini o‘zgartirish huquqini beruvchi kalit |
+| Handle | Odam uchun ism — domen; ikki tomonlama tekshiriladi |
+| AT URI | `at://did/kolleksiya/kalit` — yozuvning doimiy manzili |
+| PDS | Personal Data Server: hisob uyi, repo va bloblar |
+| Relay | Butun tarmoq firehose’larini yig‘uvchi va tarqatuvchi |
+| Firehose | Repo o‘zgarishlarining tartibli oqimi (subscribeRepos) |
+| seq / kursor | Oqimdagi tartib raqami / iste’molchi qayergacha o‘qigani |
+| Resinxronizatsiya | Bo‘shliqda butun repo’ni manbadan qayta olish |
+| Backfill | Butun tarmoqni noldan yuklab olish |
+| AppView | Firehose’dan indeks quruvchi va ilovalarga javob beruvchi xizmat |
+| To‘ldirish (hydration) | URI ro‘yxatiga matn, sonlar va holatni qo‘shish |
+| Feed generator | Tasma algoritmi xizmati: post URI lari skeletini qaytaradi |
+| Yorliqlovchi (labeler) | Imzolangan moderatsiya yorliqlarini qo‘yuvchi xizmat |
+| Jetstream | Firehose’ning yengil, JSON ko‘rinishi |
+| Starter pack | Bir bosishda ko‘p hisobni kuzatish uchun ro‘yxat |
+| ActivityPub | Mastodon va boshqalar ishlatadigan federatsiya protokoli |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Foydalanuvchilar | 20 M dan ortiq (2024-yil noyabr) | Bluesky e’lonlari, matbuot |
+| Hamma uchun ochilishi | 2024-yil 6-fevral | Bluesky blogi |
+| Post uzunligi | 300 grafema | Lexicon: `app.bsky.feed.post` |
+| MST darajasi | SHA-256 dagi nol bitlar, 2 bitdan (shoxlanish ~4) | AT Protocol repo spetsifikatsiyasi |
+| TID | 13 belgi; 53 bit mikrosekund, 10 bit soat ID si | AT Protocol spetsifikatsiyasi |
+| did:plc tiklash oynasi | 72 soat | did:plc spetsifikatsiyasi |
+| Maxsus feed’lar | 2023-yil may | Bluesky blogi |
+| Ozone va yorliqlovchilar | 2024-yil mart | Bluesky blogi |
+| Jetstream | 2024 | Bluesky blogi |
+| Twitter e’loni | 2019-yil dekabr | Jek Dorsi e’loni |
+| 2-daraja natijalari | 19/19; 27 mutatsiya; 340 xaos stsenariysi | `docs/amaliyot/bluesky/`, referens implementatsiya |
+
+Faol foydalanuvchilar ulushi, kunlik yozuvlar va ularning taqsimoti,
+yozuv va commit hajmlari, firehose va relay trafigi, PDS, relay va
+AppView narxlari, indeks hajmlari, moderatsiya yuklamasi, to‘lqin
+paytidagi raqamlar — **illyustratsiya uchun taxminiy**. Bluesky
+infratuzilmasining ichki raqamlari to‘liq ochiq emas va tez o‘zgaradi;
+darsdagi mexanizmlar ochiq spetsifikatsiyalar, ochiq kod, muhandislar
+yozgan maqola va blog postlariga asoslangan. Asosiy xulosalar —
+o‘z-o‘zini tasdiqlovchi repo, DID va handle ajratilishi, yozish va
+o‘qishning firehose orqali ajratilishi, PDS arzon va AppView qimmat
+ekanligi — bu raqamlarning bir necha barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- AT Protocol spetsifikatsiyalari (atproto.com): Data Model, Lexicon,
+  Repository, DID, Handle, Event Stream (Sync), XRPC
+- Martin Kleppmann, Paul Frazee, Jake Gold, Jay Graber va boshq. (2024),
+  “Bluesky and the AT Protocol: Usable Decentralized Social Media”,
+  ACM CoNEXT workshop (arXiv:2402.03239)
+- did:plc spetsifikatsiyasi (bluesky-social/did-method-plc)
+- Alex Auvolat, François Taïani (2019), “Merkle Search Trees: Efficient
+  State-Based CRDTs in Open Networks”, SRDS
+- W3C (2022), “Decentralized Identifiers (DIDs) v1.0”
+- W3C (2018), “ActivityPub”
+- Bluesky blogi: federatsiya arxitekturasi (2023), maxsus feed’lar (2023),
+  “stackable” moderatsiya va Ozone (2024), Jetstream (2024)
+- Claus-Peter Schnorr (1991), “Efficient Signature Generation by Smart
+  Cards”, Journal of Cryptology
+- Ralph Merkle (1987), “A Digital Signature Based on a Conventional
+  Encryption Function”, CRYPTO (Merkle daraxtlari)

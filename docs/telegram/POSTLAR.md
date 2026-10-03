@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 15 ta dars tayyor:
+Hozir 16 ta dars tayyor:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -54,8 +54,9 @@ Hozir 15 ta dars tayyor:
 13 — Amazon S3 qanday ishlaydi (18 500 so'z)
 14 — Apache Kafka qanday ishlaydi (17 500 so'z)
 15 — Fond birjasi qanday ishlaydi (17 500 so'z)
+16 — Bluesky qanday ishlaydi (16 500 so'z)
 
-Yana 2 tasi rejada: Bluesky va Meta Serverless.
+Yana bittasi rejada: Meta Serverless.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -74,9 +75,9 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-15 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+16 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
 Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA, Amazon S3,
-Kafka, fond birjasi), 2 tasi rejada. Internetsiz ham o'qish mumkin.
+Kafka, fond birjasi, Bluesky), bittasi rejada. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
@@ -474,6 +475,33 @@ buyruqqa bardosh berishi kerak.
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/stock-exchange/
 ```
 
+### 3.16 — Bluesky
+
+```
+Ijtimoiy tarmoqda 10 yil yozdingiz. Bir kuni ketmoqchi bo'ldingiz —
+va bilib qoldingiz: postlaringizni olib ketolmaysiz. Obunachilar,
+havolalar, hatto ismingiz — hammasi platformaniki.
+
+Bluesky bu muammoga muhandislik javobi: hisobingiz — imzolangan
+shaxsiy "repo". Uni istalgan serverga ko'chirish mumkin, va hech kim
+uni sezdirmasdan o'zgartira olmaydi. Ismingiz — domen:
+@dinmuhammad.uz. Algoritmni esa o'zingiz tanlaysiz.
+
+Qanday qilib butun repo bitta xesh bilan ifodalanadi? Like nega
+sizning repo'ngizda saqlanadi, postning egasiniki emas? Server
+o'g'irlansa, hisobni 72 soat ichida qanday qaytarish mumkin?
+
+Yangi dars — Bluesky qanday ishlaydi (16 500 so'z):
+Merkle Search Tree, DID va domen-handle, PDS, relay va butun
+tarmoqning ochiq "firehose" oqimi, AppView, maxsus feed'lar,
+moderatsiya qatlamlari va Mastodon'dan farqi.
+Amaliyotda — imzolangan repo va firehose'dan indeks quruvchi
+AppView yozasiz: "yomon" relay xabarlarni yo'qotadi, takrorlaydi
+va soxta commitlar qo'shadi — indeks baribir to'g'ri chiqishi kerak.
+
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/bluesky/
+```
+
 ---
 
 ## 4. SO'ROVNOMA (poll) — engagement uchun
@@ -484,7 +512,7 @@ Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 
 - Git va GitHub (ob'ektlar, merge, monorepo)
 - Meta Serverless (XFaaS, sovuq start)
-- Bluesky (federatsiya, AT Protocol)
+- Stripe (to'lovlar, idempotentlik, buxgalteriya)
 - Discord (ovozli kanallar, xabarlar bazasi)
 
 ---

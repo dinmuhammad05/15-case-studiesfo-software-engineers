@@ -344,12 +344,13 @@ export const lessons: Lesson[] = [
     order: 16,
     slug: "bluesky",
     title: "Bluesky qanday ishlaydi",
-    summary: "AT Protocol: federatsiya, PDS, relay va algoritmik tanlov erkinligi.",
+    summary:
+      "Hisobingiz — sizniki, algoritm — tanlovingiz: imzolangan shaxsiy repolar, DID va domen-handle, butun tarmoq firehose'i, relay va AppView, maxsus feed'lar va moderatsiya qatlamlari.",
     accent: "#0085ff",
-    status: "rejada",
+    status: "tayyor",
     level: "murakkab",
-    minutes: 30,
-    topics: ["AT Protocol", "Federatsiya", "Firehose", "DID"],
+    minutes: 175,
+    topics: ["AT Protocol", "PDS va repo", "Merkle Search Tree", "DID va handle", "Firehose", "Relay va AppView", "Maxsus feed'lar", "Moderatsiya"],
   },
   {
     order: 17,
