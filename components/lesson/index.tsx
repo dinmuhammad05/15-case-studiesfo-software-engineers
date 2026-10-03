@@ -139,7 +139,7 @@ export function Arch({
               {layer.boxes.map((b) => (
                 <span
                   key={b}
-                  className="flex-1 rounded-md border border-[var(--skin-border)] bg-[var(--skin-surface-2)] px-3 py-2.5 text-center text-xs font-medium sm:whitespace-nowrap"
+                  className="flex-1 rounded-md border border-[var(--skin-border)] bg-[var(--skin-surface-2)] px-3 py-2.5 text-center text-xs font-medium"
                   style={{ minWidth: "9rem" }}
                 >
                   {b}

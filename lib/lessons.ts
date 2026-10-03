@@ -356,12 +356,13 @@ export const lessons: Lesson[] = [
     order: 17,
     slug: "meta-serverless",
     title: "Meta Serverless qanday ishlaydi",
-    summary: "XFaaS: million darajadagi funksiya chaqiruvi, sovuq start va rejalashtirish.",
+    summary:
+      "Kuniga trillionlab funksiya chaqiruvi va 66% o'rtacha bandlik: sovuq startni yo'qotish, kechiktiriladigan ishni tunga surish, muddat va kvota bilan rejalashtirish, ma'lumotlar bazasini TCP kabi himoya qilish.",
     accent: "#0064e0",
-    status: "rejada",
+    status: "tayyor",
     level: "murakkab",
-    minutes: 30,
-    topics: ["FaaS", "Scheduling", "Cold start", "Quota"],
+    minutes: 170,
+    topics: ["FaaS", "Sovuq start", "Universal worker", "Rejalashtirish (EDF)", "Kvotalar", "Vaqt bo'yicha surish", "AIMD", "Lokallik guruhlari"],
   },
 ];
 

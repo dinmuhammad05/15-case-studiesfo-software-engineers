@@ -1,0 +1,31 @@
+/* Meta Serverless skini — ichki funksiyalar konsoli uslubi (rasmiy brend materiali emas) */
+[data-skin="xfaas"] {
+  --skin-bg: #f0f2f5;
+  --skin-surface: #ffffff;
+  --skin-surface-2: #f5f6f8;
+  --skin-border: #dadde1;
+  --skin-text: #1c1e21;
+  --skin-muted: #65676b;
+  --skin-accent: #0064e0;
+  --skin-accent-text: #ffffff;
+  --skin-ring: rgba(0, 100, 224, 0.3);
+  --skin-radius: 8px;
+  --skin-font: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  --skin-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --xf-nav: #1c2b33;
+  --xf-nav-2: #263a44;
+  --xf-ok: #31a24c;
+  --xf-run: #0064e0;
+  --xf-warn: #e0a100;
+  --xf-soft: #e7f0fd;
+}
+
+[data-skin="xfaas"] .lesson-prose h2 {
+  letter-spacing: -0.015em;
+}
+
+body:has([data-skin="xfaas"]) {
+  background: #f0f2f5;
+  color-scheme: light;
+}

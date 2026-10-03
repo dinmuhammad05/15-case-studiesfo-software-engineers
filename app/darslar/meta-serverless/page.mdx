@@ -1,0 +1,2259 @@
+## Bu darsda nima o‘rganasiz
+
+Instagram’ga rasm yukladingiz. Ekranda u bir soniyada paydo bo‘ladi, lekin
+orqada ish endigina boshlanadi: rasmni bir necha o‘lchamda siqish,
+obunachilarga bildirishnoma tayyorlash, qidiruv indeksini yangilash,
+nomaqbul kontentni tekshirish, tavsiya tizimi uchun belgilarni hisoblash,
+statistikani yangilash. Bularning hech biri sizning “Yuklash” tugmangizni
+kutib turmaydi — ular **fonda**, keyinroq bajariladi.
+
+Meta’da bunday fon ishlarini minglab muhandis yozadi. Ular server
+sotib olmaydi, ishga tushirmaydi va kuzatmaydi — faqat **funksiya** yozadi:
+“rasm yuklanganda shu kodni ishga tushir”. Qolgan hamma ishni ichki
+platforma — **XFaaS** — qiladi. 2023-yilda SOSP konferensiyasida chop
+etilgan maqolaga ko‘ra, XFaaS kuniga **trillionlab** funksiya chaqiruvini
+100 000 dan ortiq serverda bajaradi.
+
+Bu darsning savoli — tezlik emas, **samaradorlik**. Funksiya platformalari
+odatda serverlarni yomon band qiladi: ko‘p vaqt ular bo‘sh turadi va eng
+og‘ir daqiqani kutadi. XFaaS esa o‘rtacha **66%** CPU bandligiga erishgan —
+maqola mualliflari fikricha, bu odatiy FaaS platformalaridan bir necha
+barobar yuqori. Dars bunga olib kelgan to‘rtta g‘oyani ochadi:
+
+**1. Sovuq startni yo‘qotish.** Funksiya birinchi marta ishga tushganda
+kod yuklanadi, kompilyatsiya qilinadi, keshlar to‘ladi — soniyalar ketadi.
+XFaaS “har ishchi har funksiyani darhol bajara oladi” degan holatga
+yaqinlashadi.
+
+**2. Ishni vaqt va makon bo‘yicha surish.** Chaqiruvlar oqimi kun davomida
+4 barobardan ko‘proq o‘zgaradi. Kutishi mumkin bo‘lgan ishlar tunga va
+bo‘sh hududlarga suriladi — serverlar cho‘qqi uchun emas, o‘rtacha uchun
+sotib olinadi.
+
+**3. Muddat va kvota bilan rejalashtirish.** Minglab jamoa bitta hovuzni
+bo‘lishadi: kim birinchi, kim kutadi, kim qanchadan oshmasligi kerak.
+
+**4. Boshqa xizmatlarni himoya qilish.** Million funksiya bir vaqtda
+bitta ma’lumotlar bazasiga yopirilsa — baza yiqiladi. XFaaS internetdagi
+TCP kabi “tirbandlik nazorati” ishlatadi.
+
+Har yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan beriladi. Dars oxirida — butun darsning o‘n gaplik
+xulosasi. Oldingi darslardan foydali: Kafka darsidagi navbat va lag, fond
+birjasi darsidagi muddat va ustuvorlik, YouTube darsidagi transkodlash
+(fon ishining klassik misoli) va Amazon S3 darsidagi “cho‘qqi uchun
+rejalashtirish”.
+
+<Callout type="info" title="XFaaS — ichki platforma, AWS Lambda emas">
+AWS Lambda, Google Cloud Functions kabi **ommaviy** FaaS xizmatlari
+begona mijozlar kodini ishga tushiradi: ular bir-biriga ishonmaydi, kodlari
+turli tillarda, va har mijoz o‘zi to‘laydi. XFaaS — **bitta kompaniya
+ichidagi** platforma: kod bitta repozitoriyda, asosan bir nechta tilda,
+xodimlar yozgan. Bu farq ko‘p dizayn qarorlarini o‘zgartiradi — masalan,
+“hamma funksiyaning kodini hamma serverga oldindan qo‘yish” ommaviy
+bulutda mumkin emas, ichkarida esa — mumkin (16-bo‘lim).
+</Callout>
+
+## 1. Muammo: minglab jamoa, milliardlab fon vazifasi
+
+### 1.1 Serverless oddiy tilda
+
+Oddiy tilda: siz restoranda ovqat buyurasiz, oshxonani qurmaysiz, oshpaz
+yollamaysiz, gaz uchun to‘lamaysiz. Faqat “nima kerak”ni aytasiz. **Serverless**
+(“serversiz”) — dasturchi uchun xuddi shu: u faqat **funksiya** yozadi —
+qaysi hodisada nima qilish kerak. Server qayerda, nechta, qachon yoqiladi —
+platformaning ishi.
+
+Albatta, serverlar baribir bor — ular shunchaki dasturchiga ko‘rinmaydi.
+Platforma uchun esa savollar ko‘payadi: qaysi funksiyani qaysi serverda,
+qachon, qancha resurs bilan bajarish; kodni qanday yetkazish; xato
+bo‘lsa nima qilish.
+
+### 1.2 Talablar
+
+| Talab | O‘lchanadigan ko‘rsatkich |
+| --- | --- |
+| Masshtab | Kuniga trillionlab chaqiruv, 100 000+ server, o‘nlab hudud |
+| Samaradorlik | Serverlarning o‘rtacha CPU bandligi — iloji boricha yuqori |
+| Muddat | Har chaqiruv o‘z muddatida: soniyalardan 24 soatgacha |
+| Adolat | Minglab jamoa: har biri o‘z kvotasida, bir-biriga xalaqit bermasdan |
+| Himoya | Funksiyalar boshqa xizmatlarni (bazalar, keshlar) ortiqcha yuklamasin |
+| Ishonchlilik | Navbatga qo‘yilgan chaqiruv yo‘qolmaydi; xato — qayta urinish |
+| Dasturchi tajribasi | Kod yozish va chiqarish — daqiqalar; serverlar haqida o‘ylamaslik |
+
+Ikkinchi va uchinchi qator — darsning asosiy ziddiyati. Yuqori bandlik
+uchun serverlar doim to‘la ishlashi kerak; muddatlar uchun esa doim bo‘sh
+joy bo‘lishi kerak. XFaaS bu ziddiyatni **muddatlar har xilligi** orqali
+hal qiladi: shoshilinch ishlar darhol bajariladi, kutishi mumkinlar esa
+bo‘sh joyni to‘ldiradi.
+
+### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="1 T+" label="Kunlik funksiya chaqiruvlari" hint="Trillionlab — XFaaS maqolasi, 2023" />
+  <Stat value="100 000+" label="Serverlar" hint="XFaaS maqolasi" />
+  <Stat value="66%" label="Kunlik o'rtacha CPU bandligi" hint="XFaaS maqolasi" />
+  <Stat value="4.3x" label="Chaqiruvlar: cho'qqi / eng past" hint="CPU bandligida — atigi 1.4x" />
+</StatGrid>
+
+<Calc title="Kuniga trillion chaqiruv: sekundiga qancha" result="Kuniga 2 trillion chaqiruv — sekundiga ~23 million; 100 000 serverda har biriga ~230/s; cho'qqida ikki barobardan ko'proq">{`Faraz: kuniga 2 000 000 000 000 chaqiruv ("trillionlab")
+Sekundiga: 2e12 / 86 400 = ~23 M chaqiruv/s (o'rtacha)
+
+Serverlar: 100 000
+  bitta server: ~230 chaqiruv/s o'rtacha
+  -> bitta chaqiruv o'rtacha bir necha ms dan o'nlab ms gacha CPU oladi
+
+Oqim kun davomida o'zgaradi: cho'qqi / eng past = 4.3x (maqola)
+  -> o'rtachadan ~1.7-2x yuqori cho'qqi
+  agar har chaqiruv KELGAN PAYTIDA bajarilsa, serverlar cho'qqiga
+  mo'ljallanishi kerak edi`}</Calc>
+
+<Calc title="Bandlik pul: 20% va 66% farqi" result="Bir xil ish uchun 20% bandlikdagi platforma 66% bandlikdagidan ~3.3 barobar ko'p server talab qiladi: 100 000 o'rniga ~330 000">{`Kunlik ish hajmi (faraz): W = 66 000 server-kun "toza CPU"
+  (100 000 server x 66% o'rtacha bandlik)
+
+Odatiy FaaS (masalan, o'rtacha 20% bandlik):
+  W / 0.20 = 330 000 server
+XFaaS (66%):
+  W / 0.66 = 100 000 server
+
+Farq: ~230 000 server
+  bitta server (uskuna + elektr + ma'lumot markazi) yiliga ~3 000-5 000 $ (faraz)
+  -> yiliga ~0.7-1.2 mlrd $ farq
+
+Xulosa: bandlikni oshirish — platformaning eng katta "funksiyasi"`}</Calc>
+
+<Calc title="Sovuq start: kichik kechikish x katta son" result="Har chaqiruvda 1 soniya sovuq start — doimiy ~11.6 million yadro faqat isinish bilan band; 1% chaqiruvda bo'lsa ham — ~116 000 yadro">{`Faraz: kuniga 1e12 chaqiruv, o'rtacha ish ~20 ms CPU
+  toza ish: 1e12 x 0.02 s = 2e10 CPU-soniya/kun
+
+Agar HAR chaqiruvda 1 s sovuq start (kod yuklash, runtime, JIT isinishi):
+  1e12 x 1 s = 1e12 CPU-soniya/kun -> toza ishdan 50 barobar ko'p!
+  ~ 1e12 / 86 400 = ~11.6 M yadro doimo "isinish" bilan band
+
+Agar faqat 1% chaqiruv sovuq bo'lsa:
+  1e10 CPU-soniya/kun — toza ishning yarmi, ~116 000 yadro doimo
+
+-> sovuq start XFaaS uchun "kechikish" emas, "pul" muammosi`}</Calc>
+
+<Check q="Nega XFaaS uchun o'rtacha kechikishdan ko'ra o'rtacha CPU bandligi muhimroq ko'rsatkich?">
+Chunki XFaaS chaqiruvlarining asosiy qismi **fon ishlari**: foydalanuvchi
+ularni kutmaydi. Rasm yuklangandan keyin uning kichik nusxasi 2 soniyada
+yoki 20 soniyada tayyor bo‘lishi ko‘pincha sezilmaydi; tavsiya belgilarining
+hisobi esa bir necha soat kechiksa ham hech kim bilmaydi.
+
+Bandlik esa to‘g‘ridan-to‘g‘ri **pul**: bir xil ish uchun 20% bandlikdagi
+platforma 66% bandlikdagidan ~3.3 barobar ko‘p server talab qiladi —
+100 000 server o‘rniga 330 000 (1.3 hisob). Bu yiliga milliardlab dollar.
+
+Kechikish ahamiyatsiz emas: shoshilinch funksiyalar uchun muddat qat’iy
+(soniyalar). Lekin dizaynning asosiy maqsadi — **muddatlarni buzmasdan**
+bandlikni maksimal qilish. Kechiktirishga chidamli ishlar shu maqsadning
+kaliti: ular bo‘sh joyni to‘ldiradi.
+</Check>
+
+## 2. Nol nuqta: funksiya, chaqiruv va navbat
+
+### 2.1 Sinxron va asinxron
+
+Oddiy tilda: **telefon qo‘ng‘irog‘i** — siz javobni kutasiz, suhbatdosh
+hozir band bo‘lsa, qo‘ng‘iroq bo‘lmaydi. **Xat** — siz yuborasiz va o‘z
+ishingizga qaytasiz; javob keyinroq keladi, qabul qiluvchi o‘zi qulay
+paytda o‘qiydi.
+
+Ko‘pchilik ommaviy FaaS xizmatlari asosan “telefon” — HTTP so‘rovga
+sinxron javob. XFaaS esa asosan “xat” — **asinxron** chaqiruvlar: chaqiruvchi
+funksiyani navbatga qo‘yadi va kutmaydi. Bu bitta farq rejalashtirishga
+erkinlik beradi: chaqiruvni **qachon** bajarishni platforma tanlaydi —
+muddat ichida.
+
+### 2.2 Uch xil ishga tushirish va ularning ulushi
+
+XFaaS’da funksiya uch yo‘l bilan chaqiriladi, va ularning ulushlari juda
+turlicha (maqoladagi ma’lumot):
+
+| Trigger | Misol | Funksiyalar | Chaqiruvlar | Hisoblash |
+| --- | --- | --- | --- | --- |
+| Navbat (queue) | Kod “bu ishni bajar” deb navbatga qo‘yadi | 89% | 15% | 86% |
+| Hodisa (event) | Ma’lumotlar bazasida o‘zgarish bo‘ldi | 8% | 85% | 14% |
+| Taymer | Har soatda hisobot | 3% | 1% dan kam | 1% dan kam |
+
+Jadval qiziq manzara beradi. Chaqiruvlarning **ko‘pi** — hodisa bilan
+ishga tushadigan, qisqa funksiyalar. **Hisoblashning ko‘pi** esa navbatdagi
+funksiyalarda: ular kamroq chaqiriladi, lekin har biri og‘ir. Aynan shu
+og‘ir, navbatdagi ishlar ko‘pincha kechiktirishga chidamli — va
+vaqt bo‘yicha surishning asosiy “xomashyosi” (9-qadam).
+
+### 2.3 Kamida bir marta va idempotentlik
+
+Navbatga qo‘yilgan chaqiruv **yo‘qolmasligi** kerak: platforma uni bardoshli
+saqlaydi va bajarilganini tasdiqlamaguncha o‘chirmaydi. Ishchi bajarish
+o‘rtasida o‘lsa — chaqiruv boshqa ishchiga beriladi. Natija: har chaqiruv
+**kamida bir marta** bajariladi, ba’zan esa ikki marta (ishchi bajarib
+bo‘lgan, lekin tasdiq yetib bormagan).
+
+Shuning uchun funksiyalar **idempotent** bo‘lishi kerak: ikki marta bajarish
+bir marta bajarish bilan bir xil natija bersin. “Rasmning kichik nusxasini
+yasab, shu nom bilan saqla” — idempotent. “Hisoblagichni 1 ga oshir” —
+idempotent emas, unga chaqiruv identifikatori bo‘yicha “allaqachon
+qilinganmi?” tekshiruvi kerak (Airbnb darsidagi idempotentlik kalitlari).
+
+### 2.4 To‘rt rol bitta rasmda
+
+Darsning qolgan qismida to‘rtta rol doim uchraydi. Ularni bitta katta
+**oshxona** bilan eslab qolish oson:
+
+**Chaqiruvchi** — ofitsiant: buyurtmani yozib, oshxonaga beradi va zalga
+qaytadi. U ovqat pishishini kutib turmaydi.
+
+**Navbat** — buyurtmalar taxtasi: har buyurtma unda yozilgan, “shoshilinch”
+yoki “ertagacha” belgisi bilan. Taxta yonib ketmasligi uchun uning nusxasi
+boshqa xonada ham bor.
+
+**Rejalashtiruvchi** — bosh oshpaz: taxtaga qarab, kim nimani qachon
+pishirishini hal qiladi. Har bo‘limning kunlik limiti va ombor holatini
+ham hisobga oladi.
+
+**Ishchilar** — oshpazlar: berilgan buyurtmani bajaradi. Ular qancha
+retseptni yoddan bilsa (issiq kesh), shuncha tez.
+
+Va beshinchi, ko‘pincha unutiladigan rol — **downstream**: ombor va
+masalliq yetkazuvchilar. Oshpazlar qanchalik tez bo‘lmasin, ombor
+sekundiga faqat bir necha qop bera oladi. Yaxshi bosh oshpaz omborni
+ham “yiqitmaydi”.
+
+<Callout type="info" title="Oddiy tilda: funksiya, chaqiruv, navbat">
+**Funksiya** — retsept: “rasm kelsa, uch o‘lchamda kichraytir”. **Chaqiruv**
+— buyurtma: “mana shu rasmni kichraytir, ertaga ertalabgacha”. **Navbat** —
+buyurtmalar daftari: oshxona (ishchilar) undan navbat bilan oladi,
+lekin ba’zi buyurtmalar “shoshilinch” deb belgilangan, ba’zilari esa
+“ertagacha bo‘lsa ham bo‘ladi”. Oshxonaning san’ati — daftarni shunday
+o‘qishki, hech bir shoshilinch buyurtma kechikmasin va oshpazlar hech
+qachon bekor turmasin.
+</Callout>
+
+<Check q="Nega asinxron chaqiruvlar platformaga sinxronlardan ko'ra ko'proq erkinlik beradi?">
+Sinxron chaqiruvda chaqiruvchi **javobni kutib turadi**: platforma uni
+darhol bajarishi kerak, aks holda chaqiruvchi ham kutadi (va foydalanuvchi
+ham). Cho‘qqida esa “darhol” degani — cho‘qqi uchun yetarli server.
+
+Asinxron chaqiruvda chaqiruvchi faqat “navbatga qo‘yildi” javobini oladi
+va davom etadi. Platforma chaqiruvni **muddat ichida istalgan paytda**
+bajarishi mumkin: cho‘qqida — keyinga surish, bo‘sh paytda — bajarish;
+yuklangan hududda emas — bo‘sh hududda; bitta sekin xizmatga tegadigan
+bo‘lsa — uning holatiga qarab sekinroq.
+
+Uch erkinlik — vaqt, joy, tezlik — bandlikni oshirishning asosiy vositalari
+(9–11-qadamlar). Narxi: natija keyinroq tayyor bo‘ladi, va kod kamida bir
+marta bajarilishga (idempotentlikka) tayyor bo‘lishi kerak.
+</Check>
+
+## 3. v0: har jamoaning o‘z serverlari va cron
+
+Platformasiz eng sodda yo‘l: har jamoa o‘z fon ishlari uchun bir necha
+server oladi va ishchi jarayon yozadi. Navbat — ma’lumotlar bazasidagi
+jadval:
+
+```python
+import time
+
+def worker_loop(db, handler, team):
+    while True:
+        job = db.query_one(
+            "SELECT * FROM jobs WHERE team = %s AND state = 'new' "
+            "ORDER BY created LIMIT 1 FOR UPDATE SKIP LOCKED", team)
+        if job is None:
+            time.sleep(1)              # navbat bo'sh — kutamiz
+            continue
+        try:
+            handler(job.payload)       # jamoaning kodi
+            db.execute("UPDATE jobs SET state = 'done' WHERE id = %s", job.id)
+        except Exception:
+            db.execute("UPDATE jobs SET state = 'new', tries = tries + 1 WHERE id = %s", job.id)
+```
+
+Taymerli ishlar uchun — `cron`. Bu v0 **ishlaydi**: kichik kompaniyada
+o‘nlab jamoa shunday yashaydi. Muammolar jamoalar soni, yuklama tebranishi
+va umumiy resurslar bilan chiqadi — 4-bo‘lim.
+
+Bu kod yomon emas: `FOR UPDATE SKIP LOCKED` bir nechta ishchining bitta
+ishni olmasligini ta’minlaydi, xato bo‘lsa — ish qayta navbatga qaytadi.
+Lekin unda platformaning har bir qismi har jamoada **qayta** yozilgan va
+**kichik** holda:
+
+| v0 da | XFaaS da | Qadam |
+| --- | --- | --- |
+| Jamoaning `jobs` jadvali | Umumiy bardoshli navbat (DurableQ) | 2 |
+| Jamoaning ishchi serverlari | Umumiy ishchilar hovuzi | 3 |
+| `ORDER BY created` | Kritiklik + muddat bo‘yicha rejalashtirish | 7 |
+| Kvota yo‘q (server soni — kvota) | Token chelak va opportunistik kvota | 8 |
+| `time.sleep(1)` — bo‘sh kutish | Bandlik nazoratchisi, vaqt bo‘yicha surish | 9 |
+| `tries = tries + 1` va darhol qayta | Kutish bilan qayta urinish, budjet | 12 |
+| Downstream haqida hech narsa | AIMD tirbandlik nazorati | 11 |
+
+## 4. Nima sindi
+
+v0 ga 1-bo‘limdagi talablarni qo‘yamiz: minglab jamoa, kuniga trillionlab
+chaqiruv, umumiy bazalar va keshlar. Har muammo 5-bo‘limdagi bir yoki bir
+nechta qadamga olib keladi.
+
+### 4.1 Har jamoa — o‘z cho‘qqisi
+
+Oddiy tilda: har oila o‘z to‘yi uchun alohida to‘yxona quradi va yilning
+qolgan kunlari u bo‘sh turadi.
+
+<Calc title="Alohida serverlar: har jamoa o'z cho'qqisiga" result="1 000 jamoa, har biri o'z cho'qqisi uchun 3x zaxira bilan: o'rtacha bandlik ~15-20%; umumiy hovuzda cho'qqilar to'qnashmagani uchun 2-3 barobar kam server">{`Jamoalar: 1 000, har biri o'rtacha 10 server-ish
+Har jamoaning cho'qqisi o'rtachadan 3x (o'z vaqtida, faraz)
+  alohida: har jamoa 30 server -> 30 000 server, bandlik 10 000 / 30 000 = 33%
+  + "har ehtimolga qarshi" zaxira, kichik jamoalarda min. 2 server -> ~15-20%
+
+Umumiy hovuz: jamoalar cho'qqilari turli vaqtda (tasodifiy)
+  yig'indi tebranishi kichikroq: masalan, umumiy cho'qqi o'rtachadan 1.5x
+  -> 15 000 server, bandlik ~66%
+
+"Statistik multiplekslash": ko'p mustaqil yuklamaning yig'indisi
+  har biridan ko'ra silliqroq`}</Calc>
+
+### 4.2 Butun kompaniya cho‘qqisi
+
+Umumiy hovuz ham yetarli emas: odamlar kunduzi faol, tunda — kam.
+Chaqiruvlar oqimi kun davomida 4 barobardan ko‘proq o‘zgaradi (1.3).
+Har chaqiruv kelgan zahoti bajarilsa, hovuz baribir cho‘qqiga mo‘ljallanadi,
+tunda esa yarmi bo‘sh turadi. Kerak: ishni **vaqt** bo‘yicha surish (9-qadam).
+
+### 4.3 Sovuq start
+
+v0 da har jamoaning ishchisi doim yoqiq — sovuq start yo‘q, lekin bandlik
+past. Umumiy hovuzda esa ishchi “bugun kimning funksiyasini” bajarishini
+oldindan bilmaydi: kodni yuklash, runtime’ni ishga tushirish, JIT
+kompilyatorni isitish — har safar soniyalar (1.3). Kerak: kod oldindan
+hamma joyda, keshlar issiq (4–6-qadamlar).
+
+### 4.4 Bazani bosib ketish
+
+Bir jamoa yangi funksiya chiqardi: “har foydalanuvchi uchun statistikani
+qayta hisobla”. Navbatda 500 million chaqiruv. Bo‘sh hovuz ularni
+darhol bajara boshlaydi — va hammasi **bitta** ma’lumotlar bazasiga
+yopiriladi.
+
+<Calc title="Fon ishi bazani qanday yiqitadi" result="10 000 bo'sh ishchi x har biri sekundiga 50 so'rov = 500 000 so'rov/s bazaga; baza sig'imi 100 000/s bo'lsa — 5 barobar ortiqcha, foydalanuvchi so'rovlari ham sekinlashadi">{`Navbatda: 500 000 000 chaqiruv, har biri bazaga 5 so'rov
+Bo'sh ishchilar (tunda): 10 000, har biri sekundiga ~10 chaqiruv
+  -> 100 000 chaqiruv/s x 5 = 500 000 so'rov/s bazaga
+
+Baza sig'imi (faraz): 100 000 so'rov/s, shundan 60 000 — foydalanuvchilar
+  fon ishi uchun bo'sh: ~40 000/s
+  ortiqcha: 500 000 / 40 000 = 12.5 barobar
+
+Natija: baza navbatlari to'ladi, foydalanuvchi so'rovlari ham kutadi,
+  xatolar -> qayta urinishlar -> yana ko'p so'rov (4.6)
+Kerak: fon ishi bazaning holatiga qarab sekinlashsin (11-qadam)`}</Calc>
+
+### 4.5 Shovqinli qo‘shni
+
+Umumiy hovuzda bitta jamoaning xatoli funksiyasi (cheksiz qayta urinish,
+xotira oqishi, juda uzun bajarilish) boshqalarning resursini yeydi. Kerak:
+har funksiya uchun **kvota** va resurs chegaralari (8, 13-qadamlar).
+
+### 4.6 Takrorlar bo‘roni
+
+v0 da xato bo‘lsa — chaqiruv darhol qayta navbatga qo‘yiladi. Agar xato
+sababi bazaning ortiqcha yuklanishi bo‘lsa, qayta urinishlar yukni
+**oshiradi** va baza hech qachon tiklanmaydi. Kerak: kechikish bilan qayta
+urinish, urinishlar budjeti va tirbandlik nazorati (11–12-qadamlar).
+
+### 4.7 Butun hudud ishdan chiqadi
+
+v0 navbati bitta bazada, ishchilar bitta ma’lumot markazida. Markaz
+o‘chsa — hammasi to‘xtaydi; boshqa markazlarda esa bo‘sh serverlar
+turibdi. Kerak: navbat va ishchilar bir nechta hududda, va hududlar
+orasida yukni almashish (2, 10-qadamlar).
+
+<Callout type="ogoh" title="Bo'sh resurs — eng xavfli resurs">
+Paradoks: bo‘sh serverlar nafaqat pul isrofi, balki **xavf** ham. Bo‘sh
+hovuz yangi ishni cheklovsiz tezlikda bajarishga tayyor — va aynan shu
+tezlik boshqa xizmatlarni yiqitadi (4.4). Katta platformada “tezroq
+bajarish” har doim ham yaxshi emas: ish **qabul qiluvchi xizmat ko‘tara
+oladigan** tezlikda bajarilishi kerak.
+</Callout>
+
+### 4.8 Muammolar ro‘yxati
+
+| Muammo | Nima kerak | Qadam |
+| --- | --- | --- |
+| Har jamoa o‘z serverida | Funksiya — kod va spetsifikatsiya | 1 |
+| Navbat — bitta baza | Yuboruvchi va bardoshli navbat | 2 |
+| Har jamoaning cho‘qqisi | Umumiy ishchilar hovuzi | 3 |
+| Sovuq start | Universal ishchi, lokallik guruhlari, kooperativ JIT | 4, 5, 6 |
+| Kim birinchi | Kritiklik va muddat bilan rejalashtirish | 7 |
+| Shovqinli qo‘shni | Kvotalar | 8 |
+| Kompaniya cho‘qqisi | Vaqt bo‘yicha surish | 9 |
+| Bitta hudud | Hududlararo surish | 10 |
+| Bazani bosib ketish | Tirbandlik nazorati | 11 |
+| Takrorlar bo‘roni | Qayta urinish siyosati | 12 |
+| Begona kod bir serverda | Izolyatsiya va xavfsizlik | 13 |
+| Kodni yetkazish | Uzluksiz chiqarish va versiyalar | 14 |
+
+<Check q="Nega umumiy hovuz alohida jamoa serverlaridan kam server talab qiladi, garchi ish hajmi bir xil bo'lsa ham?">
+Chunki **cho‘qqilar bir vaqtda bo‘lmaydi**. Har jamoa o‘z serverlarini o‘z
+eng og‘ir daqiqasi uchun oladi, va qolgan vaqtda ular bo‘sh. Umumiy
+hovuzda esa bir jamoaning cho‘qqisi boshqasining sokin paytiga to‘g‘ri
+keladi: yig‘indi yuklama har bir alohida yuklamadan ancha silliq.
+
+Bu **statistik multiplekslash**: ko‘p mustaqil tasodifiy yuklamaning
+yig‘indisida nisbiy tebranish taxminan jamoalar sonining kvadrat ildiziga
+teskari kamayadi. 1 000 ta jamoa bilan umumiy cho‘qqi o‘rtachadan biroz
+yuqori, alohida cho‘qqilar yig‘indisi esa ancha katta.
+
+Lekin multiplekslash faqat **mustaqil** tebranishlarni silliqlaydi.
+Butun kompaniya bo‘yicha umumiy ritm — kunduz va tun — hamma jamoalarda bir
+xil, va u umumiy hovuzda ham qoladi. Uni faqat ishni vaqt bo‘yicha surish
+yo‘qotadi (9-qadam).
+</Check>
+
+## 5. Evolyutsiya: o‘n to‘rt qadam
+
+Qadamlar mantiqiy tartibda: 1–3 — funksiya, navbat va umumiy hovuz;
+4–6 — sovuq startga qarshi kurash; 7–10 — nimani, qachon va qayerda
+bajarish; 11–12 — boshqalarni himoya qilish; 13–14 — xavfsizlik va kod
+yetkazish.
+
+<Step n={1} title="Funksiya: kod va spetsifikatsiya" gain="Dasturchi faqat kod va 'qoidalar'ni yozadi; platforma ularga ko'ra rejalashtiradi" cost="Spetsifikatsiya noto'g'ri bo'lsa (masalan, hamma narsa 'shoshilinch'), rejalashtirish ishlamaydi">
+
+Oddiy tilda: oshxonaga retsept bilan birga yorliq ham beriladi: “issiq
+taom, 10 daqiqada”, “tort, ertagacha”, “bir kunda 100 tadan ko‘p emas”.
+Yorliqsiz oshpaz hamma narsani birinchi bo‘lib pishirishga urinadi.
+
+Funksiya — kod va uning **spetsifikatsiyasi**: qaysi trigger bilan
+chaqiriladi (navbat, hodisa, taymer), **kritikligi** (qanchalik muhim),
+**muddati** (chaqiruvdan keyin qancha vaqt ichida bajarilishi kerak —
+soniyalardan 24 soatgacha), **kvotasi** (sekundiga qancha chaqiruv),
+qaysi tashqi xizmatlarga murojaat qiladi va qancha resurs oladi.
+
+<Calc title="Spetsifikatsiya rejalashtirishga qanday ta'sir qiladi" result="Bir xil 1 mln chaqiruv: '10 soniyada' deyilsa — darhol 100 000/s sig'im kerak; '24 soatda' deyilsa — o'rtacha ~12/s yetadi, ya'ni tunda bo'sh joy bilan">{`Ish: 1 000 000 chaqiruv, har biri ~50 ms CPU
+Variant A: muddat 10 s  -> 1 000 000 / 10 = 100 000 chaqiruv/s
+  -> ~5 000 yadro 10 soniya davomida, aynan HOZIR
+Variant B: muddat 24 soat -> 1 000 000 / 86 400 = ~12 chaqiruv/s
+  -> ~0.6 yadro o'rtacha, yoki tunda bo'sh 1 000 yadroda ~1 daqiqa
+
+Bir xil ish — 8 000 barobar farqli "shoshilinchlik"
+  -> to'g'ri muddat — platformaga eng qimmatli ma'lumot`}</Calc>
+
+Narxi — **halollik**. Har jamoa o‘z funksiyasini “juda muhim, darhol”
+deb belgilashga moyil. Shuning uchun yuqori kritiklik va qisqa muddat
+**qimmat** bo‘lishi kerak: ular uchun kvota cheklangan va ko‘rib chiqiladi
+(8-qadam).
+</Step>
+
+<Step n={2} title="Yuboruvchi va bardoshli navbat" gain="Chaqiruv qabul qilingan zahoti yo'qolmaydi; chaqiruvchi kutmaydi; navbat hududlar bo'yicha taqsimlangan" cost="Yana bitta katta taqsimlangan tizim; kamida bir marta yetkazish — takrorlar">
+
+Oddiy tilda: pochta bo‘limi. Siz xatni topshirasiz, chek olasiz — endi
+xat pochtaning mas’uliyatida. U qachon yetkazilishi — pochtaning ishi,
+lekin xat yo‘qolmasligi kerak.
+
+XFaaS’da chaqiruv **yuboruvchi** (submitter) orqali kiradi: u chaqiruvni
+tekshiradi va funksiya kvotasini qo‘llaydi (cheklovdan oshsa — rad yoki
+kechiktirish). Keyin **navbat balanslovchisi** (QueueLB) chaqiruvni
+hududlardagi bir nechta **bardoshli navbatlardan** (DurableQ) biriga
+yozadi. Chaqiruv u yerda bajarilib, tasdiqlanmaguncha saqlanadi.
+Rejalashtiruvchilar (scheduler) navbatlardan chaqiruvlarni oladi.
+
+<Calc title="Navbat hajmi: qancha chaqiruv kutib turadi" result="Sekundiga 23 M chaqiruv, o'rtacha kutish 10 daqiqa (shoshilinchlar soniyalar, kechiktiriladiganlar soatlar): navbatda ~14 mlrd chaqiruv; har biri ~1 KB — ~14 TB bardoshli xotira">{`Kiruvchi oqim: ~23 M chaqiruv/s (1.3)
+O'rtacha navbatda turish (faraz):
+  70% chaqiruvlar: soniyalar
+  30% (kechiktiriladiganlar): o'rtacha ~30 daqiqa
+  -> o'rtacha ~10 daqiqa (600 s)
+
+Littl qonuni: navbatdagi soni = kirish tezligi x o'rtacha kutish
+  = 23 M/s x 600 s = ~14 mlrd chaqiruv
+
+Har chaqiruv (funksiya nomi, argumentlar, metadata): ~1 KB (faraz)
+  -> ~14 TB, 3 nusxa bilan ~40 TB — bir necha o'nlab serverlik ombor
+Cho'qqida kechiktirish ko'paysa — navbat soatlar ichida bir necha barobar o'sadi`}</Calc>
+
+Narxi — **takrorlar**. Bardoshli navbat “kamida bir marta” beradi: ishchi
+chaqiruvni bajarib, tasdiqlash oldidan o‘lsa, chaqiruv boshqa ishchiga
+qayta beriladi. Funksiya idempotent bo‘lishi kerak (2.3), platforma esa
+takrorlarni kamaytirishga harakat qiladi — amaliyotdagi rejalashtiruvchi
+bir xil `cid` ni ikkinchi marta qabul qilmaydi.
+</Step>
+
+<Step n={3} title="Umumiy ishchilar hovuzi" gain="Cho'qqilar to'qnashmaydi: bir xil ish 2-3 barobar kam serverda" cost="Jamoalar bir-biriga ta'sir qiladi: adolat, izolyatsiya va kvotalar shart">
+
+Oddiy tilda: har oila o‘z to‘yxonasini qurish o‘rniga — shahar to‘yxonasi.
+Har kuni boshqa oila foydalanadi, bino deyarli hech qachon bo‘sh emas.
+
+Ishchilar (worker) — funksiyalarni bajaradigan serverlar — **hammaga
+umumiy** hovuzda. Har ishchi istalgan jamoaning funksiyasini bajarishi
+mumkin (buning uchun 4-qadam kerak). Bir jamoaning cho‘qqisi boshqasining
+sokin paytini to‘ldiradi (4.1 hisob).
+
+Hovuzlar til bo‘yicha ajratilgan: PHP/Hack, Python, Erlang va boshqa
+tillar uchun alohida runtime’lar, hamda istalgan til uchun konteyner
+asosidagi umumiy runtime. Har til hovuzi o‘z runtime’ini doim yoqiq
+ushlaydi.
+
+<Calc title="Hovuz kattaligi va bandlik" result="1 000 jamoaning yig'indisi: alohida hovuzlarda ~30 000 server, umumiyda ~15 000; kunduz-tun ritmi esa umumiy hovuzda ham qoladi — u keyingi qadamlarning vazifasi">{`Har jamoa: o'rtacha 10 server-ish, o'z cho'qqisi 3x, mustaqil (faraz)
+Alohida: 1 000 x 30 = 30 000 server
+Umumiy: yig'indi o'rtacha 10 000, mustaqil tebranishlar silliqlanadi
+  standart og'ish taxminan sqrt(1 000) marta kichikroq nisbiy
+  -> mustaqil qism uchun ~1.1x zaxira yetadi
+
+Lekin umumiy ritm (kunduz/tun, hamma jamoada bir xil): ~1.5-2x
+  -> umumiy hovuz ~15 000-20 000 server
+  -> vaqt bo'yicha surish bilan (9-qadam): ~11 000-12 000`}</Calc>
+
+Narxi — **umumiy taqdir**. Bitta jamoaning xatosi (cheksiz chaqiruvlar,
+og‘ir funksiya) boshqalarning ishini sekinlashtiradi. Umumiy hovuz faqat
+kvotalar (8-qadam), izolyatsiya (13-qadam) va adolatli rejalashtirish
+(7-qadam) bilan ishlaydi.
+</Step>
+
+<Step n={4} title="Universal ishchi: hamma kod hamma joyda" gain="Ishchi istalgan funksiyani darhol bajaradi: kodni yuklash va runtime ishga tushirish yo'q" cost="Har serverda butun kod bazasi; kod yangilanishlari hamma serverga tez yetkazilishi kerak">
+
+Oddiy tilda: har oshxonada hamma retseptlar kitobi va hamma masallig‘lar
+allaqachon bor. Buyurtma kelganda “retsept qayerda?” deb qidirilmaydi.
+
+Ommaviy FaaS’da sovuq start ko‘p bosqichli: konteyner yaratish, kodni
+yuklab olish, runtime’ni ishga tushirish, kutubxonalarni yuklash, JIT
+isinishi. XFaaS **universal ishchi** g‘oyasiga intiladi: har ishchi har
+funksiyani darhol bajara olsin. Buning uchun bitta til (masalan, PHP)
+dagi **barcha** funksiyalarning eng so‘nggi kodi shu tilni bajaradigan
+**hamma** serverlarning lokal SSD diskiga oldindan yuboriladi, va til
+runtime’i doim yoqiq turadi. Funksiya chaqirilganda faqat kodning kerakli
+qismi xotiraga olinadi.
+
+<Calc title="Hamma kod hamma serverda: qancha joy" result="Bir til uchun barcha funksiyalar kodi o'nlab GB bo'lsa ham, zamonaviy serverning SSD sig'imining kichik qismi; asosiy narx — tez-tez yangilanadigan kodni minglab serverga tarqatish">{`Faraz: PHP/Hack funksiyalari va ular ishlatadigan kod — ~20-50 GB
+Server SSD: ~1-4 TB -> 1-5% joy
+
+Yangilanishlar: kod kuniga bir necha marta chiqariladi
+  har chiqarishda o'zgargan qism, masalan ~1-5 GB
+  10 000 server x 3 GB = 30 TB tarqatish har chiqarishda
+  -> daraxtsimon yoki peer-to-peer tarqatish kerak (BitTorrent'ga o'xshash)
+
+Muqobil (ommaviy FaaS): har sovuq startda kodni yuklab olish
+  -> soniyalar va tarmoq yuki HAR chaqiruvda (1.3)`}</Calc>
+
+Narxi — **faqat ichkarida mumkin**. Begona mijozlarning kodini hamma
+serverga qo‘yib bo‘lmaydi (xavfsizlik, maxfiylik, hajm). XFaaS’ning bu
+tanlovi bitta kompaniya, bitta repozitoriy va asosan bir nechta til bo‘lgani
+uchun ishlaydi (16-bo‘lim).
+</Step>
+
+<Step n={5} title="Lokallik guruhlari" gain="Har ishchi faqat kichik, barqaror funksiyalar to'plamini bajaradi: xotira va JIT keshlari issiq" cost="Mashhur funksiyalar o'z guruhini to'ldirib yuboradi — guruhdan tashqariga 'to'kilish' kerak">
+
+Oddiy tilda: katta oshxonada har oshpaz hamma taomni pishira oladi, lekin
+pizzachi pizzani, sushichi sushini pishirganda tezroq — qo‘li o‘rgangan,
+asboblari tayyor.
+
+Universal ishchi kodni **diskda** tayyor qiladi, lekin tezlik **xotira**
+va **JIT kodi** keshida. Agar har ishchi minglab turli funksiyani
+navbat bilan bajarsa, keshlar doim sovuq. XFaaS **lokallik guruhlari**ni
+ishlatadi: har funksiya chaqiruvlari faqat ishchilarning kichik, barqaror
+to‘plamiga yuboriladi. Har ishchi esa ko‘pi bilan bir necha o‘n funksiyani
+“issiq” ushlaydi.
+
+<Deep title="Rendezvous xeshlash: funksiyani guruhga barqaror bog'lash">
+Oddiy usul — `xesh(funksiya) mod N` — ishchi qo‘shilganda yoki olinganda
+deyarli **hamma** funksiyaning ishchisini o‘zgartiradi: keshlar birdaniga
+sovuydi. **Rendezvous** (eng yuqori ball) xeshlash buni hal qiladi:
+
+```
+har funksiya f va har ishchi w uchun: ball(f, w) = xesh(f, w)
+f ning guruhi = ball eng yuqori bo'lgan G ta ishchi
+
+Ishchi qo'shildi:  f ning guruhi faqat yangi ishchi f uchun top-G ga
+                   kirsa o'zgaradi -> ehtimol ~ G / (N + 1)
+Ishchi olindi:     faqat shu ishchi guruhida bo'lgan funksiyalar ta'sirlanadi
+```
+
+64 ta ishchi va G = 3 bilan ishchi qo‘shilganda funksiyalarning ~4–5% i
+guruhini o‘zgartiradi (amaliyotdagi test: 8% dan kam), modul usulida esa
+~98%. Guruh ichida chaqiruv **eng kam yuklangan** ishchiga beriladi —
+“ikki tanlov kuchi”ga o‘xshash: bir nechta nomzoddan eng bo‘shini tanlash
+yukni ancha tekislaydi.
+
+Mashhur funksiya (chaqiruvlarning 10% i) o‘z 3 ta ishchisini to‘ldirib
+yuboradi. Amaliyotdagi yechim: guruh to‘la bo‘lsa — chaqiruv **guruhdan
+tashqariga**, butun hovuzdagi eng bo‘sh ishchiga “to‘kiladi”. U yerda
+sovuq start bo‘ladi, lekin navbat bo‘lmaydi. Haqiqiy tizimlarda mashhur
+funksiyalarga kattaroq guruh ham beriladi.
+</Deep>
+
+Narxi — **muvozanat**. Guruh kichik bo‘lsa — keshlar issiq, lekin yuk
+notekis; katta bo‘lsa — yuk tekis, lekin keshlar sovuqroq. Amaliyotdagi
+simulyatsiyada (3 000 funksiya, 64 ishchi, har ishchida 60 funksiyalik
+kesh) lokallik guruhlari sovuq startlarni tasodifiy taqsimotdagi ~50% dan
+~12% ga tushiradi.
+</Step>
+
+<Step n={6} title="Kooperativ JIT kompilyatsiya" gain="Yangi versiya kodi har serverda alohida 'isitilmaydi': bitta server profillaydi, qolganlari tayyor profil bilan oldindan kompilyatsiya qiladi" cost="Profil tarqatish infratuzilmasi; profil vakili bo'lmasa — kompilyatsiya sifati pasayadi">
+
+Oddiy tilda: yangi yo‘lni bir haydovchi o‘rganadi va xaritani hammaga
+yuboradi. Har haydovchi yo‘lni o‘zi qidirib, adashib yurmaydi.
+
+PHP/Hack kodi Meta’da HHVM virtual mashinasida bajariladi. HHVM tezlik
+uchun **JIT** (just-in-time) kompilyatsiyadan foydalanadi: kod avval
+sekin rejimda ishlaydi va **profil** yig‘iladi (qaysi yo‘llar ko‘p
+bajariladi, qanday turlar keladi), keyin shu profil asosida mashina
+kodiga kompilyatsiya qilinadi. Kod har kuni bir necha marta yangilanadi —
+va har yangilanishda har server profil yig‘ishni qaytadan boshlasa,
+minglab server bir vaqtda “isinish” rejimida sekin ishlaydi.
+
+<Deep title="JIT isinishi: nega yangi versiya sekin, va profilni qanday ulashish mumkin">
+JIT kompilyatorning ikki bosqichi bor. **Profillash**: kod
+interpretatsiya qilinadi yoki oddiy kompilyatsiya qilinadi va maxsus
+hisoblagichlar bilan ishlaydi — qaysi shartlar ko‘proq bajariladi,
+o‘zgaruvchilarda qanday turlar uchraydi. **Optimallashtirilgan
+kompilyatsiya**: shu ma’lumot bilan tez mashina kodi yaratiladi — tez-tez
+bajariladigan yo‘llar to‘g‘ri chiziqqa, turlar tekshiruvi kamroq.
+
+```
+Kooperativ usulsiz (har server o'zi):
+  yangi versiya -> har server: profillash (daqiqalar, sekin) -> kompilyatsiya -> tez
+  10 000 server x bir necha daqiqa sekin ishlash = katta yo'qotish har chiqarishda
+
+Kooperativ JIT:
+  bitta (yoki bir nechta) server yangi versiyani profillaydi
+  profil ma'lumotlari boshqa serverlarga yuboriladi
+  qolganlari darhol optimallashtirilgan kodni oldindan kompilyatsiya qiladi
+```
+
+Shart: profil yig‘gan server **vakil** yuklamani ko‘rgan bo‘lishi kerak
+— aks holda boshqa serverlar “noto‘g‘ri” yo‘llarni optimallashtiradi. Bu
+JIT ning umumiy muammosi: Java va JavaScript dvigatellarida ham profilga
+asoslangan optimallashtirish va uni saqlab, qayta ishlatish g‘oyalari
+ishlatiladi.
+</Deep>
+
+Narxi — **qo‘shimcha infratuzilma**: profillarni yig‘ish, tekshirish va
+tarqatish. Lekin foydasi har chiqarishda ko‘rinadi: minglab server bir
+vaqtda “sovuq” bo‘lmaydi.
+</Step>
+
+<Step n={7} title="Rejalashtirish: kritiklik va muddat" gain="Muhim va shoshilinch ishlar birinchi; muddatlar imkon qadar buzilmaydi; ortiqcha yuklamada aynan nima kechikishi oldindan aniq" cost="Muddat va kritiklikni to'g'ri belgilash jamoalar zimmasida; past kritiklik ishlari uzoq kutishi mumkin">
+
+Oddiy tilda: shifoxonaning qabul bo‘limi. Navbat kelish tartibida emas:
+avval og‘ir bemorlar, bir xil og‘irlikdagilar orasida — kimning vaqti
+kamroq qolgan bo‘lsa.
+
+Har tikda (masalan, har soniyada) rejalashtiruvchi bo‘sh ishchi
+o‘rinlarini navbatdagi chaqiruvlar bilan to‘ldiradi. Tartib:
+**kritiklik** (yuqorisi oldin), keyin **eng yaqin muddat** (EDF — earliest
+deadline first). Muddati o‘tgan chaqiruv bajarilmaydi — u xato sifatida
+qayd etiladi. Kvotasi tugagan yoki downstream’i band funksiya shu tikda
+o‘tkazib yuboriladi, lekin boshqalar to‘xtamaydi.
+
+<Deep title="Nega 'eng yaqin muddat birinchi' optimal">
+Bir xil uzunlikdagi (birlik) ishlar, bir xil serverlar va har ishning
+kelish va muddat vaqti bo‘lsa, EDF quyidagi xususiyatga ega: agar
+**biror** jadval barcha muddatlarni bajarsa, EDF ham bajaradi.
+
+Isbot g‘oyasi — almashtirish. Faraz qilaylik, optimal jadvalda biror
+vaqtda muddati uzoqroq ish A bajarilgan, muddati yaqinroq va tayyor
+turgan B esa keyinroq. Ularni almashtiramiz: B oldinroq — uning muddati
+buzilmaydi; A esa B ning joyiga — bu B ning muddatidan oldin, A ning
+muddati esa B nikidan uzoq, demak A ham kechikmaydi. Har almashtirish
+jadvalni EDF ga yaqinlashtiradi va muddat buzilishini qo‘shmaydi.
+
+```
+Sig'im: tikiga 2 ta. Ishlar (kelish, muddat):
+  a(0, 0)  b(0, 2)  c(0, 1)  d(1, 1)
+FIFO (kelish tartibi): t=0: a, b    t=1: c, d    -> hammasi o'z vaqtida (omad)
+  lekin d(1,1) o'rniga d(0,0) bo'lsa: t=0: a, b -> d kechikdi
+EDF: t=0: a(0), d(0)   t=1: c(1), b(2)  -> hammasi o'z vaqtida
+```
+
+Amaliyotdagi test aynan shuni tekshiradi: ma’lum jadvaldan “teskari”
+yasalgan, bajarish mumkin bo‘lgan yuklamalarda rejalashtiruvchi birorta
+ham muddatni buzmasligi kerak. Haqiqiy chaqiruvlar birlik emas va
+muddatlar qat’iy emas — EDF u yerda optimal emas, lekin yaxshi evristika
+bo‘lib qoladi.
+</Deep>
+
+<Callout type="maslahat" title="Ortiqcha yuklamada — kim kechikadi, oldindan ayting">
+Sig‘im yetmaganda biror narsa baribir kechikadi. Yaxshi rejalashtiruvchi
+buni tasodifga qoldirmaydi: avval **kechiktirishga chidamli** (uzoq
+muddatli) ishlar suriladi, keyin **past kritiklik**dagilar. Yuqori
+kritiklikdagi shoshilinch ishlar — oxirgi navbatda. Bu qoidani jamoalar
+oldindan bilsa, ular o‘z funksiyalarini to‘g‘ri belgilaydi.
+</Callout>
+
+Narxi — **ochlik** (starvation). Past kritiklikdagi ishlar uzoq vaqt
+yuqori kritiklikdagilar ortida qolishi mumkin. Himoya: muddat yaqinlashgani
+sari ustuvorlikni oshirish yoki past kritiklik uchun kafolatlangan kichik
+ulush.
+</Step>
+
+<Step n={8} title="Kvotalar: kafolatlangan va imkoniyatga qarab" gain="Har jamoa o'z ulushini oladi; shovqinli qo'shni boshqalarni ezmaydi; bo'sh joy kechiktirilgan ishlar bilan to'ladi" cost="Kvota tizimi — byurokratiya: kim qancha oladi, qanday so'raladi va ko'rib chiqiladi">
+
+Oddiy tilda: ofis oshxonasida har bo‘limning band qilingan stollari bor
+(kafolat). Bo‘sh stollarga esa istalgan kishi o‘tirishi mumkin — lekin
+band qilgan kelsa, joyni bo‘shatadi.
+
+XFaaS’da ikki xil kvota bor (maqolaga ko‘ra): **kafolatlangan**
+(reserved) — chaqiruvlar tez bajarilishi uchun, va **imkoniyatga qarab**
+(opportunistic) — ish **24 soat ichida** bajarilishi kafolatlanadi, lekin
+qachon — hovuzning bo‘shligiga qarab. Imkoniyatga qarab kvota ishchilar
+bandligiga qarab dinamik o‘zgaradi: bo‘sh paytda kengayadi, cho‘qqida
+toraydi.
+
+Kvota texnik jihatdan **token chelak** (token bucket): har funksiya
+uchun chelak, har soniyada belgilangan miqdorda token qo‘shiladi
+(ko‘pi bilan chelak sig‘imigacha), har chaqiruv bitta token oladi.
+
+<Calc title="Token chelak: tezlik va portlash" result="rate = 100/s, burst = 500: uzoq muddatda sekundiga 100 tadan ko'p emas, lekin bir martalik 500 talik portlashga ruxsat; 10 soniya jim turgan funksiya darhol 500 ta bajaradi">{`Funksiya kvotasi: rate = 100 token/s, burst = 500
+
+Doimiy yuklama 300/s:
+  sekundiga faqat 100 ta bajariladi, qolgani navbatda kutadi
+  (navbat 200/s ga o'sadi -> muddatga yaqinlashganlar kritiklik bilan raqobatlashadi)
+
+Jim turgan funksiya 10 s dan keyin:
+  chelak: min(500, 10 x 100) = 500 token -> 500 ta darhol
+  keyin yana 100/s
+
+Amaliyotdagi aniq misol: rate = 0.5, burst = 3, katta navbat:
+  tiklar bo'yicha: 3, 0, 1, 0, 1, 0, 1, ... — 20 tikda 12 ta`}</Calc>
+
+Narxi — **boshqaruv**. Kvota kichik — jamoa ishi kechikadi; katta — bitta
+xato hammaga ta’sir qiladi. Kvotalarni ko‘rib chiqish, so‘rash va avtomatik
+tavsiya qilish — platformaning ijtimoiy, texnik bo‘lmagan qismi, lekin
+ishonchlilik uchun shu qadar muhim.
+</Step>
+
+<Check q="Funksiya 'imkoniyatga qarab' kvota bilan ishlaydi va 24 soatlik muddatga ega. Kunduzi hovuz to'la. Uning chaqiruvlari bilan nima bo'ladi va bu adolatlimi?">
+Chaqiruvlar **navbatda kutadi**. Rejalashtiruvchi avval kafolatlangan
+kvotadagi va qisqa muddatli ishlarni bajaradi; imkoniyatga qarab
+kvotaning hajmi esa bandlik yuqori bo‘lganda kichrayadi. Kechqurun yoki
+tunda, hovuz bo‘shaganda, kvota kengayadi va to‘plangan navbat bajariladi —
+24 soat ichida.
+
+Adolatli, chunki **kelishuv** shunday: jamoa “ishim 24 soat kuta oladi”
+degan va buning evaziga arzon (yoki bepul) sig‘im olgan. Kunduzgi
+qimmat sig‘im esa haqiqatan shoshilinch ishlar uchun qoladi. Hamma
+narsa “shoshilinch” bo‘lganda esa hovuz cho‘qqi uchun quriladi va
+hamma uchun qimmatlashadi.
+
+Xavfli joyi — **24 soat chegarasi**. Agar kechiktirilgan ish juda ko‘p
+to‘plansa (masalan, bir necha kun ketma-ket kunduzgi cho‘qqi), tunda
+hammasi sig‘masligi mumkin. Shuning uchun platforma kechiktirilgan
+navbat hajmini va “eng eski ish yoshi”ni kuzatadi va kerak bo‘lsa yangi
+opportunistik ishlarni qabul qilishni sekinlashtiradi.
+</Check>
+
+<Step n={9} title="Vaqt bo'yicha surish" gain="Chaqiruvlar cho'qqisi 4.3x bo'lsa ham, CPU bandligining tebranishi atigi 1.4x; serverlar o'rtacha yuk uchun sotib olinadi" cost="Kechiktirilgan ishlar natijasi soatlab kechikadi; navbat juda katta bo'lishi mumkin">
+
+Oddiy tilda: kir yuvish mashinasini tunda, elektr arzon bo‘lganda
+ishlatish. Kiyim baribir ertalab toza — lekin elektr tarmog‘iga kunduzi
+yuk tushmaydi.
+
+XFaaS’ning **bandlik nazoratchisi** (Utilization Controller) ishchilar
+bandligini kuzatadi va kechiktirishga chidamli chaqiruvlar oqimini
+boshqaradi: cho‘qqida — ularni navbatda ushlab turadi, bo‘sh paytda —
+qo‘yib yuboradi. Natija maqolada: chaqiruvlar oqimining cho‘qqi/eng past
+nisbati 4.3 bo‘lsa ham, CPU bandligining nisbati atigi 1.4.
+
+<Calc title="Surish qancha server tejaydi" result="Kiruvchi ish cho'qqisi o'rtachadan ~1.7x; surish bilan bandlik cho'qqisi o'rtachadan ~1.15x — kerakli serverlar ~1.7 / 1.15 = ~1.5 barobar kam">{`Kiruvchi ish (kunduz/tun), o'rtacha = 1.0:
+  cho'qqi ~1.7, eng past ~0.4 (nisbat ~4.3)
+
+Surishsiz: sig'im >= cho'qqi -> 1.7 (+ zaxira)
+  o'rtacha bandlik = 1.0 / 1.7 = ~59% (zaxirasiz ideal), amalda ~40-50%
+
+Surish bilan: kechiktiriladigan ish (masalan, 50-60%) tunga ko'chadi
+  bandlik: cho'qqi ~1.15, eng past ~0.8 (nisbat ~1.4 — maqoladagi kabi)
+  sig'im >= 1.15 -> o'rtacha bandlik = 1.0 / 1.15 = ~87% (ideal)
+
+Serverlar: 1.7 / 1.15 = ~1.5 barobar kam
+  amaliyotdagi "bir kun" testi: cho'qqi sig'imning 1.5x i, o'rtacha bandlik ~86%`}</Calc>
+
+Narxi — **kechikish va navbat**. Kechiktirilgan ishlar natijasi soatlab
+kech chiqadi, navbat esa cho‘qqida milliardlab chaqiruvgacha o‘sadi
+(2-qadam hisobi). Kechiktirishni faqat funksiya egasi ruxsat bergan
+(uzoq muddat qo‘ygan) holda qilish mumkin — jim kechiktirish ishonchni
+buzadi.
+</Step>
+
+<Step n={10} title="Hududlararo surish" gain="Bo'sh hududdagi ishchilar band hududning navbatini oladi; hudud ishdan chiqsa — boshqalar yukni ko'taradi" cost="Hududlararo kechikish va trafik; ma'lumot boshqa hududda bo'lsa — sekinroq bajarilish">
+
+Oddiy tilda: bir do‘konda navbat uzun, qo‘shni filial esa bo‘sh —
+xaridorlarni u yerga yo‘naltirish.
+
+Meta’ning ma’lumot markazlari turli vaqt zonalarida va turli
+yuklamada. **Global Traffic Conductor** (GTC) barcha hududlardagi
+**talab** (navbatdagi chaqiruvlar) va **taklif** (ishchilar sig‘imi)
+haqida deyarli real vaqtdagi ko‘rinishni yig‘adi va davriy ravishda
+**trafik matritsasi**ni hisoblaydi: i-hududdagi rejalashtiruvchilar
+chaqiruvlarning qancha qismini j-hudud navbatlaridan olsin.
+
+<Calc title="Trafik matritsasi: oddiy misol" result="A hududi 150% yuklangan, B 50%: B rejalashtiruvchilari A navbatining ~1/3 qismini oladi — ikkala hudud ~100% atrofida">{`Hududlar va soatlik talab (sig'im = 100 birlik):
+  A: talab 150   B: talab 50   (B tunda, A kunduzi)
+
+Surishsiz: A da 50 birlik kechikadi, B da 50 birlik bo'sh
+
+Matritsa (qatordagi hudud qaysi navbatlardan oladi):
+  A rejalashtiruvchilari: A navbatidan 100
+  B rejalashtiruvchilari: B navbatidan 50, A navbatidan 50
+  -> A navbatidagi 150 dan 50 tasi (1/3) B da bajariladi
+
+Narx: A dan B ga chaqiruv argumentlari va natijalari, B dan A dagi
+  ma'lumotlarga murojaat — hududlararo kechikish (o'nlab ms) va trafik
+  -> ko'chiriladigan ishlar: ma'lumotga kam bog'liq, kechiktirishga chidamli`}</Calc>
+
+Narxi — **ma’lumot yaqinligi**. Funksiya boshqa hududda bajarilsa, u
+ishlatadigan ma’lumotlar uzoqda bo‘lishi mumkin: har so‘rov o‘nlab
+millisekund qimmatroq. Shuning uchun matritsa nafaqat bo‘sh sig‘imni,
+balki hududlararo narxni ham hisobga oladi.
+</Step>
+
+<Step n={11} title="Downstream himoyasi: TCP kabi tirbandlik nazorati" gain="Funksiyalar bazalar va xizmatlarni yiqitmaydi; xizmat nosozligida yuk avtomatik kamayadi va tiklanganda asta qaytadi" cost="Xizmat sekinlashsa, unga bog'liq funksiyalar navbatda to'planadi; signal sifati muhim">
+
+Oddiy tilda: shahar ko‘chasiga qancha mashina sig‘ishini hech kim
+aytmaydi. Haydovchilar tirbandlikni ko‘rib, sekinlashadi, yo‘l bo‘shasa —
+tezlashadi.
+
+Funksiyalar boshqa xizmatlarni chaqiradi — masalan, Meta’ning ijtimoiy
+graf bazasi TAO’ni. Funksiyalar platformasi bu xizmatlar **haqiqiy
+sig‘imini bilmaydi**, va u o‘zgarib turadi (nosozlik, boshqa yuk).
+XFaaS internetdagi **TCP** protokoliga o‘xshash tirbandlik nazoratini
+ishlatadi: har downstream xizmat uchun “bir vaqtda qancha chaqiruv”
+chegarasi; xizmat ortiqcha yuklanganini bildirsa (xatolar, kechikish) —
+chegara keskin kamayadi; signal bo‘lmasa — asta oshadi. Maqolada TAO
+nosozliklari paytida XFaaS unga murojaat qiluvchi funksiyalarni
+sekinlashtirgani aytiladi.
+
+<Deep title="AIMD: nega 'asta oshir, keskin kamaytir'">
+**AIMD** (additive increase, multiplicative decrease) — TCP ning tarmoq
+tirbandligiga qarshi qoidasi:
+
+```
+signal yo'q va chegara to'liq ishlatilgan:  limit = limit + 1
+ortiqcha yuklama signali:                    limit = limit x 0.5
+```
+
+Nega aynan shunday? **Barqarorlik**: oshirish sekin bo‘lgani uchun tizim
+sig‘imdan oz oshib, tez seziladi; kamaytirish keskin bo‘lgani uchun
+ortiqcha yuklama bir necha tikda yo‘qoladi. **Adolat**: bir nechta
+mustaqil yuboruvchi AIMD ishlatsa, ularning ulushlari vaqt o‘tishi bilan
+tenglashadi (matematik jihatdan isbotlangan, Chiu va Jain, 1989).
+
+Natija — “arra tishi”: chegara sig‘imgacha o‘sadi, signal, yarmiga tushadi,
+yana o‘sadi. O‘rtacha ~75% sig‘im ishlatiladi (amaliyot testida sig‘im 40
+bilan o‘rtacha ~30). Bitta muhim nozik joy: chegara faqat **to‘liq
+ishlatilganda** o‘sishi kerak. Aks holda tunda (talab kam) chegara
+“bo‘sh” o‘sib ketadi, va ertalabki birinchi to‘lqin xizmatga birdaniga
+katta yuk bilan uriladi.
+</Deep>
+
+<Calc title="Nosozlikda yuk qanchalik tez kamayadi" result="Chegara 400 dan, xizmat sig'imi 400 dan 50 ga tushsa: 3 tikda ~50 ga yetadi (400 -> 200 -> 100 -> 50). Tiklanganda +1/tik bilan asta qaytadi — 350 tikda">{`Odatiy holat: chegara ~400 bir vaqtdagi chaqiruv (TAO uchun, faraz)
+Nosozlik: TAO sig'imi 50 ga tushdi
+
+t0: yuborildi 400 -> ortiqcha -> limit 200
+t1: 200 -> ortiqcha -> 100
+t2: 100 -> ortiqcha -> 50
+t3: 50 -> me'yorda -> 51 (va arra tishi 25..51 atrofida)
+
+Tiklanish: sig'im 400 ga qaytdi
+  +1 har tikda: 50 dan 400 gacha ~350 tik (agar 1 tik = 1 s — ~6 daqiqa)
+  -> ehtiyotkor qaytish: tiklangan xizmatni darhol yana bosib ketmaslik
+  (TCP da tezroq qaytish uchun "sekin start" bosqichi ham bor)`}</Calc>
+
+Narxi — **navbatda to‘planish**. Downstream sekinlashsa, unga murojaat
+qiluvchi funksiyalar navbatda kutadi va muddatlari yaqinlashadi.
+Rejalashtiruvchi bu yerda ham kritiklikka qaraydi: cheklangan “o‘rin”
+avval muhim chaqiruvlarga beriladi (amaliyotdagi `limits` aynan shu).
+</Step>
+
+<Step n={12} title="Qayta urinishlar va idempotentlik" gain="Vaqtinchalik xatolar o'z-o'zidan tuzaladi; qayta urinishlar tizimni bo'ronga aylantirmaydi" cost="Kechikish bilan urinish natijani kechiktiradi; idempotentlik — dasturchi zimmasida">
+
+Oddiy tilda: telefon band bo‘lsa, har soniyada qayta tersangiz — liniyani
+yanada band qilasiz. Bir daqiqa kutib, keyin ikki daqiqa, keyin to‘rt —
+va beshinchi urinishdan keyin to‘xtash.
+
+Funksiya xato bilan tugasa, platforma uni qayta bajaradi — lekin
+qoidalar bilan: **eksponensial kutish** (har urinishdan keyin kutish
+ikki barobar, tasodifiy “titrash” bilan, hamma bir vaqtda qaytmasligi
+uchun), **urinishlar chegarasi** (masalan, 5 marta, keyin “o‘lik xatlar”
+navbati), va **qayta urinish budjeti** (funksiya chaqiruvlarining ko‘pi
+bilan, masalan, 10% i qayta urinish bo‘lishi mumkin).
+
+<Calc title="Takrorlar bo'roni: budjet bilan va budjetsiz" result="Xizmat 50% xato qaytarsa, darhol 3 marta qayta urinish yukni ~1.9x ga oshiradi; 10% budjet bilan — atigi 1.1x">{`Asl oqim: 1 000 chaqiruv/s, xizmat ortiqcha yuklangan -> 50% xato
+
+Darhol qayta urinish, 3 martagacha:
+  1-urinish: 1 000, xato 500
+  2-urinish: 500, xato 250
+  3-urinish: 250, xato 125
+  4-urinish: 125
+  jami: ~1 875 so'rov/s -> yuk 1.9x, xizmat yanada yomonlashadi
+
+Qayta urinish budjeti 10% (faraz):
+  qayta urinishlar <= 100/s -> jami ~1 100/s (1.1x)
+  qolgan xatolar -> eksponensial kutish bilan keyinroq yoki o'lik xatlar navbati
+
++ tirbandlik nazorati (11-qadam) asl oqimni ham kamaytiradi`}</Calc>
+
+Narxi — **kechikish**. Kutish bilan urinish natijani daqiqalarga
+kechiktirishi mumkin, va funksiya muddati bunga yetarli bo‘lishi kerak.
+Va idempotentlik — platforma emas, funksiya muallifi kafolatlaydigan
+xususiyat (2.3).
+</Step>
+
+<Step n={13} title="Izolyatsiya va xavfsizlik" gain="Bir funksiyaning xatosi yoki xotira oqishi boshqalarga o'tmaydi; har funksiya faqat o'ziga ruxsat etilgan ma'lumotga kiradi" cost="Izolyatsiya narxi — xotira va CPU; qattiq izolyatsiya (alohida VM) universal ishchi g'oyasiga zid">
+
+Oddiy tilda: umumiy oshxonada har oshpazning o‘z pichoqlari va o‘z
+masallig‘lari bor. Biri barmog‘ini kessa, qolganlar ishlashda davom etadi;
+biri boshqasining masallig‘iga tegolmaydi.
+
+Bitta ishchida turli jamoalarning funksiyalari ketma-ket yoki parallel
+bajariladi. Kerakli himoyalar: **resurs chegaralari** (har chaqiruv uchun
+vaqt, xotira va CPU limiti — oshsa, chaqiruv to‘xtatiladi);
+**huquqlar** (funksiya faqat o‘z spetsifikatsiyasida yozilgan xizmatlar va
+ma’lumotlarga kira oladi); **holatni tozalash** (bir chaqiruvning global
+o‘zgaruvchilari keyingisiga o‘tmasin). Til runtime’i darajasida (masalan,
+HHVM da har so‘rov alohida “dunyo”) yengil izolyatsiya; begona yoki xavfli
+kod uchun — konteynerlar.
+
+<Calc title="Izolyatsiya narxi: jarayon, konteyner, VM" result="Har chaqiruvga yangi VM — o'nlab-yuzlab ms va o'nlab MB; runtime ichidagi izolyatsiya — mikrosekundlar. Trillionlab chaqiruvda farq — minglab server">{`Izolyatsiya darajasi va taxminiy narxi har chaqiruvga (faraz):
+  runtime ichida (so'rov "dunyosi"):  ~0.01-0.1 ms,  ~KB lar
+  alohida jarayon (fork):              ~1 ms,        ~MB lar
+  konteyner (tayyor, issiq):           ~1-10 ms,     ~10 MB
+  yangi mikro-VM:                      ~100 ms,      ~30-100 MB
+
+Kuniga 1e12 chaqiruv x qo'shimcha 10 ms = 1e10 CPU-soniya/kun
+  = ~116 000 yadro doimiy — faqat izolyatsiya uchun
+
+-> ichki platformada: ishonchli kod uchun yengil izolyatsiya,
+   xavfli yoki begona kod uchun — qattiqroq (konteyner)`}</Calc>
+
+Narxi — **ishonch modeli**. XFaaS bitta kompaniya xodimlarining kodini
+bajaradi, shuning uchun yengil izolyatsiya bilan ishlaydi. Ommaviy
+bulutda esa har mijoz — potensial hujumchi, va izolyatsiya ancha qattiq
+(16-bo‘lim).
+</Step>
+
+<Step n={14} title="Kodni yetkazish va versiyalar" gain="Funksiya kodi daqiqalarda hamma serverga yetadi; xato versiya tez qaytariladi; har chaqiruv aniq versiya bilan" cost="Navbatdagi eski chaqiruvlar yangi kod bilan bajariladi — argumentlar formati moslashuvchan bo'lishi shart">
+
+Oddiy tilda: restoranda yangi retsept avval bitta oshxonada sinab ko‘riladi,
+mijozlar mamnun bo‘lsa — hamma filialga tarqatiladi. Muammo bo‘lsa — eski
+retseptga qaytiladi.
+
+Meta kodi kuniga bir necha marta chiqariladi. Funksiyalar platformasi
+uchun bu: yangi kodni hamma ishchilarga yetkazish (4-qadam), JIT
+profillarini yangilash (6-qadam) va bosqichma-bosqich yoqish — avval
+kichik ulush chaqiruvlar yangi versiyada, xatolar soni kuzatiladi, keyin
+hammasi. Xato ko‘paysa — avtomatik orqaga qaytish.
+
+<Calc title="Navbatdagi chaqiruvlar va kod versiyasi" result="Kechiktirilgan chaqiruv 24 soat kutishi mumkin; kuniga 3 ta chiqarish bo'lsa — u yozilganidan 3 versiya keyingi kod bilan bajariladi">{`Chiqarishlar: kuniga ~3 marta (faraz)
+Kechiktirilgan chaqiruv: navbatda 24 soatgacha
+
+Chaqiruv yozilgan payt: versiya v100 (argumentlar v100 formatida)
+Bajarilgan payt: v103 ham bo'lishi mumkin
+  -> v103 kodi v100 argumentlarini tushunishi shart
+  -> argumentlar formati faqat orqaga mos o'zgarishi mumkin
+     (yangi ixtiyoriy maydon — ha, maydonni o'chirish yoki ma'nosini o'zgartirish — yo'q)
+
+Shu bilan birga: navbatda turgan 14 mlrd chaqiruv (2-qadam) —
+  "eski" argumentlar bilan; ularni qayta yozish imkonsiz`}</Calc>
+
+Narxi — **moslik intizomi**. Navbat — vaqt mashinasi: bugun yozilgan
+chaqiruv ertaga, boshqa kod bilan bajariladi. Kafka darsidagi xabar
+sxemasi muammosi bilan bir xil: ma’lumot formati ishlab chiqaruvchi va
+iste’molchi versiyalari orasidagi shartnoma.
+</Step>
+
+## 6. Bitta chaqiruvning hayoti
+
+### 6.1 Qadam-baqadam
+
+Instagram’ga rasm yuklandi. Serverdagi kod “bu rasmning kichik nusxalarini
+yasa” degan funksiyani chaqiradi (navbat triggeri, muddat — 1 daqiqa,
+kritiklik — yuqori):
+
+<Flow nodes={["Veb-server: enqueue(thumbnail, rasm_id)", "Yuboruvchi: kvota tekshiruvi", "QueueLB -> DurableQ (3 nusxa)", "Rejalashtiruvchi: kritiklik + muddat", "GTC: qaysi hudud", "Ishchi (lokallik guruhi, issiq kesh)", "Funksiya: rasm ombori, TAO", "Tasdiq: navbatdan o'chirish"]} caption="Chaqiruvchi faqat birinchi qadamni kutadi; qolgani — platformaning ishi. Muddat ichida chaqiruv boshqa hududda ham bajarilishi mumkin" />
+
+1. **Chaqiruvchi** (veb-server kodi) funksiyani navbatga qo‘yadi va
+   darhol javob oladi: “qabul qilindi”.
+2. **Yuboruvchi** funksiya kvotasini tekshiradi.
+3. **QueueLB** chaqiruvni bardoshli navbatga (DurableQ) yozadi —
+   endi u yo‘qolmaydi.
+4. **Rejalashtiruvchi** navbatdan chaqiruvlarni kritiklik va muddat
+   bo‘yicha oladi, kvota va downstream chegaralarini hisobga olib.
+5. **Global Traffic Conductor** matritsasi bo‘yicha chaqiruv shu hududda
+   yoki boshqa hududda bajariladi.
+6. **Ishchi** — funksiyaning lokallik guruhidan, kodi va JIT keshi issiq —
+   funksiyani bajaradi.
+7. **Funksiya** o‘z ishini qiladi: rasm omboridan o‘qiydi, kichik
+   nusxalarni yozadi, TAO’dagi yozuvni yangilaydi.
+8. Muvaffaqiyat — chaqiruv navbatdan o‘chiriladi; xato — qayta urinish
+   siyosati bo‘yicha (12-qadam).
+
+<Calc title="Shoshilinch chaqiruv: navbatdan bajarilgunga qadar" result="Navbatga yozish ~5-20 ms, rejalashtirish tsikli ~10-100 ms, bajarish ~50-500 ms: odatda bir soniyadan kam; kechiktiriladigan chaqiruv esa soatlab kutishi mumkin — bu dizayn">{`Shoshilinch (muddat 1 daqiqa):
+  enqueue -> DurableQ yozuvi (3 nusxa):     ~5-20 ms
+  rejalashtiruvchi tsikli (navbatdan olish): ~10-100 ms
+  ishchiga yetkazish:                         ~1-10 ms
+  bajarish (rasm, 3 o'lcham):                 ~50-500 ms
+  tasdiq:                                     ~5-10 ms
+  ------------------------------------------------------
+  jami: ~0.1-0.7 s — muddatdan ancha oldin
+
+Kechiktiriladigan (muddat 24 soat), kunduzgi cho'qqida:
+  navbatda: soatlar (tungacha)
+  bajarish: xuddi shunday tez
+  -> "kechikish" bu yerda — qaror, nosozlik emas`}</Calc>
+
+### 6.2 Chaqiruv holatlari
+
+```
+YUBORILDI --> NAVBATDA --> REJALASHTIRILDI --> BAJARILMOQDA --> MUVAFFAQIYAT
+                 ^                                  |
+                 |                                  +--> XATO --(urinishlar qolgan)--+
+                 +---------- kutish bilan qayta (12-qadam) <-------------------------+
+                                                    |
+                                                    +--> XATO (urinishlar tugadi) --> O'LIK XATLAR
+NAVBATDA --(muddat o'tdi)--> MUDDATI O'TDI (hisobotda, ogohlantirish)
+```
+
+Ikki holat alohida e’tiborga loyiq. **Muddati o‘tdi** — bu kechikish
+emas, xato: chaqiruv endi bajarilmaydi, va bu funksiya egasiga hisobot
+sifatida boradi. **O‘lik xatlar** — qayta urinishlar tugagan chaqiruvlar:
+ularni odam ko‘rib chiqadi yoki tuzatilgan kod bilan qayta yuboradi
+(Kafka darsidagi zaharli xabarlar kabi).
+
+<Check q="Ishchi funksiyani bajarib bo'ldi, lekin tasdiq yuborishdan oldin o'chib qoldi. Nima bo'ladi va funksiya muallifi nimaga tayyor bo'lishi kerak?">
+Navbat tasdiq olmagani uchun chaqiruvni **bajarilmagan** deb hisoblaydi.
+Ma’lum vaqtdan keyin (ishchining “ijara” muddati tugaganda) chaqiruv qayta
+navbatga qaytadi va boshqa ishchiga beriladi — funksiya **ikkinchi marta**
+bajariladi. Bu “kamida bir marta” kafolatining tabiiy natijasi.
+
+Funksiya muallifi ikki marta bajarilishga tayyor bo‘lishi kerak:
+natijani shunday yozish kerakki, takror zarar qilmasin. Kichik nusxalarni
+bir xil nom bilan saqlash — idempotent. “Foydalanuvchiga bildirishnoma
+yuborish” — idempotent emas: ikki marta yuboriladi. Buning uchun chaqiruv
+identifikatori bo‘yicha “allaqachon yuborilganmi?” tekshiruvi yoki
+yuborish xizmatining o‘zida idempotentlik kaliti kerak.
+
+Platforma ham takrorlarni kamaytiradi: bir xil chaqiruv identifikatorini
+qayta qabul qilmaslik (amaliyot), qisqa ijara va yurak urishi bilan
+“tirikmi” tekshiruvi — lekin nol takrorni kafolatlay olmaydi.
+</Check>
+
+### 6.3 Hodisa triggeri: ma’lumot o‘zgardi — funksiya ishga tushdi
+
+Chaqiruvlarning 85% i **hodisa** bilan ishga tushadi (2.2). Hodisa —
+ma’lumotlar bazasidagi o‘zgarish: yangi izoh yozildi, foydalanuvchi
+profilini o‘zgartirdi, do‘stlik qo‘shildi. Funksiya egasi “shu turdagi
+o‘zgarish bo‘lganda meni chaqir” deb obuna bo‘ladi, va platforma o‘zgarishlar
+oqimini o‘qib, har mos hodisa uchun chaqiruv yaratadi.
+
+Bu Kafka darsidagi “jurnal — haqiqat, iste’molchilar — hosila” g‘oyasining
+boshqa ko‘rinishi: baza o‘z o‘zgarishlar jurnalini e’lon qiladi (Airbnb
+darsidagi CDC kabi), funksiyalar esa uning iste’molchilari. Hodisa
+funksiyalari odatda qisqa (hisoblashning atigi 14% i), lekin juda ko‘p.
+
+Ikki nozik joy. **Takrorlar**: jurnal o‘quvchisi qayta ishga tushsa,
+hodisalarni ikkinchi marta o‘qishi mumkin — funksiya idempotent bo‘lishi
+kerak. **Tartib**: bitta obyektga ikki o‘zgarish (masalan, “profil
+o‘zgardi” ikki marta) navbatda turli ishchilarga tushsa, kech kelgani oldin
+bajarilishi mumkin. Shuning uchun hodisa funksiyalari odatda hodisadagi
+qiymatga emas, **joriy holatga** qarab ishlaydi: “profil o‘zgardi — joriy
+profilni o‘qib, indeksni yangila” (11-bo‘limdagi “niyat, qaror emas” qoidasi).
+
+## 7. Sovuq start anatomiyasi
+
+### 7.1 Sovuq chaqiruv nimaga vaqt sarflaydi
+
+“Sovuq start” — funksiya yangi joyda birinchi marta bajarilganda qo‘shimcha
+ish. Ommaviy FaaS’da u ko‘p bosqichli; XFaaS ularning ko‘pini oldindan
+bajarib qo‘yadi:
+
+<Flow nodes={["Server ajratish", "Konteyner yoki VM yaratish", "Kodni yuklab olish", "Runtime ishga tushirish", "Kutubxonalar va global holat", "JIT profillash va kompilyatsiya", "Keshlar to'lishi", "Issiq bajarish"]} caption="XFaaS: 1-4 — doim tayyor (universal ishchi), 6 — kooperativ JIT, 7 — lokallik guruhlari. Qolgani — yagona qo'shimcha narx" />
+
+<Calc title="Sovuq va issiq chaqiruv: qayerda vaqt ketadi" result="Ommaviy FaaS da sovuq chaqiruv ~0.5-5 s qo'shimcha; XFaaS da kod va runtime tayyor, JIT profil tayyor — qolgan 'sovuqlik' asosan xotira keshlari, millisekundlar">{`Bosqich (taxminiy, ommaviy FaaS):
+  konteyner yoki mikro-VM:   ~50-500 ms
+  kodni yuklab olish:        ~50-1 000 ms (hajmga qarab)
+  runtime ishga tushishi:    ~50-500 ms (JVM, Python import'lari...)
+  JIT isinishi:              ~0.1-10 s davomida sekinroq ishlash
+  -> birinchi chaqiruv: ~0.5-5 s qo'shimcha
+
+XFaaS (maqolaga ko'ra yondashuv):
+  konteyner, kod, runtime: oldindan tayyor (universal ishchi) -> ~0
+  JIT: boshqa serverdan profil -> oldindan kompilyatsiya -> ~0
+  xotira keshlari: lokallik guruhlari bilan ko'pincha issiq
+  -> qolgan farq: millisekundlar, va faqat to'kilish holatlarida`}</Calc>
+
+### 7.2 Nega ommaviy bulut buni qila olmaydi
+
+<Deep title="Ommaviy FaaS va ichki FaaS: bir xil muammo, turli cheklovlar">
+Ommaviy FaaS (AWS Lambda va boshqalar) sovuq start bilan boshqa yo‘llar
+bilan kurashadi: oldindan isitilgan muhitlar (pul evaziga), yengil
+mikro-VM lar (masalan, Firecracker), xotira suratidan tiklash (snapshot),
+konteynerlarni bir muddat “issiq” ushlab turish. Ammo universal ishchi
+yondashuvini qo‘llay olmaydi:
+
+```
+                        Ommaviy FaaS                Ichki FaaS (XFaaS)
+kod egasi               millionlab begona mijoz     bitta kompaniya xodimlari
+ishonch                 hech kimga                  kod ko'rib chiqilgan, bitta repo
+kodni oldindan tarqatish mumkin emas (maxfiylik,    mumkin: til bo'yicha hamma kod
+                        hajm)                       hamma serverda
+izolyatsiya             qattiq (VM)                 yengil (runtime, jarayon)
+tillar                  istalgan, istalgan versiya  asosan bir necha, markazlashgan
+narx modeli             mijoz har ms uchun to'laydi kompaniya umumiy samaradorlikni o'ylaydi
+```
+
+Oxirgi qator ham muhim: ommaviy bulutda bo‘sh turgan issiq konteyner —
+provayder xarajati, mijoz esa to‘lamaydi; shuning uchun ularni tez
+o‘chirish iqtisodiy. Ichki platformada esa kompaniya **butun** tizim
+samaradorligini optimallashtiradi va hovuzni doim issiq ushlash foydali.
+</Deep>
+
+<Check q="Nega lokallik guruhlari bo'lmasa, universal ishchi ham sovuq startni to'liq yo'qotmaydi?">
+Universal ishchi **disk** va **runtime** darajasidagi sovuqlikni yo‘qotadi:
+kod lokal SSD da, til runtime’i yoqiq. Lekin tez bajarish uchun kod va
+ma’lumot **xotirada** va **protsessor keshlarida**, JIT kompilyatsiya
+qilingan mashina kodi esa xotirada bo‘lishi kerak. Ularning hajmi
+cheklangan: bitta ishchi bir vaqtda faqat bir necha o‘nlab funksiyani
+“issiq” ushlay oladi.
+
+Agar chaqiruvlar tasodifiy taqsimlansa, har ishchi minglab funksiyani
+navbat bilan bajaradi va xotira keshi doim “aylanib” turadi — har chaqiruv
+yarim sovuq. Amaliyotdagi simulyatsiyada tasodifiy taqsimotda ~50%
+chaqiruv sovuq, lokallik guruhlari bilan ~12%.
+
+Shuning uchun uch qadam birga ishlaydi: universal ishchi (kod va runtime
+hamma joyda), kooperativ JIT (mashina kodi tez tayyor), lokallik guruhlari
+(har ishchi kam sonli funksiyani tez-tez ko‘radi).
+</Check>
+
+### 7.3 Sovuq startni qanday o‘lchash kerak
+
+“Sovuq start ulushi” oddiy ko‘rinadi, lekin uni aniq ta’riflash kerak.
+Amaliyotdagi simulyatsiyada ta’rif sodda: chaqiruv kelgan ishchining
+keshida funksiya yo‘q edi — sovuq. Haqiqiy tizimda bir nechta daraja bor:
+
+```
+daraja                       qanday aniqlanadi                    narxi
+kod diskda yo'q              (universal ishchida bo'lmaydi)       soniyalar
+runtime ishga tushmagan      (universal ishchida bo'lmaydi)       soniyalar
+JIT kodi yo'q                profil/kompilyatsiya hisoblagichi    yuzlab ms - soniyalar
+xotira keshlari sovuq        birinchi chaqiruv vs keyingilar      ms lar
+```
+
+To‘g‘ri metrika — nafaqat ulush, balki **qo‘shimcha vaqt**: har funksiya
+uchun birinchi va keyingi chaqiruvlarning o‘rtacha bajarilish vaqti farqi,
+chaqiruvlar soniga ko‘paytirilgan. Shu son “sovuqlik” ning haqiqiy narxini
+yadro-soatlarda beradi va qaysi funksiyalar uchun guruhni kattalashtirish
+yoki kichraytirish kerakligini ko‘rsatadi.
+
+## 8. Yuklama shakli va vaqt bo‘yicha surish
+
+### 8.1 Boshqaruv halqasi
+
+Vaqt bo‘yicha surish — doimiy ishlaydigan **boshqaruv halqasi**: o‘lchash,
+qaror, ta’sir.
+
+<Flow nodes={["Ishchilar bandligini o'lchash (har bir necha soniya)", "Maqsad bilan solishtirish (masalan, 70-80%)", "Opportunistik kvotani kengaytirish yoki toraytirish", "Rejalashtiruvchilar kechiktiriladigan ishni oladi yoki ushlaydi", "Bandlik o'zgaradi", "Qayta o'lchash"]} caption="Termostat kabi: xona sovuq bo'lsa — isitgich yoqiladi. Bu yerda 'isitgich' — kechiktirilgan ishlar navbati" />
+
+<Calc title="Boshqaruv halqasining tezligi" result="Bandlik har 10 s da o'lchanadi, kvota bir qadamda 10% gacha o'zgaradi: yangilik to'lqiniga 1-2 daqiqada moslashadi; juda tez halqa esa tebranishga olib keladi">{`O'lchash oralig'i: 10 s (faraz)
+Maqsad bandlik: 75%
+Qoida (soddalashtirilgan):
+  bandlik < 70% -> opportunistik kvota x 1.1
+  bandlik > 80% -> opportunistik kvota x 0.8
+
+Shoshilinch ishlar to'satdan 30% ga oshdi (yangilik):
+  bandlik 75% -> 97%: kvota 0.8, 0.64, 0.51... -> 3-4 qadamda (30-40 s)
+  kechiktirilgan ishlar orqaga chekinadi, bandlik ~80% ga qaytadi
+
+Agar oraliq 1 s va qadamlar katta bo'lsa:
+  kvota keskin tushadi -> bandlik 50% ga -> keskin oshadi -> tebranish
+  -> boshqaruv nazariyasi: halqa kechikishi va qadam o'lchami muvozanati`}</Calc>
+
+### 8.2 Nega Meta’da kechiktiriladigan ish ko‘p
+
+<Deep title="Fon ishining tabiati: 'hozir' va 'bugun' farqi">
+2.2 dagi jadvalga qaytamiz: hisoblashning 86% i navbat bilan ishga
+tushadigan funksiyalarda. Ular odatda nima qiladi?
+
+```
+"hozir" kerak (soniyalar):         "bugun" yetarli (soatlar):
+  rasm kichik nusxalari              tavsiya modellari uchun belgilar
+  bildirishnoma yuborish             statistika va hisobotlar
+  izoh moderatsiyasi (oldindan)      eski ma'lumotlarni ko'chirish
+  qidiruv indeksiga qo'shish         spam hisoblarini qayta tekshirish
+                                     zaxira nusxalar, tozalash ishlari
+```
+
+Ikkinchi ustundagi ishlar natijasini foydalanuvchi bevosita kutmaydi.
+Ular katta: millionlab foydalanuvchi bo‘yicha qayta hisoblash, million
+qatorli migratsiyalar. Va ular uchun “24 soat ichida” — tabiiy talab.
+Meta’ning global auditoriyasi tufayli “tun” ham bir joyda emas: bir
+hudud tunda bo‘lganda, boshqasi kunduzi — hududlararo surish (10-qadam)
+vaqt bo‘yicha surish bilan birga ishlaydi.
+
+Bu xulosa ko‘p kompaniyaga tegishli: fon ishlarining katta qismi
+kechiktirishga chidamli, lekin buni hech kim **aytmaydi** — muddat
+maydoni bo‘lmasa, hamma narsa “darhol” bajariladi va hovuz cho‘qqiga
+quriladi. Spetsifikatsiyadagi bitta maydon (1-qadam) — millionlab
+dollar.
+</Deep>
+
+<Callout type="ogoh" title="Kechiktirish — faqat ruxsat bilan">
+Platforma ishni o‘zboshimchalik bilan kechiktirmasligi kerak: muddat —
+funksiya egasi bilan **shartnoma**. Agar funksiya “1 daqiqa” desa, uni
+tunga surish — xato, garchi bandlik uchun foydali bo‘lsa ham. Va aksincha:
+“24 soat” degan funksiya natijasini 5 daqiqada kutish — egasining xatosi.
+Shartnomani ikkala tomon ham aniq bilishi kerak, va uning buzilishi
+(muddati o‘tgan chaqiruvlar) hisobotda ko‘rinishi kerak.
+</Callout>
+
+<Check q="Kunduzgi cho'qqida shoshilinch ishlar hovuzning 95% ini egalladi. Kechiktiriladigan ishlar navbati o'sib bormoqda. Qachon bu xavfli bo'ladi?">
+Kechiktirilgan ishlar 24 soat ichida bajarilishi kerak. Ular tunda
+bajarilishi uchun **tungi bo‘sh sig‘im** kunduz to‘plangan navbatdan katta
+bo‘lishi kerak. Xavf belgilari: (1) kecha to‘plangan navbat tunda to‘liq
+bajarilmadi — ertalab qoldiq bor; (2) “eng eski kutayotgan ish yoshi”
+kundan-kunga o‘smoqda; (3) shoshilinch ishlar ulushi o‘sib, tungi bo‘sh
+sig‘imni ham yeymoqda.
+
+Bunday holatda tizim **muvozanatsiz**: kechiktirilgan ish tezligi o‘rtacha
+bo‘sh sig‘imdan katta, va navbat cheksiz o‘sadi — bir necha kundan keyin
+24 soatlik muddatlar buziladi. Choralar: hovuzni kengaytirish, yangi
+opportunistik ishlarni qabul qilishni sekinlashtirish, hududlararo surish,
+yoki eng katta kechiktirilgan funksiyalar egalari bilan ishni optimallash.
+Bu yerda navbat nazariyasi oddiy qoidani beradi: uzoq muddatda kirish
+tezligi chiqish tezligidan kichik bo‘lishi shart.
+</Check>
+
+## 9. Bugungi arxitektura
+
+<Arch
+  title="XFaaS: chaqiruvdan ishchigacha (soddalashtirilgan)"
+  layers={[
+    { name: "Chaqiruvchilar", boxes: ["Veb-serverlar kodi", "Ma'lumotlar bazasi hodisalari", "Taymerlar"], note: "Navbat 89% funksiya/86% hisoblash; hodisa 85% chaqiruv (2.2)." },
+    { name: "Qabul qilish", boxes: ["Yuboruvchi (kvota)", "QueueLB", "DurableQ (bardoshli navbatlar)"], note: "Chaqiruv yozilgan zahoti yo'qolmaydi; kamida bir marta (2-qadam)." },
+    { name: "Rejalashtirish", boxes: ["Rejalashtiruvchilar (kritiklik, muddat)", "Bandlik nazoratchisi", "Global Traffic Conductor", "Tirbandlik nazorati (AIMD)"], note: "Nimani, qachon, qayerda, qancha tezlikda (7-11-qadamlar)." },
+    { name: "Bajarish", boxes: ["Ishchilar hovuzlari (PHP/Hack, Python, Erlang, konteyner)", "Lokallik guruhlari", "Kooperativ JIT"], note: "Universal ishchi: kod va runtime doim tayyor (4-6-qadamlar)." },
+    { name: "Downstream", boxes: ["TAO (ijtimoiy graf)", "Ombor va keshlar", "Boshqa xizmatlar"], note: "Ularning holati ish tezligini belgilaydi (11-qadam)." },
+  ]}
+/>
+
+Rasmning asosiy g‘oyasi — **qaror qatlami** (rejalashtirish) va **bajarish
+qatlami** (ishchilar) ajratilgani. Ishchilar sodda va universal; barcha
+“aql” — kvotalar, muddatlar, surish, himoya — rejalashtirishda. Fond
+birjasi darsidagi sekvenser va matching engine ajratilishiga o‘xshash:
+tartib va qaror bir joyda, bajarish boshqa joyda.
+
+Kafka darsi bilan solishtirish foydali — ikkalasi ham navbat va
+iste’molchilar, lekin maqsad boshqacha:
+
+| Savol | Kafka (consumer group) | XFaaS |
+| --- | --- | --- |
+| Tartib | Partition ichida qat’iy | Muhim emas: kritiklik va muddat bo‘yicha |
+| Kim o‘qiydi | Guruh a’zolari, partition bo‘yicha | Rejalashtiruvchi har chaqiruvni alohida tanlaydi |
+| Orqada qolish | Lag — xato belgisi | Kechiktirish — rejali, muddat ichida |
+| Masshtab birligi | Partition soni | Ishchilar soni (cheklanmagan) |
+| Maqsad | O‘tkazuvchanlik va tartib | Bandlik va muddatlar |
+
+Kafka’da tartib — kafolat, XFaaS’da esa erkinlik manbai: tartib shart
+bo‘lmagani uchun har chaqiruvni istalgan ishchiga, istalgan paytda
+(muddat ichida) berish mumkin.
+
+<Timeline
+  rows={[
+    { when: "2000-yillar", what: "Cron, ishchi jarayonlar, navbat jadvallari", why: "Har jamoa o'z fon ishlarini o'zi yuritadi (3-bo'lim)." },
+    { when: "2010-yillar", what: "Kompaniyalar ichida umumiy 'async' platformalar", why: "Fon ishlarini markazlashtirish: umumiy navbat va ishchilar hovuzi." },
+    { when: "2014", what: "AWS Lambda — ommaviy FaaS", why: "'Serverless' atamasi ommalashadi: kod yuklang, qolgani platformada." },
+    { when: "2016-2017", what: "Google, Microsoft va boshqalarning FaaS xizmatlari", why: "Sovuq start, narx modeli va izolyatsiya — asosiy mavzular." },
+    { when: "2018-2020", what: "Yengil mikro-VM lar va 'snapshot'dan tiklash", why: "Ommaviy bulutda sovuq startni kamaytirish yo'llari." },
+    { when: "2023", what: "XFaaS maqolasi (SOSP)", why: "Ichki hyperscale FaaS: trillionlab chaqiruv, 66% bandlik, universal ishchi, vaqt va makon bo'yicha surish." },
+  ]}
+/>
+
+## 10. Ishonchlilik
+
+### 10.1 Nosozliklar taksonomiyasi
+
+| Nosozlik | Oqibat | Himoya |
+| --- | --- | --- |
+| Ishchi o‘ldi | Bajarilayotgan chaqiruvlar tugamadi | Ijara muddati, qayta navbatga (kamida bir marta) |
+| Navbat serveri o‘ldi | Chaqiruvlar vaqtincha olinmaydi | DurableQ nusxalari, QueueLB boshqasiga yozadi |
+| Hudud ishdan chiqdi | Hudud navbati va ishchilari yo‘q | Boshqa hududlar navbatni oladi (GTC), nusxalar |
+| Downstream sekinlashdi | Unga bog‘liq funksiyalar to‘planadi | AIMD bilan sekinlashtirish, kritiklik bo‘yicha o‘rin |
+| Xato kod chiqarildi | Funksiya xato qaytaradi yoki sekin | Bosqichma-bosqich chiqarish, avtomatik qaytarish |
+| Funksiya xatosi (takrorlanuvchi) | Qayta urinishlar bo‘roni | Eksponensial kutish, budjet, o‘lik xatlar |
+| Kvotadan tashqari portlash | Boshqalar ishi sekinlashadi | Token chelak, yuboruvchida rad etish |
+| Kechiktirilgan navbat o‘sib bormoqda | 24 soatlik muddatlar xavf ostida | Eng eski ish yoshi kuzatuvi, qabulni sekinlashtirish |
+
+### 10.2 Bitta hodisa: ma’lumotlar bazasi sekinlashdi
+
+Quyidagi — **soddalashtirilgan stsenariy**, maqoladagi umumiy tavsifga
+(“TAO nosozliklarida unga murojaat qiluvchi funksiyalar sekinlashtirildi”)
+asoslangan, raqamlar o‘ylab topilgan:
+
+<Timeline
+  rows={[
+    { when: "14:00", what: "TAO ning bir qismi sekinlashadi (disk muammosi)", why: "Javoblar kechikadi, xatolar ulushi oshadi — downstream signal beradi." },
+    { when: "14:00-14:01", what: "TAO uchun AIMD chegarasi keskin tushadi", why: "Bir necha tikda bir necha marta yarimlanadi: fon funksiyalari TAO ga yukni o'n barobar kamaytiradi." },
+    { when: "14:01-14:30", what: "TAO ga bog'liq chaqiruvlar navbatda to'planadi", why: "Cheklangan o'rinlar avval yuqori kritiklikdagi shoshilinch funksiyalarga; kechiktiriladiganlar kutadi." },
+    { when: "14:01-14:30", what: "Boshqa funksiyalar odatdagidek", why: "Ishchilar bo'shagan sig'imni TAO ga bog'liq bo'lmagan ishlarga beradi — bandlik deyarli tushmaydi." },
+    { when: "14:30", what: "TAO tiklanadi", why: "AIMD chegarasi asta (+1 har tikda) oshadi: tiklangan xizmat yana bosib ketilmaydi." },
+    { when: "15:00-tun", what: "To'plangan navbat bajariladi", why: "Shoshilinchlar birinchi; kechiktiriladiganlar tunda; 24 soatlik muddat ichida." },
+  ]}
+/>
+
+<Calc title="Himoyasiz va himoyali: bazaga qancha yuk" result="Himoyasiz: sekinlashgan TAO ga odatdagi 400 000 so'rov/s + qayta urinishlar ~700 000 — u butunlay yiqiladi. AIMD bilan: ~40 000/s — tiklanish uchun joy qoladi">{`Odatiy fon yuki TAO ga: 400 000 so'rov/s (faraz)
+Nosozlik: TAO sig'imi 100 000 so'rov/s ga tushdi (foydalanuvchilar ham shu yerda)
+
+Himoyasiz:
+  fon yuki 400 000 + xatolardan qayta urinishlar ~300 000 = ~700 000/s
+  foydalanuvchi so'rovlari ham navbatda -> sayt sekinlashadi
+  baza "tiklanish" uchun hech qachon bo'sh bo'lmaydi
+
+AIMD bilan:
+  fon chegarasi bir necha tikda 10 barobar tushadi -> ~40 000/s
+  foydalanuvchi so'rovlari uchun ~60 000/s qoladi
+  qayta urinish budjeti (12-qadam): +10% dan ko'p emas`}</Calc>
+
+<Callout type="maslahat" title="Fon ishi — birinchi bo'lib chekinadi">
+Umumiy xizmat (baza, kesh) sekinlashganda kim birinchi bo‘lib yukni
+kamaytirishi kerak? Fon ishlari — chunki ular kuta oladi. Foydalanuvchi
+so‘rovlari esa kuta olmaydi. Shuning uchun downstream himoyasi asosan fon
+platformasida: u “eng yumshoq” yuk manbai va uni boshqarish eng arzon.
+Xuddi shu tamoyil elektr tarmoqlarida: tanqislikda avval kechiktiriladigan
+iste’molchilar o‘chiriladi.
+</Callout>
+
+<Check q="TAO tiklandi. Nega AIMD chegarasini darhol odatdagi qiymatga qaytarmaslik kerak?">
+Chunki navbatda nosozlik paytida **to‘plangan** chaqiruvlar bor — ehtimol
+o‘n millionlab. Chegara darhol odatdagi 400 000/s ga qaytsa, platforma
+navbatni maksimal tezlikda bajaradi va yangi tiklangan baza (keshlari
+sovuq, replikalar yetib olmoqda) **yana** ortiqcha yuklanadi —
+“tiklanish to‘lqini” yangi nosozlikka aylanadi.
+
+AIMD da chegara asta oshadi (+1 har tikda): baza har qadamda haqiqatan
+ko‘tara olishini ko‘rsatib boradi. Agar u hali to‘liq tiklanmagan bo‘lsa,
+birinchi xatoda chegara yana tushadi. Navbat bir necha soat ichida
+bajariladi — kechiktiriladigan ishlar uchun bu muammo emas, shoshilinchlar
+esa kritiklik bo‘yicha birinchi o‘rinlarni oladi.
+
+Xuddi shu tamoyil hamma joyda: Kafka darsida qayta ishga tushgan o‘quvchi
+guruhi, S3 darsida tiklangan disklar — tiklanish ham yuk, va uni
+boshqarish kerak.
+</Check>
+
+## 11. Xavfsizlik va ma’lumot himoyasi
+
+### 11.1 Kim nimani chaqira oladi
+
+Funksiya — ma’lumotga kirish eshigi: u foydalanuvchilar ma’lumotlarini
+o‘qiydi va yozadi. Shuning uchun har funksiya uchun: **kim** uni chaqira
+oladi (qaysi xizmatlar, qaysi jamoalar kodi), **nima** qila oladi (qaysi
+bazalar, qaysi jadvallar, qaysi API lar), va **kimning nomidan** ishlaydi
+(foydalanuvchi kontekstini ko‘chirish, maxfiylik qoidalarini qo‘llash).
+Huquqlar spetsifikatsiyada (1-qadam) yoziladi va bajarish paytida
+tekshiriladi.
+
+<Deep title="Fon funksiyasida maxfiylik: kontekst yo'qolmasin">
+Foydalanuvchi so‘rovida maxfiylik qoidalari tabiiy: “bu foydalanuvchi
+shu postni ko‘ra oladimi?” — so‘rov kim tomonidan kelgani ma’lum. Fon
+funksiyasida esa chaqiruv soatlar keyin, boshqa serverda, boshqa hududda
+bajariladi. Agar chaqiruv argumentlarida faqat “post_id” bo‘lsa, funksiya
+**kimning nomidan** ishlayotganini bilmaydi va “hamma narsani ko‘ra
+oladigan” xizmat hisobi bilan ishlashga moyil bo‘ladi.
+
+```
+Xavfli:  enqueue(send_digest, user_id=42)
+         -> funksiya: barcha postlarni o'qiydi, 42 ga ko'rsatishga ruxsat
+            tekshirilmaydi -> maxfiy post dayjestga tushadi
+
+Xavfsiz: enqueue(send_digest, user_id=42, viewer_context=42)
+         -> funksiya: har postni "42 ko'ra oladimi?" qoidasi bilan o'qiydi
+            platforma: viewer_context ni chaqiruv bilan birga saqlaydi
+```
+
+Ikkinchi xavf — **vaqt**: chaqiruv navbatda kutayotganda foydalanuvchi
+sozlamalarni o‘zgartirishi (postni yashirishi, hisobni o‘chirishi)
+mumkin. Funksiya maxfiylik qarorini **bajarish paytida** qabul qilishi
+kerak, navbatga qo‘yilgan paytdagi holat bo‘yicha emas.
+</Deep>
+
+<Calc title="Huquq tekshiruvining narxi" result="Har chaqiruvda 3 ta huquq tekshiruvi x ~20 us = 60 us; kuniga 1e12 chaqiruvda ~700 yadro doimiy — kesh bilan o'n barobar kam">{`Har chaqiruvda (faraz):
+  chaqiruvchi huquqi: 1 tekshiruv
+  funksiyaning resurs huquqlari: 2 tekshiruv
+  har biri ~20 us (siyosat qoidalari, kesh)
+
+1e12 chaqiruv/kun x 60 us = 6e7 CPU-soniya/kun = ~700 yadro doimiy
+Keshlangan qarorlar (bir funksiya — bir xil huquqlar): ~10 barobar kam -> ~70 yadro
+
+Taqqoslash: universal ishchi va JIT tejaydigan resurs — yuz minglab yadro
+  -> xavfsizlik tekshiruvi arzon, uni olib tashlash hech qachon oqlanmaydi`}</Calc>
+
+### 11.2 Resurs chegaralari: qachon to‘xtatish kerak
+
+Har chaqiruvga uchta chegara qo‘yiladi: **vaqt** (masalan, 10 daqiqa — oshsa,
+chaqiruv to‘xtatiladi va xato sifatida qayd etiladi), **xotira** (oshsa —
+jarayon o‘ldiriladi, aks holda butun ishchi xotirasiz qoladi) va **CPU**
+(adolatli ulush). Chegaralar spetsifikatsiyada va funksiya egasi ularni
+oshirishni so‘rashi mumkin — lekin oshirish kvotadan “to‘lanadi”.
+
+Nega bu xavfsizlik masalasi? Chunki cheklovsiz funksiya **mavjudlik**
+hujumi bo‘lishi mumkin — ataylab yoki xato bilan: cheksiz sikl ishchini
+abadiy band qiladi, xotira oqishi qo‘shni chaqiruvlarni o‘ldiradi. Umumiy
+hovuzda bitta bunday funksiya minglab chaqiruv bilan butun guruhni
+egallaydi. Chegaralar shovqinli qo‘shni muammosining (4.5) oxirgi himoya
+qatlami.
+
+<Check q="Fon funksiyasi navbatda 6 soat kutdi. Bu vaqtda foydalanuvchi postini 'faqat do'stlar uchun' qildi. Funksiya postni ommaviy qidiruv indeksiga qo'shishi kerak edi. Nima noto'g'ri ketishi mumkin va qanday oldini olish kerak?">
+Agar funksiya navbatga qo‘yilgan paytdagi holatga tayansa (masalan,
+argumentlarda “post ommaviy” degan bayroq bo‘lsa), u postni ommaviy
+indeksga qo‘shadi — endi u hammaga ochiq. Bu maxfiylik buzilishi.
+
+To‘g‘ri yondashuv: argumentlarda faqat **identifikator** (post_id) va
+ko‘ruvchi konteksti; funksiya bajarish paytida postning **joriy** holatini
+o‘qiydi va maxfiylik qoidalarini shu holat bo‘yicha qo‘llaydi. Post endi
+“faqat do‘stlar uchun” — ommaviy indeksga qo‘shilmaydi (yoki u yerdan
+olib tashlanadi).
+
+Umumiy qoida: kechiktirilgan ish **qaror**ni emas, **niyat**ni navbatga
+qo‘yadi. “Mana shu postni indeksla” — niyat; “post ommaviy, indeksla” —
+eskirishi mumkin bo‘lgan qaror. Bu ayniqsa 24 soat kutadigan
+opportunistik ishlar uchun muhim.
+</Check>
+
+## 12. Iqtisod: bandlik — pul
+
+### 12.1 Bir million chaqiruvning narxi
+
+<Calc title="Ichki narx: million chaqiruv" result="O'rtacha 20 ms CPU, server yadrosi soatiga ~0.03 $ bo'lsa: million chaqiruv ~0.17 $ 100% bandlikda; 66% da ~0.25 $, 20% da ~0.83 $">{`Faraz: o'rtacha chaqiruv — 20 ms CPU
+Million chaqiruv: 1e6 x 0.02 s = 20 000 CPU-soniya = ~5.6 yadro-soat
+
+Yadro-soat narxi (uskuna + elektr + markaz, faraz): ~0.03 $
+  100% bandlikda: 5.6 x 0.03 = ~0.17 $
+  66% bandlikda (XFaaS): 0.17 / 0.66 = ~0.25 $
+  20% bandlikda: 0.17 / 0.20 = ~0.83 $
+
+Kuniga 1e12 chaqiruv: 1e6 million x 0.25 $ = ~250 000 $/kun (~90 M $/yil)
+  20% bandlikda: ~830 000 $/kun (~300 M $/yil)
+-> bandlik farqi yiliga ~200 M $ (faqat shu soddalashtirilgan hisobda)`}</Calc>
+
+### 12.2 Kechiktirish chegirmasi
+
+<Calc title="Opportunistik kvota: nega arzon" result="Tunda bo'sh turgan sig'im 'tekin': uni ishlatgan ish faqat elektr farqini oladi. Kunduzgi sig'im esa cho'qqi uchun alohida sotib olinishi kerak — 3-5 barobar qimmat">{`Hovuz: 10 000 server, kunduzgi cho'qqi uchun qurilgan
+Tunda bo'sh: ~40% -> 4 000 server x 8 soat = 32 000 server-soat/kun
+
+Bu sig'im uchun pul allaqachon to'langan (uskuna, markaz)
+  qo'shimcha narx — faqat elektr farqi (~20-30% to'liq narxning)
+  -> opportunistik ish uchun "ichki narx" ~0.2-0.3x
+
+Kunduzgi shoshilinch ish:
+  har qo'shimcha birlik — yangi server kerak bo'lishi mumkin
+  -> to'liq narx, cho'qqi zaxirasi bilan ~1.5x
+
+Farq: 1.5 / 0.3 = ~5 barobar
+-> jamoalarni "24 soat" deyishga undash — eng kuchli iqtisodiy dastak`}</Calc>
+
+<Deep title="Ichki narx: jamoalar platformadan qanday 'to'laydi'">
+Kompaniya ichida pul ko‘chmaydi, lekin **resurs** cheklangan. Agar platforma
+bepul va cheksiz bo‘lsa, har jamoa eng qulay variantni tanlaydi: hamma
+narsa shoshilinch, kvota katta, kod optimallashtirilmagan. Natija — hovuz
+cho‘qqiga quriladi va hamma uchun qimmat.
+
+Shuning uchun ichki platformalar **ichki narx** yuritadi: har jamoaning
+resurs “budjeti” bor, va turli xizmat darajalari turlicha “turadi”:
+
+```
+Xizmat darajasi                     Ichki narx (nisbiy)   Kim uchun
+kafolatlangan, sekundlar            1.0 (yoki ko'proq)   foydalanuvchi kutadigan ishlar
+kafolatlangan, daqiqalar            ~0.7                 tez, lekin shoshilinch emas
+opportunistik, 24 soat              ~0.2-0.3             fon hisob-kitoblari, migratsiyalar
+```
+
+Bu bozor mexanizmi muhandislik qarorlarini to‘g‘ri yo‘naltiradi: jamoa o‘z
+funksiyasini “24 soat” deb belgilasa, budjeti uzoqroq yetadi. Platforma
+esa “nimani kechiktirish mumkin” degan ma’lumotni jamoalarning o‘zidan
+oladi — eng aniq manbadan.
+</Deep>
+
+### 12.3 Nega 66%, 100% emas
+
+Agar bandlik pul bo‘lsa, nega 100% ga intilmaslik kerak? Uchta sabab:
+
+**Shoshilinch ishlar uchun zaxira.** Yangilik yoki to‘satdan portlash
+paytida shoshilinch chaqiruvlar darhol joy topishi kerak. Kechiktiriladigan
+ishlar bu joyni bo‘shatadi — lekin bir zumda emas, bandlik nazoratchisi
+halqasi orqali (8.1): o‘nlab soniyalar.
+
+**Nosozliklar uchun zaxira.** Hudud yoki ishchilar guruhi ishdan chiqsa,
+qolganlar uning ishini oladi (10-qadam). 100% band hovuzda buning uchun
+joy yo‘q.
+
+**Navbat nazariyasi.** Bandlik 100% ga yaqinlashganda kutish vaqti
+chiziqli emas, portlovchi o‘sadi (fond birjasi darsi, 13-bo‘lim).
+Shoshilinch ishlarning kutish vaqti barqaror bo‘lishi uchun hovuz
+“to‘la” bo‘lmasligi kerak.
+
+Shuning uchun 66% — “past” emas, balki muddatlar va ishonchlilik
+cheklovlari ostida juda yuqori natija. Odatiy ommaviy FaaS bandligi
+bundan bir necha barobar past ekanini eslang (1.3).
+
+## 13. Sig‘im rejalashtirish
+
+### 13.1 Hovuz va navbat hajmi
+
+<Calc title="Hovuzni qancha qilish kerak" result="Shoshilinch ishlar cho'qqisi + zaxira hovuzni belgilaydi, kechiktiriladiganlar esa kunlik o'rtacha bo'yicha sig'adi: kunlik ish 1.0 bo'lsa, ~1.15-1.3 hovuz yetadi">{`Kunlik ish (o'rtacha = 1.0 birlik sig'im):
+  shoshilinch: 40%, kunduzi cho'qqisi o'rtachasidan 1.8x -> cho'qqida 0.72
+  kechiktiriladigan: 60% -> kunlik 0.6, istalgan vaqtda (24 soat ichida)
+
+Talab 1 (shoshilinch cho'qqi + zaxira 30%): 0.72 x 1.3 = ~0.94
+Talab 2 (butun kun sig'imi):
+  sig'im x 24 soat >= (0.4 + 0.6) x 24 -> sig'im >= 1.0
+  + sig'imni 100% ishlatib bo'lmaydi (maqsad ~80-85%) -> ~1.2
+
+Hovuz = max(0.94, 1.2) = ~1.2 birlik
+Surishsiz (hamma narsa darhol): cho'qqi ~1.7 x zaxira 1.3 = ~2.2 birlik
+-> ~45% kam server`}</Calc>
+
+<Calc title="Kechiktirilgan navbat qachon xavfli" result="Kunduzi soatiga 100 M kechiktirilgan chaqiruv to'planadi, tunda soatiga 150 M bajariladi: 12 soatlik kunduz to'plami 1.2 mlrd, tunda 8 soatda ~1.2 mlrd — chegarada. Shoshilinch ishlar 10% oshsa — har kuni qoldiq">{`Kunduz (12 soat): kechiktiriladiganlar kelishi 150 M/soat, bajarilishi 50 M/soat
+  -> to'planish: 100 M/soat x 12 = 1.2 mlrd
+
+Tun (8 soat): kelishi 50 M/soat, bajarilishi 200 M/soat
+  -> kamayish: 150 M/soat x 8 = 1.2 mlrd -> ertalab ~0 qoldiq (chegarada!)
+
+Shoshilinch ishlar 10% oshdi -> tungi bo'sh sig'im 10% kamaydi
+  -> tunda 180 M/soat bajariladi: kamayish 130 M x 8 = 1.04 mlrd
+  -> har kuni ~160 M qoldiq -> 1 haftada 1.1 mlrd, eng eski ish yoshi o'sadi
+  -> bir necha kunda 24 soatlik muddatlar buziladi
+
+Signal: "ertalabki qoldiq" va "eng eski ish yoshi" — sig'im ogohlantirishi`}</Calc>
+
+<Check q="Nega serverless platformada sig'im rejalashtirish 'eng katta cho'qqi' emas, ikki xil talabning maksimumi bo'yicha qilinadi?">
+Chunki ishlar ikki turdagi. **Shoshilinch** ishlar uchun sig‘im ularning
+**cho‘qqisi**ni (zaxira bilan) ko‘tarishi kerak — ular kuta olmaydi.
+**Kechiktiriladigan** ishlar uchun esa sig‘im **kunlik jami** ishni 24 soat
+ichida bajarishi yetarli — qachon bajarilishi muhim emas.
+
+Hovuz shu ikki talabning **kattasi** bo‘yicha quriladi. Odatda ikkinchi
+talab (kunlik jami) hal qiluvchi: hovuz kun bo‘yi ~80% band, cho‘qqida
+shoshilinchlar joy oladi, kechiktiriladiganlar esa bo‘sh joyni
+to‘ldiradi. Agar hamma narsa “shoshilinch” bo‘lsa — birinchi talab
+umumiy cho‘qqiga aylanadi va hovuz ~1.8 barobar kattalashadi (13.1).
+
+Kuzatish kerak bo‘lgan muvozanat: shoshilinch ishlar ulushi o‘sgani sari
+tungi bo‘sh sig‘im kamayadi va kechiktirilgan navbat yetib ololmay qoladi
+(13.1 ikkinchi hisob). Bu — oddiy “CPU 90%” ogohlantirishidan ko‘ra
+oldinroq ko‘rinadigan sig‘im signali.
+</Check>
+
+## 14. Kuzatuv
+
+### 14.1 Nima o‘lchanadi
+
+| Metrika | Nima ko‘rsatadi |
+| --- | --- |
+| Ishchilar bandligi (o‘rtacha va taqsimot) | Samaradorlik — platformaning asosiy maqsadi |
+| Muddati o‘tgan chaqiruvlar (funksiya va kritiklik bo‘yicha) | Shartnoma buzilishi |
+| Navbatda kutish vaqti (p50, p99) — shoshilinchlar uchun | Foydalanuvchiga ko‘rinadigan kechikish |
+| Kechiktirilgan navbat hajmi va eng eski ish yoshi | 24 soatlik va’da xavfi (13.1) |
+| Sovuq start ulushi, lokallik guruhidan tashqari “to‘kilishlar” | Kesh va guruhlar sifati |
+| Downstream bo‘yicha AIMD chegarasi va ortiqcha yuklama signallari | Qaysi xizmat bosim ostida |
+| Qayta urinishlar ulushi va o‘lik xatlar | Funksiyalar sog‘ligi, bo‘ron xavfi |
+| Kvotaga urilgan (rad etilgan) chaqiruvlar | Kvotalar to‘g‘ri belgilanganmi |
+
+<Calc title="Bitta funksiya sog'ligi: oddiy ogohlantirish" result="Funksiya kuniga 10 M chaqiruv; muddati o'tganlar 0.01% dan 1% ga oshsa — kuniga 100 000 bajarilmagan ish: funksiya egasiga darhol xabar">{`Funksiya: kuniga 10 000 000 chaqiruv, muddat 5 daqiqa
+
+Odatiy holat:
+  muddati o'tganlar: 0.01% -> 1 000/kun (shovqin)
+  qayta urinishlar: 2%
+Ogohlantirish qoidalari (faraz):
+  muddati o'tganlar > 0.1% 15 daqiqa davomida -> egasiga
+  qayta urinishlar > 20% -> egasiga + budjet cheklovi
+  kutish p99 > muddatning 50% i -> platforma navbatchisiga (sig'im?)
+
+Muhim: ogohlantirish FUNKSIYA egasiga, platformaga emas —
+  ko'p muammolar funksiya kodida yoki uning downstream'ida`}</Calc>
+
+### 14.2 Uchidan-uchiga tekshiruv
+
+Har qatlam metrikalari alohida “yaxshi” bo‘lishi mumkin, lekin zanjir
+buzilgan. Shuning uchun **sintetik funksiya**: platforma jamoasining o‘zi
+yozgan kichik funksiya har daqiqada har hududda chaqiriladi — har
+kritiklik va muddat turi bilan. U yozilgan vaqtni, bajarilgan vaqtni,
+ishchini va hududni qayd etadi. Natija: “shoshilinch chaqiruv navbatdan
+ishchigacha qancha kutdi” degan haqiqiy, uchidan-uchiga raqam; va
+“kechiktiriladigan chaqiruv haqiqatan 24 soat ichida bajarildimi”.
+
+Bundan tashqari, **downstream sintetikasi**: sintetik funksiya har
+downstream xizmatga bitta yengil so‘rov yuboradi — AIMD chegarasi pastga
+tushganda bu so‘rovlarning kechikishi “xizmat haqiqatan sekinmi yoki
+signal noto‘g‘rimi” degan savolga javob beradi.
+
+<Callout type="maslahat" title="Ikki xil mijoz — ikki xil panel">
+Platforma ikki auditoriya uchun kuzatuv beradi. **Funksiya egalari** uchun:
+“mening chaqiruvlarim o‘z vaqtida bajarilyaptimi, qancha xato, qancha
+kvota ishlatildi”. **Platforma jamoasi** uchun: “hovuz qanchalik band,
+qayerda navbat, qaysi downstream bosim ostida”. Ikkalasini aralashtirish
+xato: funksiya egasi hovuz bandligini o‘zgartira olmaydi, platforma jamoasi
+esa minglab funksiyaning har birini kuzata olmaydi.
+</Callout>
+
+<Check q="Platformaning o'rtacha bandligi 66% dan 50% ga tushdi, lekin hech qanday xato yoki muddat buzilishi yo'q. Bu muammomi va qanday sababni qidirasiz?">
+Ha, bu **iqtisodiy** muammo: bir xil ish uchun ~30% ko‘proq server
+ishlatilmoqda (66/50). Xatolar yo‘qligi tizim “ishlayapti” degani, lekin
+samarali emas.
+
+Sabablarni qidirish tartibi: (1) **kechiktiriladigan ishlar kamaydimi** —
+katta opportunistik funksiya o‘chirilgan yoki “shoshilinch”ga o‘tkazilgan,
+bo‘sh joyni to‘ldiradigan ish yo‘q; (2) **bandlik nazoratchisi** —
+opportunistik kvota noto‘g‘ri sozlangan yoki halqa “qotib” qolgan;
+(3) **downstream cheklovlari** — AIMD chegaralari past qolib ketgan (masalan,
+nosozlikdan keyin tiklanmagan), ishchilar bo‘sh, lekin ish downstream’ni
+kutmoqda; (4) **sovuq startlar** oshgan — ishchilar vaqtini isinishga
+sarflamoqda; (5) **hovuz kattalashtirilgan**, talab esa o‘smagan.
+
+Har sabab o‘z metrikasida ko‘rinadi (14.1): kechiktirilgan navbat hajmi,
+opportunistik kvota tarixi, downstream chegaralari, sovuq start ulushi.
+</Check>
+
+## 15. Antinaqshlar
+
+<TradeOffs
+  rows={[
+    { choice: "Har funksiyani 'yuqori kritiklik, darhol' deb belgilash", pro: "Jamoa uchun qulay: hammasi tez", con: "Hovuz cho'qqiga quriladi, ortiqcha yuklamada hamma teng kechikadi (7-qadam)" },
+    { choice: "Idempotent bo'lmagan funksiya", pro: "Kod soddaroq", con: "Kamida bir marta yetkazishda ikki marta to'lov, ikki bildirishnoma (2.3)" },
+    { choice: "Xatoda darhol, cheksiz qayta urinish", pro: "'Tezroq tuzaladi'", con: "Takrorlar bo'roni: sekinlashgan xizmat butunlay yiqiladi (12-qadam)" },
+    { choice: "Fon ishini downstream holatiga qaramasdan maksimal tezlikda bajarish", pro: "Navbat tez tugaydi", con: "Bazalar va keshlar yiqiladi, foydalanuvchilar jabr ko'radi (4.4, 11-qadam)" },
+    { choice: "Navbatga qarorni qo'yish (masalan, 'post ommaviy')", pro: "Funksiya kamroq o'qiydi", con: "Soatlar o'tib qaror eskiradi — maxfiylik buzilishi (11-bo'lim)" },
+    { choice: "Argumentlar formatini orqaga mos bo'lmagan holda o'zgartirish", pro: "Kod tozaroq", con: "Navbatdagi milliardlab eski chaqiruv yangi kodda xato beradi (14-qadam)" },
+  ]}
+/>
+
+<Deep title="'Serverless' — serversiz emas, mas'uliyat taqsimoti">
+“Serverless” atamasi chalg‘itadi: serverlar bor, va ular haqida o‘ylash
+kerak — faqat **boshqa odamlar** o‘ylaydi. Mas’uliyat taqsimoti
+o‘zgaradi:
+
+```
+Platforma zimmasida:                 Funksiya egasi zimmasida:
+  serverlar, OS, runtime, kod tarqatish  idempotentlik
+  navbat va yetkazish kafolati           to'g'ri muddat va kritiklik
+  rejalashtirish, kvotalar, surish       resurs iste'moli (CPU, xotira)
+  downstream himoyasi (umumiy)           downstream'ga murojaat naqshi
+  izolyatsiya, huquqlarni tekshirish     maxfiylik qoidalarini qo'llash
+  kuzatuv infratuzilmasi                 o'z funksiyasining metrikalari
+```
+
+Eng ko‘p uchraydigan xato — o‘ng ustundagi narsalarni “platforma qiladi”
+deb o‘ylash. Platforma takrorlarni kamaytiradi, lekin yo‘q qila olmaydi;
+downstream’ni umumiy himoya qiladi, lekin har funksiyaning noto‘g‘ri
+so‘rov naqshini (masalan, har chaqiruvda butun jadvalni o‘qish) tuzata
+olmaydi. Yaxshi platforma bu chegarani hujjatlarda va standart
+sozlamalarda aniq ko‘rsatadi.
+</Deep>
+
+<Callout type="xato" title="Yettinchi antinaqsh: 'tun bo'sh — hammasini tunga'">
+Kechiktirish foydali bo‘lgani uchun hamma narsani tunga surish
+vasvasasi bor. Lekin “tun” cheksiz emas (13.1): agar kechiktirilgan ish
+tungi bo‘sh sig‘imdan oshsa, navbat har kuni o‘sadi va oxirida 24 soatlik
+muddatlar buziladi. Bundan tashqari, global kompaniyada bitta “tun” yo‘q —
+turli hududlarda turli paytda, va hududlararo surish ma’lumot yaqinligi
+bilan cheklangan. Kechiktirish — sig‘im **o‘rnini** emas, uning
+**tekislagichi**.
+</Callout>
+
+## 16. Trade-off‘lar
+
+<TradeOffs
+  rows={[
+    { choice: "Universal ishchi (hamma kod hamma joyda)", pro: "Sovuq startning katta qismi yo'q", con: "Faqat ichki, ishonchli kod uchun; har serverda katta kod bazasi va tez tarqatish" },
+    { choice: "Lokallik guruhlari", pro: "Keshlar issiq, sovuq start kam", con: "Yuk notekis; mashhur funksiyalar uchun to'kilish yoki kattaroq guruh" },
+    { choice: "Vaqt bo'yicha surish", pro: "Bandlik yuqori, server kam", con: "Kechiktirilgan natijalar soatlab kech; katta navbat" },
+    { choice: "Hududlararo surish", pro: "Bo'sh hududlar ishlaydi; hudud nosozligiga chidamlilik", con: "Ma'lumotdan uzoqlik, hududlararo trafik" },
+    { choice: "AIMD downstream himoyasi", pro: "Bazalar yiqilmaydi, tiklanish xavfsiz", con: "Sig'imning ~75% i ishlatiladi; tiklanish sekin" },
+    { choice: "Yengil izolyatsiya", pro: "Chaqiruvga mikrosekundlar", con: "Ishonch modeli: faqat kompaniya ichidagi kod" },
+  ]}
+/>
+
+<Versus
+  left={{ title: "Ichki FaaS (XFaaS)", points: [
+    "Asosan asinxron, muddatli chaqiruvlar",
+    "Hamma kod hamma ishchida, runtime doim yoqiq",
+    "Yengil izolyatsiya — ishonchli kod",
+    "Maqsad: butun kompaniya bandligi (66%)",
+    "Kechiktirish va surish — asosiy vosita",
+  ] }}
+  right={{ title: "Ommaviy FaaS (AWS Lambda va boshqalar)", points: [
+    "Ko'pincha sinxron, HTTP so'rovlar",
+    "Kod talab bo'yicha yuklanadi, sovuq start",
+    "Qattiq izolyatsiya (mikro-VM) — begona kod",
+    "Maqsad: har mijoz uchun kechikish va narx",
+    "Mijoz har millisekund uchun to'laydi",
+  ] }}
+/>
+
+<Versus
+  left={{ title: "Har chaqiruv darhol", points: [
+    "Natija tez",
+    "Rejalashtirish sodda",
+    "Hovuz — cho'qqi uchun",
+    "Bandlik past (kunduz/tun farqi)",
+  ] }}
+  right={{ title: "Muddat ichida, surish bilan", points: [
+    "Kechiktiriladigan natijalar soatlab kech",
+    "Rejalashtirish murakkab (kvotalar, nazoratchi)",
+    "Hovuz — o'rtacha uchun",
+    "Bandlik yuqori, server 1.5-2 barobar kam",
+  ] }}
+/>
+
+<Deep title="Funksiya platformasi va ma'lumot markazi: ikki darajadagi rejalashtirish">
+XFaaS bitta “qatlam”: u o‘ziga berilgan ishchilar hovuzini samarali
+ishlatadi. Lekin hovuzning o‘zi ham kattaroq tizimdan — ma’lumot markazi
+resurs boshqaruvchisidan — keladi. U turli xizmatlar (veb-serverlar,
+bazalar, ML trening, funksiyalar) orasida serverlarni taqsimlaydi.
+
+Ikki daraja bir-birini to‘ldiradi. Funksiyalar platformasi o‘z ichida
+ishni tekislaydi (vaqt, joy, kvotalar), va natijada **barqaror,
+bashorat qilinadigan** talab bildiradi: “menga ~N server kerak, kun
+bo‘yi”. Bu ma’lumot markazi uchun ideal mijoz. Aksincha, ishni darhol
+bajaradigan platforma “kunduzi 2N, tunda 0.5N” deb so‘raydi — va boshqa
+xizmatlar bilan aynan bir vaqtda (kunduzi hamma band).
+
+Bu “kechiktiriladigan ish”ning kengroq ma’nosi: u nafaqat funksiyalar
+hovuzini, balki butun ma’lumot markazini tekislaydi. Shu sabab katta
+kompaniyalarda opportunistik resurslar (bo‘sh paytdagi sig‘im) uchun
+alohida bozor mexanizmlari mavjud.
+</Deep>
+
+### Butun dars o‘nta gapda
+
+1. **Serverless — mas’uliyat taqsimoti**: dasturchi funksiya va qoidalarni
+   yozadi, platforma serverlar, navbat, rejalashtirish va himoyani oladi
+   (1-bo‘lim, 15 Deep).
+2. **Bandlik — pul**: 20% va 66% farqi bir xil ish uchun ~3 barobar
+   server (1.3, 12-bo‘lim).
+3. **Asinxron chaqiruv — erkinlik**: navbat va muddat platformaga
+   “qachon, qayerda, qanchalik tez” degan tanlovni beradi (2-bo‘lim).
+4. **Kamida bir marta — idempotentlik shart**: bardoshli navbat yo‘qotmaydi,
+   lekin takrorlaydi (2.3, 2-qadam).
+5. **Sovuq start — pul muammosi**: universal ishchi, kooperativ JIT va
+   lokallik guruhlari birgalikda uni deyarli yo‘qotadi (4–6-qadamlar, 7-bo‘lim).
+6. **Kritiklik va eng yaqin muddat birinchi**: ortiqcha yuklamada nima
+   kechikishi oldindan aniq (7-qadam).
+7. **Kvotalar — ikki xil**: kafolatlangan va imkoniyatga qarab (24 soat);
+   ichki narx jamoalarni to‘g‘ri tanlovga undaydi (8-qadam, 12-bo‘lim).
+8. **Vaqt va makon bo‘yicha surish**: 4.3x chaqiruv cho‘qqisi — 1.4x
+   bandlik tebranishiga (9–10-qadamlar).
+9. **Downstream — TCP kabi himoya**: asta oshir, keskin kamaytir; fon ishi
+   birinchi bo‘lib chekinadi (11-qadam, 10.2).
+10. **Navbat — vaqt mashinasi**: niyatni saqlang, qarorni emas; formatlar
+    orqaga mos; kechiktirilgan navbat yoshi — sig‘im signali (11, 13, 14-qadam).
+
+### Darslik oxirida: o‘n yetti darsning umumiy saboqlari
+
+Bu — darslikning oxirgi darsi. ChatGPT’dan boshlab Meta Serverless’gacha
+o‘n yetti tizimni ko‘rdik. Ular juda turlicha ko‘rinadi, lekin bir xil
+g‘oyalar qayta-qayta uchradi:
+
+1. **Jurnal — haqiqat, qolgani — hosila.** Kafka’ning commit log’i, fond
+   birjasining deterministik jurnali, Bluesky’ning firehose’i, Google
+   Docs’ning operatsiyalar tarixi, Airbnb’ning CDC oqimi — hammasida holat
+   o‘zgarishlar ketma-ketligidan quriladi va qayta quriladi.
+2. **Takror — norma, idempotentlik — majburiyat.** URL qisqartiruvchidagi
+   kalitlar, Airbnb to‘lovlari, Kafka producer’i, birja ClOrdID si, XFaaS
+   chaqiruvlari — tarmoq ikki marta yetkazadi, tizim bir marta bajarishi kerak.
+3. **Tartib — raqam bilan, soat bilan emas.** Sekvenser, offset, rev, seq —
+   “kim birinchi” degan savolga har doim raqam javob beradi.
+4. **Cho‘qqi uchun emas, o‘rtacha uchun quring — agar ishni surish mumkin
+   bo‘lsa.** YouTube transkodlashi, S3 ning fon tekshiruvlari, XFaaS’ning
+   kechiktiriladigan ishlari.
+5. **Kesh va lokallik.** Redis, CDN, Spotify keshlari, lokallik guruhlari —
+   eng tez so‘rov — umuman bajarilmagan so‘rov.
+6. **Barqaror xeshlash.** URL qisqartiruvchi va Google Docs’dagi izchil
+   xeshlash, bu darsdagi rendezvous guruhlari — server qo‘shilganda hamma
+   narsa ko‘chmasin.
+7. **Dum va bo‘sh sig‘im.** O‘rtacha yolg‘on gapiradi: p99, p99.99 va
+   “90% band — allaqachon muammo” birja, ChatGPT va Slack darslarida bir xil.
+8. **Boshqalarni himoya qiling.** AIMD, kvotalar, qayta urinish budjeti,
+   tezlik chegaralari — katta tizim o‘z tezligi bilan boshqalarni yiqitmasin.
+9. **Raqam bilan qaror.** Har darsdagi “konvert orqasidagi hisob” — dizayn
+   munozarasini fikrdan dalilga aylantirish usuli.
+10. **Har tanlovning narxi bor.** Har qadamda “Yutuq” va “Narx” — tizim
+    dizaynida bepul yechim yo‘q, faqat ongli tanlov bor.
+
+Bu o‘nta g‘oyani yangi tizimda — intervyuda yoki ishda — topib, nomlay
+olsangiz, darslik o‘z vazifasini bajargan bo‘ladi.
+
+## 17. Intervyu savollari
+
+<Callout type="info" title="'Funksiyalar platformasini loyihalang' savoliga qanday yondashish">
+Birinchi daqiqalarni uch narsaga bering: (1) **chaqiruv modeli** — sinxron
+yoki asinxron, muddat va kritiklik, yetkazish kafolati (kamida bir marta,
+idempotentlik); (2) **rejalashtirish** — navbat, kvotalar, ustuvorlik,
+bandlik maqsadi; (3) **bajarish** — sovuq start, izolyatsiya, kod
+yetkazish. Keyin raqamlar: chaqiruvlar/s, o‘rtacha CPU vaqti, cho‘qqi/eng
+past nisbati, kerakli serverlar. Hududlararo surish va downstream himoyasi
+— oxirida, chunki ular yuqoridagilarga tayanadi.
+</Callout>
+
+### 17.1 Asoslar
+
+<QA q="Serverless (FaaS) nima va u qanday muammoni hal qiladi?">
+Dasturchi faqat funksiya (kod) va uning qoidalarini (trigger, muddat,
+kvota, resurslar) yozadi; serverlarni ajratish, ishga tushirish, kod
+tarqatish, masshtablash va kuzatuv — platformaning ishi. Muammo:
+minglab jamoaning har biri o‘z serverlarini yuritsa — past bandlik,
+takrorlanuvchi infratuzilma ishi va har jamoaning o‘z cho‘qqisi.
+</QA>
+
+<QA q="Sinxron va asinxron chaqiruv farqi va nega XFaaS asosan asinxron?">
+Sinxronda chaqiruvchi javobni kutadi — platforma darhol bajarishi kerak,
+sig‘im cho‘qqi uchun. Asinxronda chaqiruv navbatga qo‘yiladi va muddat
+ichida bajariladi — platforma vaqtni, hududni va tezlikni tanlaydi. Meta
+fon ishlarining katta qismi foydalanuvchi kutmaydigan ishlar, va bu
+erkinlik bandlikni oshirishning asosiy vositasi.
+</QA>
+
+<QA q="'Kamida bir marta' yetkazish nima uchun kerak va u funksiyalarga qanday talab qo'yadi?">
+Chaqiruv yo‘qolmasligi uchun navbat uni bajarilish tasdiqlanmaguncha
+saqlaydi; ishchi tasdiqdan oldin o‘lsa, chaqiruv qayta beriladi — ba’zan
+ikki marta bajariladi. Shuning uchun funksiyalar idempotent bo‘lishi
+kerak: takror natijani o‘zgartirmasin (bir xil nom bilan yozish,
+identifikator bo‘yicha “allaqachon qilinganmi” tekshiruvi).
+</QA>
+
+<QA q="Sovuq start nima va u nimalardan iborat?">
+Funksiya yangi joyda birinchi marta bajarilganda qo‘shimcha ish: muhit
+(konteyner, VM) yaratish, kodni yuklab olish, runtime’ni ishga tushirish,
+kutubxonalar va global holatni yuklash, JIT isinishi, xotira keshlarini
+to‘ldirish. Ommaviy FaaS’da bu sekundlar; katta masshtabda — nafaqat
+kechikish, balki millionlab yadro-soat isrof.
+</QA>
+
+<QA q="XFaaS sovuq startni qanday deyarli yo'qotadi?">
+Uch mexanizm: universal ishchi — bir tildagi hamma funksiyaning kodi shu
+tildagi hamma serverning lokal diskida, runtime doim yoqiq; kooperativ JIT —
+bitta server yangi kodni profillaydi, profilni boshqalarga yuboradi,
+ular oldindan kompilyatsiya qiladi; lokallik guruhlari — har funksiya
+kichik, barqaror ishchilar to‘plamida bajariladi, shuning uchun xotira
+keshlari issiq.
+</QA>
+
+<QA q="Nega universal ishchi g'oyasi ommaviy bulutda ishlamaydi?">
+Begona mijozlarning kodi bir-biriga va provayderga ishonchsiz: uni
+hamma serverga qo‘yib bo‘lmaydi (maxfiylik, xavfsizlik), hajmi va tillari
+cheksiz xilma-xil, izolyatsiya qattiq (VM) bo‘lishi kerak. Ichki
+platformada esa kod bitta kompaniyaniki, ko‘rib chiqilgan, asosan bir
+nechta tilda — oldindan tarqatish va yengil izolyatsiya mumkin.
+</QA>
+
+<QA q="Lokallik guruhlari nima va funksiyani guruhga qanday barqaror bog'lash mumkin?">
+Har funksiya chaqiruvlari faqat ishchilarning kichik, doimiy to‘plamiga
+yuboriladi — keshlar issiq qoladi. Bog‘lash uchun rendezvous (eng yuqori
+ball) xeshlash: har (funksiya, ishchi) juftligiga xesh ball, eng yuqori G
+ta ishchi — guruh. Ishchi qo‘shilsa yoki olinsa, faqat ~G/N funksiya
+guruhini o‘zgartiradi; modul usulida — deyarli hammasi.
+</QA>
+
+<QA q="Mashhur funksiya o'z lokallik guruhini to'ldirib yuborsa nima qilasiz?">
+Guruh ichida eng kam yuklangan ishchi ham to‘la bo‘lsa — chaqiruvni
+guruhdan tashqariga, butun hovuzdagi eng bo‘sh ishchiga “to‘kish”: sovuq
+start evaziga navbatsiz bajarish. Doimiy mashhur funksiyalarga kattaroq
+guruh berish mumkin. Ikkalasi ham kesh issiqligi va yuk tekisligi orasidagi
+muvozanat.
+</QA>
+
+### 17.2 Rejalashtirish va resurslar
+
+<QA q="Chaqiruvlarni qanday tartibda bajarish kerak?">
+Avval kritiklik (yuqorisi oldin), bir xil kritiklikda — eng yaqin muddat
+(EDF), keyin kelish vaqti. Muddati o‘tganlar bajarilmaydi, xato sifatida
+qayd etiladi. Kvotasi tugagan yoki downstream’i band funksiya shu tikda
+o‘tkazib yuboriladi, lekin boshqalar to‘xtamaydi. Bir xil uzunlikdagi
+ishlar uchun EDF optimal: biror jadval muddatlarni bajara olsa, EDF ham
+bajaradi.
+</QA>
+
+<QA q="Kafolatlangan va opportunistik kvota farqi nima?">
+Kafolatlangan kvota — chaqiruvlar tez bajarilishi uchun ajratilgan sig‘im.
+Opportunistik — ish 24 soat ichida bajarilishi kafolatlanadi, lekin hovuz
+bo‘sh bo‘lganda; uning hajmi bandlikka qarab dinamik o‘zgaradi.
+Opportunistik ish “arzon”: u allaqachon to‘langan, lekin bo‘sh turgan
+sig‘imni ishlatadi.
+</QA>
+
+<QA q="Token chelak kvotasi qanday ishlaydi?">
+Har funksiyaga chelak: har vaqt birligida `rate` token qo‘shiladi, ko‘pi
+bilan `burst` gacha; har chaqiruv bitta token oladi, token yo‘q bo‘lsa —
+kutadi. Uzoq muddatda tezlik `rate` dan oshmaydi, lekin jim turgan
+funksiya bir martalik `burst` portlashiga ega. Muhim nozik joy — avval
+to‘ldirish, keyin olish, va boshlang‘ich qiymat.
+</QA>
+
+<QA q="Vaqt bo'yicha surish qanday ishlaydi va qancha tejaydi?">
+Bandlik nazoratchisi ishchilar bandligini o‘lchaydi va opportunistik
+kvotani boshqaradi: cho‘qqida kechiktiriladigan ishlar navbatda kutadi,
+bo‘sh paytda bajariladi. XFaaS maqolasiga ko‘ra chaqiruvlar cho‘qqi/eng past
+nisbati 4.3, CPU bandligiki esa atigi 1.4. Hovuz o‘rtacha yuk uchun
+quriladi — taxminan 1.5 barobar kam server.
+</QA>
+
+<QA q="Hududlararo yuk balansi qanday ishlaydi?">
+Global Traffic Conductor barcha hududlardagi talab (navbatdagi chaqiruvlar)
+va taklif (ishchilar sig‘imi) haqida deyarli real vaqtdagi ko‘rinishni
+yig‘adi va trafik matritsasini hisoblaydi: i-hudud rejalashtiruvchilari
+j-hudud navbatidan qancha ulush olsin. Narx — ma’lumotdan uzoqlik va
+hududlararo trafik, shuning uchun ko‘chiriladigan ishlar — kechiktirishga
+chidamli va ma’lumotga kam bog‘liqlari.
+</QA>
+
+<QA q="Funksiyalar ma'lumotlar bazasini ortiqcha yuklamasligi uchun nima qilasiz?">
+TCP kabi tirbandlik nazorati: har downstream uchun bir vaqtdagi
+chaqiruvlar chegarasi; ortiqcha yuklama signali (xato, kechikish) kelsa —
+chegara yarmiga; signal yo‘q va chegara to‘liq ishlatilgan bo‘lsa — +1.
+Cheklangan o‘rinlar kritiklik bo‘yicha taqsimlanadi. Qayta urinishlar —
+eksponensial kutish va budjet bilan. Fon ishi umumiy xizmat
+sekinlashganda birinchi bo‘lib chekinadi.
+</QA>
+
+<QA q="Nega AIMD chegarasi faqat to'liq ishlatilganda o'sishi kerak?">
+Aks holda talab kam bo‘lgan paytda (tunda) chegara “bo‘sh” o‘sib ketadi —
+haqiqiy sig‘im haqida hech qanday ma’lumot olinmagan holda. Keyingi
+portlashda platforma shu katta chegara bilan downstream’ga birdaniga
+uriladi va uni yiqitadi. Chegara faqat haqiqatan sinab ko‘rilgan yuk
+darajasida o‘sishi kerak.
+</QA>
+
+<QA q="Qayta urinishlar bo'roni nima va unga qarshi qanday himoya bor?">
+Xizmat ortiqcha yuklanib xato qaytarsa, darhol qayta urinishlar yukni
+oshiradi (50% xatoda 3 urinish — ~1.9x), xizmat yanada yomonlashadi va
+tiklana olmaydi. Himoya: eksponensial kutish va tasodifiy titrash,
+urinishlar chegarasi va o‘lik xatlar navbati, qayta urinish budjeti
+(masalan, 10%), va asl oqimni ham kamaytiruvchi tirbandlik nazorati.
+</QA>
+
+### 17.3 Ishonchlilik, xavfsizlik va loyihalash
+
+<QA q="Kechiktirilgan navbat qachon xavfli va qanday kuzatiladi?">
+Agar tungi bo‘sh sig‘im kunduz to‘plangan kechiktirilgan ishdan kichik
+bo‘lsa, navbat har kuni o‘sadi va bir necha kunda 24 soatlik muddatlar
+buziladi. Kuzatuv: kechiktirilgan navbat hajmi, “ertalabki qoldiq”, eng
+eski kutayotgan ish yoshi. Choralar: hovuzni kengaytirish, opportunistik
+qabulni sekinlashtirish, hududlararo surish.
+</QA>
+
+<QA q="Fon funksiyasida maxfiylik qoidalarini qanday to'g'ri qo'llash kerak?">
+Chaqiruv bilan ko‘ruvchi kontekstini (kimning nomidan) saqlash va
+maxfiylik qarorini bajarish paytida, ma’lumotning joriy holati bo‘yicha
+qabul qilish. Navbatga qarorni (“post ommaviy”) emas, niyatni (“post_id
+ni indeksla”) qo‘yish — soatlar o‘tib holat o‘zgargan bo‘lishi mumkin.
+</QA>
+
+<QA q="Navbatda turgan chaqiruvlar va kod yangilanishlari qanday mos keladi?">
+Kechiktirilgan chaqiruv 24 soat kutadi, bu orada kod bir necha marta
+yangilanadi — chaqiruv yozilganidagi emas, keyingi kod bilan bajariladi.
+Argumentlar formati faqat orqaga mos o‘zgarishi kerak (yangi ixtiyoriy
+maydon — mumkin, o‘chirish yoki ma’noni o‘zgartirish — yo‘q). Kodni
+bosqichma-bosqich yoqish va xatolar oshsa — avtomatik qaytarish.
+</QA>
+
+<QA q="Butun hudud ishdan chiqsa, uning navbatidagi chaqiruvlar bilan nima bo'ladi?">
+Bardoshli navbatlar nusxalari boshqa hududlarda bo‘lsa — chaqiruvlar
+yo‘qolmaydi: boshqa hududlarning rejalashtiruvchilari ularni Global Traffic
+Conductor matritsasi bo‘yicha oladi. Hudud ishchilari yo‘qolgani uchun
+umumiy sig‘im kamayadi — bandlik nazoratchisi kechiktiriladigan ishlarni
+ushlab turadi, shoshilinchlar birinchi bajariladi. Hudud ichidagi
+ma’lumotlarga bog‘liq funksiyalar esa ular tiklanguncha kutadi yoki
+muddati o‘tib, xato sifatida qayd etiladi.
+</QA>
+
+<QA q="Bitta funksiyaning xatosi boshqalarga ta'sir qilmasligi uchun nima kerak?">
+Kvotalar (shovqinli qo‘shni boshqalarning sig‘imini yemasin), har
+chaqiruvga resurs chegaralari (vaqt, xotira, CPU — oshsa to‘xtatish),
+holatni tozalash (global o‘zgaruvchilar keyingi chaqiruvga o‘tmasin),
+qayta urinish budjeti va o‘lik xatlar navbati (xatoli funksiya cheksiz
+takrorlanmasin), huquqlar (funksiya faqat o‘ziga ruxsat etilgan
+resurslarga).
+</QA>
+
+<QA q="Kuniga 1 trillion chaqiruv uchun qancha server kerakligini qanday hisoblaysiz?">
+O‘rtacha CPU vaqtini oling (masalan, 20 ms): 1e12 × 0.02 s = 2e10 CPU-soniya
+kuniga = ~230 000 yadro o‘rtacha. Maqsadli bandlikka bo‘ling: 66% da
+~350 000 yadro, ~20% da ~1.2 M yadro. Serverdagi yadrolar soniga bo‘lib
+serverlar sonini oling, keyin shoshilinch ishlar cho‘qqisi + zaxira
+bilan solishtiring va kattasini tanlang.
+</QA>
+
+<QA q="Platforma bandligi tushib ketdi, lekin xatolar yo'q. Qayerdan qidirasiz?">
+Kechiktiriladigan ish kamaydimi (bo‘sh joyni to‘ldiradigan ish yo‘q);
+bandlik nazoratchisi va opportunistik kvota sozlamalari; downstream AIMD
+chegaralari past qolib ketmadimi (ishchilar bo‘sh, ish downstream’ni
+kutmoqda); sovuq startlar oshdimi; hovuz talabdan ortiq kattalashtirildimi.
+Har biri o‘z metrikasida ko‘rinadi.
+</QA>
+
+<QA q="Ichki FaaS va ommaviy FaaS dizayni nimasi bilan farq qiladi?">
+Ichki: asosan asinxron, muddatli; hamma kod hamma ishchida; yengil
+izolyatsiya; maqsad — kompaniya bo‘yicha bandlik; kechiktirish va surish.
+Ommaviy: ko‘pincha sinxron HTTP; kod talab bo‘yicha yuklanadi; qattiq
+izolyatsiya; maqsad — har mijoz uchun kechikish va narx; mijoz har ms
+uchun to‘laydi. Bir xil muammo (funksiyani bajarish), turli ishonch
+modeli va iqtisod.
+</QA>
+
+<QA q="Noldan kompaniya ichidagi funksiyalar platformasini qursangiz, nimadan boshlaysiz?">
+Funksiya spetsifikatsiyasi (trigger, muddat, kritiklik, kvota, downstream,
+resurslar); bardoshli navbat (kamida bir marta, takrorlarni kamaytirish);
+rejalashtiruvchi (kritiklik + EDF, token chelak, downstream chegaralari);
+umumiy ishchilar hovuzi va kod tarqatish; tirbandlik nazorati va qayta
+urinish siyosati; kuzatuv (muddati o‘tganlar, bandlik, navbat yoshi).
+Keyin: bandlik nazoratchisi, lokallik guruhlari, hududlararo surish.
+</QA>
+
+<QA q="Nega bu platforma uchun 'bandlik' asosiy maqsad, 'kechikish' esa cheklov?">
+Chunki chaqiruvlarning katta qismi foydalanuvchi kutmaydigan fon ishlari:
+ular uchun kechikish shartnomadagi muddat ichida bo‘lsa — yetarli, undan
+tezroq bajarish qo‘shimcha qiymat bermaydi. Bandlik esa to‘g‘ridan-to‘g‘ri
+xarajat: 66% va 20% farqi — uch barobar server. Dizayn “muddatlarni
+buzmasdan bandlikni maksimal qilish” optimallashtirish masalasi sifatida
+quriladi.
+</QA>
+
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod `docs/amaliyot/meta-serverless/` da:
+`scheduler.py` — rejalashtiruvchi (kritiklik, muddat, kvota, downstream),
+uchta usul TODO; `concurrency.py` — AIMD, bitta usul TODO; `router.py` —
+lokallik guruhlari va to‘kilish, ikkita usul TODO; `model.py` — tayyor
+`Call`, `Fn` va barqaror xesh; `check.py` — 17 ta tekshiruv, taxminan 5
+soniya. Faqat Python standart kutubxonasi.
+
+<Deep title="check.py qanday tekshiradi: 'teskari yasalgan' yuklamalar">
+Rejalashtiruvchini tekshirishning qiyin joyi — “to‘g‘ri javob”ni bilish.
+`check.py` ikki usuldan foydalanadi.
+
+**Sodda model bilan solishtirish.** `Naive` klass har tikda hamma
+kutayotgan chaqiruvlarni saralaydi va qoidalarni so‘zma-so‘z qo‘llaydi —
+uni o‘qib tekshirish oson. 40 ta tasodifiy yuklamada (kvotalar,
+downstream chegaralari, takror `cid` lar) sizning rejalashtiruvchingiz har
+tikda **aynan** shu ro‘yxatni berishi kerak.
+
+**Ma’lum javobli yuklama.** EDF optimalligini tekshirish uchun yuklama
+“teskari” yasaladi: avval jadval o‘ylab topiladi (har tikda sig‘imcha ish),
+keyin har ish uchun kelish vaqti jadvaldagi joyidan **oldinroq**, muddati
+esa **keyinroq** tanlanadi:
+
+```
+har tik t va har slot uchun (85% ehtimol bilan):
+  ish: kelish = t - tasodifiy(0..20), muddat = t + tasodifiy(0..15)
+-> kamida bitta jadval (asl jadval) hamma muddatni bajaradi
+-> EDF ham bajarishi SHART (7-qadam Deep)
+```
+
+FIFO yoki “eng uzoq muddat birinchi” kabi xato tartib bunday yuklamada
+muddatlarni buzadi — test buni ushlaydi. Ortiqcha yuklama testi esa
+aksincha: jami ish sig‘imdan ko‘p, lekin yuqori kritiklikdagilar o‘zi
+sig‘adi — ular hech qachon kechikmasligi kerak.
+</Deep>
+
+<Task title="1-daraja: token chelak va 'oqib ketuvchi chelak'">
+Ikki xil tezlik cheklovchini yozing va solishtiring: **token chelak**
+(burst’ga ruxsat) va **oqib ketuvchi chelak** (leaky bucket — chiqish
+tezligi qat’iy doimiy, ortiqchasi navbatda). Kirish: tasodifiy portlashli
+oqim (masalan, har 10 soniyada 300 ta chaqiruv birdaniga, o‘rtacha 30/s),
+cheklov 40/s.
+
+**Tekshiruv mezoni:** (1) har ikki usulda uzoq muddatli tezlik 40/s dan
+oshmaydi; (2) har chaqiruvning kutish vaqti gistogrammasi — qaysi biri
+portlashni tezroq “yutadi”; (3) token chelakda burst = 0, 40, 400 bo‘lganda
+natija qanday o‘zgaradi; (4) qaysi biri downstream xizmat uchun
+xavfsizroq va nega (11-qadam).
+</Task>
+
+<Task title="2-daraja: rejalashtiruvchi, AIMD va router (asosiy topshiriq)">
+`scheduler.py` dagi `Scheduler`, `concurrency.py` dagi `AIMD.on_tick` va
+`router.py` dagi `group`, `route` ni yozing. `python check.py` ularni
+birlik testlari, sodda model bilan fuzz, “teskari yasalgan” yuklamalar,
+AIMD simulyatsiyasi, kesh simulyatsiyasi, bir kunlik yuklama va tezlik
+testi bilan tekshiradi.
+
+**Tekshiruv mezoni:** `Jami: 17/17 OK`. Shu jumladan: aniq token chelak
+ketma-ketligi (3, 0, 1, 0, 1, …); 40 ta tasodifiy yuklamada sodda model bilan
+aynan bir xil tanlov; bajarish mumkin bo‘lgan 30 ta yuklamada nol kechikish;
+AIMD sig‘im 40 da o‘rtacha 20–42 oralig‘ida, sig‘im tushganda 5 tikda moslashadi;
+ishchi qo‘shilganda funksiyalarning 8% dan kami guruhini o‘zgartiradi;
+sovuq startlar tasodifiy taqsimotdan kamida 2 barobar kam; bir kunlik
+yuklamada (cho‘qqi sig‘imdan 1.5 barobar ko‘p) o‘rtacha bandlik 80% dan
+yuqori va kechiktiriladiganlar 24 soat ichida. Keyin tajriba: `pick` da
+tartib kalitini `(submit, cid)` ga (FIFO) almashtiring va qaysi testlar
+yiqilishini ko‘ring.
+</Task>
+
+<Task title="3-daraja: hududlararo surish (GTC simulyatori)">
+Uch hudud (har biri o‘z vaqt zonasida, kunlik talab sinusoidasi siljigan),
+har birida o‘z sig‘imi. Har 5 daqiqada **trafik matritsasini** hisoblang
+(10-qadam): ortiqcha talabli hudud navbatining bir qismini bo‘sh hududlar
+oladi. Hududlararo bajarishning “narxi” — har chaqiruvga qo‘shimcha
+kechikish va ma’lumot trafigi.
+
+**Tekshiruv mezoni:** (1) surishsiz va surish bilan har hudud bandligi
+grafigi; (2) muddati o‘tgan chaqiruvlar soni ikki holatda; (3) jami
+hududlararo trafik va uni kamaytirish uchun matritsaga “narx” jarimasini
+qo‘shish; (4) bitta hudud 2 soatga butunlay o‘chsa — qolgan ikkitasi
+qancha ishni ko‘taradi va nima kechikadi?
+</Task>
+
+<Task title="4-daraja: sig'im va narx modeli">
+Skript yoki jadval: kirish — kunlik chaqiruvlar, o‘rtacha CPU vaqti,
+shoshilinch va kechiktiriladigan ulushlar, kunduz/tun profili, maqsadli
+bandlik, yadro-soat narxi, sovuq start ulushi va narxi. Chiqish —
+kerakli hovuz (13.1 ning ikki talabi), bandlik, yillik narx, kechiktirilgan
+navbat dinamikasi.
+
+**Tekshiruv mezoni:** (1) 1.3, 12.1 va 13.1 hisoblarini takrorlang;
+(2) shoshilinch ulushi 30% dan 60% ga o‘tsa — hovuz va narx qanday
+o‘zgaradi; (3) sovuq start ulushi 1% dan 10% ga oshsa — qancha qo‘shimcha
+yadro kerak; (4) “ertalabki qoldiq” musbat bo‘ladigan chegarani toping.
+</Task>
+
+<Deep title="AIMD arra tishi: nega o'rtacha ~75%">
+Doimiy sig‘im K va cheksiz talab bilan AIMD chegarasi davriy harakat
+qiladi: K + 1 ga yetadi (ortiqcha yuklama), yarmiga — taxminan K/2 ga —
+tushadi, keyin har tikda +1 bilan yana K + 1 gacha o‘sadi:
+
+```
+chegara
+ K+1 |      /|      /|      /|
+     |     / |     / |     / |
+     |    /  |    /  |    /  |
+ K/2 |   /   |   /   |   /   |
+     +-------------------------- vaqt
+     davr uzunligi ~K/2 tik, har davrda 1 ta "ortiqcha" tik
+```
+
+O‘rtacha chegara — K/2 va K ning o‘rtasi, ya’ni ~0.75K (amaliyotda K = 40
+bilan ~30.5). Ortiqcha yuklangan tiklar ulushi ~2/K (K = 40 da ~5%).
+Ikkala raqam ham K ga bog‘liq: katta K — kam ortiqcha yuklama, lekin
+nosozlikdan keyin sekinroq tiklanish (K/2 tik). Real tizimlar buni
+“sekin start” (boshida ko‘paytirib oshirish) va kechikishga asoslangan
+erta signallar bilan yaxshilaydi — lekin asosiy g‘oya o‘sha.
+</Deep>
+
+<Deep title="Bir kun simulyatsiyasi: hamma qism birga">
+`check.py` ning 5-qismi butun darsni bitta simulyatsiyada birlashtiradi:
+
+```
+1 tik = 1 daqiqa, 2 kun (ikkinchi kun — faqat qarzlarni bajarish)
+sig'im: 300 chaqiruv/daqiqa
+kiruvchi oqim: sinusoida, cho'qqisi sig'imning 1.5x i
+  30% shoshilinch (muddat 0-2 daqiqa, HIGH)
+  70% kechiktiriladigan (muddat 24 soat, LOW)
+40 funksiya, har 8-si "tao" downstream'ga murojaat qiladi
+tao sig'imi: 60/daqiqa, kunduzi 1 soat davomida 15 (nosozlik)
+har daqiqa: AIMD chegarasi -> pick(..., limits={"tao": chegara}) -> AIMD yangilanadi
+```
+
+Natija (referens yechim): shoshilinchlardan kechikkani ~0.3% (asosan tao
+nosozligi paytida), kechiktiriladiganlarning 100% i 24 soat ichida,
+birinchi kun o‘rtacha bandlik ~86%, tao ortiqcha yuklangan daqiqalar ~15.
+Kiruvchi cho‘qqi sig‘imdan 1.5 barobar ko‘p bo‘lsa ham — hech qanday
+qo‘shimcha server kerak bo‘lmadi: 9-qadamning raqamli isboti.
+</Deep>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan o‘n
+to‘qqizta varianti bilan sinalgan. Rejalashtiruvchi uchun: FIFO tartibi,
+kritiklikni e’tiborsiz qoldirish, eng uzoq muddatni birinchi olish, takror
+`cid` ni qabul qilish, muddati o‘tganni bajarish, tokenlarni burst bilan
+cheklamaslik, tokenlarni noldan boshlash, downstream chegarasini
+e’tiborsiz qoldirish, kvotasi tugagan funksiyada butun tanlovni to‘xtatish,
+har tikda hamma navbatni saralash. AIMD uchun: talab kam bo‘lsa ham
+o‘sish, yarmiga emas birga kamaytirish, faqat katta ortiqcha yuklamada
+kamaytirish. Router uchun: modul bilan guruhlash, lokalliksiz taqsimot,
+to‘kilmaslik, ro‘yxat tartibiga bog‘liq guruhlar, to‘kilishda eng bo‘sh
+ishchini tanlamaslik, bitta ishchidan iborat guruh. Har biri kamida bitta
+testni yiqitadi.
+</Callout>
+
+## 19. Lug‘at
+
+| Atama | Ma’nosi |
+| --- | --- |
+| Serverless / FaaS | Dasturchi faqat funksiya yozadi; serverlar — platformaning ishi |
+| Funksiya | Kod va uning spetsifikatsiyasi (trigger, muddat, kritiklik, kvota) |
+| Chaqiruv | Funksiyani muayyan argumentlar bilan bajarish so‘rovi |
+| Sinxron / asinxron | Chaqiruvchi javobni kutadi / navbatga qo‘yib, davom etadi |
+| Trigger | Chaqiruv manbai: navbat, hodisa, taymer |
+| Bardoshli navbat (DurableQ) | Chaqiruvni bajarilib tasdiqlanmaguncha saqlovchi navbat |
+| Yuboruvchi (submitter) | Chaqiruvlarni qabul qilib, kvotani qo‘llovchi komponent |
+| Kamida bir marta | Yo‘qotmaydi, lekin ba’zan takrorlaydi |
+| Idempotentlik | Ikki marta bajarish bir martaga teng natija beradi |
+| Ishchi (worker) | Funksiyalarni bajaradigan server |
+| Ishchilar hovuzi | Ko‘p jamoa uchun umumiy ishchilar to‘plami |
+| Bandlik (utilization) | Server resursining foydali ishlatilgan ulushi |
+| Sovuq start | Funksiyaning yangi joyda birinchi bajarilishidagi qo‘shimcha ish |
+| Universal ishchi | Har funksiyani darhol bajara oladigan ishchi (kod va runtime tayyor) |
+| Lokallik guruhi | Funksiya bajariladigan kichik, barqaror ishchilar to‘plami |
+| Rendezvous xeshlash | Har (kalit, server) ga ball; eng yuqorilari tanlanadi |
+| To‘kilish (spill) | Guruh to‘lganda chaqiruvni guruhdan tashqariga yuborish |
+| JIT | Bajarish paytida, profil asosida mashina kodiga kompilyatsiya |
+| Kooperativ JIT | Bitta server profillab, profilni boshqalarga ulashishi |
+| Kritiklik | Chaqiruvning muhimlik darajasi |
+| Muddat (deadline) | Chaqiruv eng kech bajarilishi kerak bo‘lgan vaqt |
+| EDF | Eng yaqin muddat birinchi — rejalashtirish qoidasi |
+| Kvota | Funksiya uchun ruxsat etilgan chaqiruvlar tezligi |
+| Token chelak | Tezlik va portlashni cheklovchi kvota mexanizmi |
+| Opportunistik kvota | Bo‘sh sig‘imda, 24 soat ichida bajariladigan ish kvotasi |
+| Vaqt bo‘yicha surish | Kechiktiriladigan ishni bo‘sh paytga ko‘chirish |
+| Bandlik nazoratchisi | Bandlikka qarab opportunistik ish oqimini boshqaruvchi |
+| Global Traffic Conductor | Hududlararo yukni taqsimlovchi trafik matritsasini hisoblaydi |
+| Downstream | Funksiya murojaat qiladigan tashqi xizmat (baza, kesh) |
+| AIMD | Qo‘shuvchi o‘sish, ko‘paytiruvchi kamayish — tirbandlik nazorati |
+| Qayta urinish budjeti | Qayta urinishlar ulushiga yuqori chegara |
+| O‘lik xatlar navbati | Urinishlari tugagan chaqiruvlar uchun alohida navbat |
+| Statistik multiplekslash | Ko‘p mustaqil yuklama yig‘indisining silliqroq bo‘lishi |
+
+## 20. Raqamlar manbasi
+
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Kunlik chaqiruvlar | Trillionlab | Sahraei va boshq., XFaaS, SOSP 2023 |
+| Serverlar | 100 000 dan ortiq | XFaaS maqolasi |
+| O‘rtacha CPU bandligi | Kunlik o‘rtacha 66% | XFaaS maqolasi |
+| Chaqiruvlar cho‘qqi/eng past | 4.3; CPU bandligida 1.4 | XFaaS maqolasi |
+| Trigger ulushlari | Navbat: 89% funksiya, 15% chaqiruv, 86% hisoblash; hodisa: 8%, 85%, 14%; taymer: 3%, 1% dan kam, 1% dan kam | XFaaS maqolasi |
+| Muddatlar | Soniyalardan 24 soatgacha; opportunistik kvota — 24 soat | XFaaS maqolasi |
+| Runtime’lar | PHP/Hack, Python, Erlang, Haskell va konteyner asosidagi umumiy | XFaaS maqolasi |
+| AIMD adolati | Bir nechta AIMD yuboruvchisi adolatli ulushga yaqinlashadi | Chiu va Jain (1989) |
+| AWS Lambda | 2014 | AWS e’loni |
+| 2-daraja natijalari | 17/17; 19 mutatsiya; bir kunda ~86% bandlik | `docs/amaliyot/meta-serverless/`, referens implementatsiya |
+
+Chaqiruvlarning aniq kunlik soni va o‘rtacha CPU vaqti, server va yadro
+narxlari, sovuq start bosqichlari davomiyligi, navbat hajmlari, kvota va
+AIMD parametrlari, kod hajmi, izolyatsiya narxi, hududlar misollari,
+10.2 dagi hodisa vaqtlari — **illyustratsiya uchun taxminiy** yoki
+soddalashtirilgan. XFaaS ichki tizim: maqola uning arxitekturasi va asosiy
+natijalarini ochadi, lekin har tafsilotni emas; darsdagi mexanizmlar
+maqolaga, uning sharhlariga va taqsimlangan tizimlarning umumiy
+tamoyillariga asoslangan. Asosiy xulosalar — bandlik pul ekanligi,
+asinxronlik va muddat rejalashtirishga erkinlik berishi, sovuq startni
+oldindan tayyorlash bilan yo‘qotish, downstream’ni AIMD bilan himoya
+qilish — bu raqamlarning bir necha barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Alireza Sahraei va boshq. (2023), “XFaaS: Hyperscale and Low Cost
+  Serverless Functions at Meta”, SOSP
+- Dah-Ming Chiu, Raj Jain (1989), “Analysis of the Increase and Decrease
+  Algorithms for Congestion Avoidance in Computer Networks”, Computer
+  Networks and ISDN Systems
+- Van Jacobson (1988), “Congestion Avoidance and Control”, SIGCOMM
+- C. L. Liu, James W. Layland (1973), “Scheduling Algorithms for
+  Multiprogramming in a Hard-Real-Time Environment”, Journal of the ACM (EDF)
+- David G. Thaler, Chinya V. Ravishankar (1998), “Using Name-Based Mappings
+  to Increase Hit Rates”, IEEE/ACM Transactions on Networking (rendezvous
+  xeshlash)
+- Michael Mitzenmacher (2001), “The Power of Two Choices in Randomized Load
+  Balancing”, IEEE Transactions on Parallel and Distributed Systems
+- Guilherme Ottoni (2018), “HHVM JIT: A Profile-Guided, Region-Based Compiler
+  for PHP and Hack”, PLDI
+- Mohammad Shahrad va boshq. (2020), “Serverless in the Wild: Characterizing
+  and Optimizing the Serverless Workload at a Large Cloud Provider”, USENIX ATC
+- Alexandru Agache va boshq. (2020), “Firecracker: Lightweight
+  Virtualization for Serverless Applications”, NSDI
+- Eric Jonas va boshq. (2019), “Cloud Programming Simplified: A Berkeley
+  View on Serverless Computing”, Berkeley texnik hisoboti

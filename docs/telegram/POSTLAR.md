@@ -37,7 +37,7 @@ Asosiy farqi: har bir qaror hisob-kitobdan chiqadi.
 "Batching kerak" emas — balki: arifmetik intensivlik 1, ridge point 295, demak
 GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 
-Hozir 16 ta dars tayyor:
+Darslik to'liq tayyor — 17 ta dars:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
@@ -55,8 +55,9 @@ Hozir 16 ta dars tayyor:
 14 — Apache Kafka qanday ishlaydi (17 500 so'z)
 15 — Fond birjasi qanday ishlaydi (17 500 so'z)
 16 — Bluesky qanday ishlaydi (16 500 so'z)
+17 — Meta Serverless qanday ishlaydi (15 500 so'z)
 
-Yana bittasi rejada: Meta Serverless.
+Jami ~280 000 so'z; har darsda amaliyot, 13 tasida — tayyor kod va avtomatik tekshiruvlar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -75,9 +76,9 @@ Har bir dars bitta mahsulotni noldan bugungi arxitekturasigacha ochadi va har bi
 qaror raqam bilan asoslanadi: roofline, KV cache byudjeti, navbat nazariyasi,
 birlik iqtisodi.
 
-16 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
+17 ta dars tayyor (ChatGPT, URL qisqartiruvchi, Redis, Twitter tasmasi, Reddit,
 Slack, WhatsApp, YouTube, Spotify, Google Docs, Airbnb, Uber ETA, Amazon S3,
-Kafka, fond birjasi, Bluesky), bittasi rejada. Internetsiz ham o'qish mumkin.
+Kafka, fond birjasi, Bluesky, Meta Serverless) — darslik to'liq. Internetsiz ham o'qish mumkin.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/
 ```
@@ -502,16 +503,47 @@ va soxta commitlar qo'shadi — indeks baribir to'g'ri chiqishi kerak.
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/bluesky/
 ```
 
+### 3.17 — Meta Serverless (oxirgi dars)
+
+```
+Instagram'ga rasm yukladingiz. U bir soniyada ko'rinadi — lekin orqada
+ish endi boshlanadi: kichik nusxalar, bildirishnomalar, qidiruv indeksi,
+moderatsiya, tavsiyalar. Hammasi — fon funksiyalari.
+
+Meta'da ular kuniga TRILLIONLAB marta chaqiriladi, 100 000 dan ortiq
+serverda. Va bu serverlar o'rtacha 66% band — odatiy serverless
+platformalardan bir necha barobar ko'p.
+
+Qanday qilib? Kechiktirsa bo'ladigan ish tunga suriladi. Har server
+har funksiyani darhol bajara oladi — "sovuq start"siz. Ma'lumotlar
+bazasi esa internetdagi TCP kabi himoyalanadi: asta oshir, keskin
+kamaytir.
+
+Yangi dars — Meta Serverless qanday ishlaydi (15 500 so'z):
+universal ishchi va kooperativ JIT, lokallik guruhlari, muddat va
+kvota bilan rejalashtirish, nega "eng yaqin muddat birinchi" optimal,
+hududlararo yuk balansi va bandlik nima uchun pul.
+Amaliyotda — platformaning yuragini yozasiz: rejalashtiruvchi, AIMD va
+router. Bir kunlik simulyatsiyada cho'qqi sig'imdan 1.5 barobar ko'p —
+lekin hech qanday qo'shimcha server kerak bo'lmaydi.
+
+Bu — darslikning oxirgi, 17-darsi. ChatGPT'dan Meta Serverless'gacha:
+17 ta tizim, ~280 000 so'z, har birida hisob-kitob, intervyu savollari
+va amaliyot.
+
+https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/meta-serverless/
+```
+
 ---
 
 ## 4. SO'ROVNOMA (poll) — engagement uchun
 
 Telegram'da "So'rovnoma" yaratib, quyidagi variantlarni qo'ying:
 
-**Savol:** Keyingi darsni qaysi mavzuda yozay?
+**Savol:** Darslikka qo'shimcha dars qo'shsam, qaysi mavzu bo'lsin?
 
 - Git va GitHub (ob'ektlar, merge, monorepo)
-- Meta Serverless (XFaaS, sovuq start)
+- Netflix (CDN, Open Connect, video yetkazish)
 - Stripe (to'lovlar, idempotentlik, buxgalteriya)
 - Discord (ovozli kanallar, xabarlar bazasi)
 

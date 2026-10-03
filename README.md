@@ -68,7 +68,7 @@ kalkulyatorda takrorlash mumkin.
 | 14 | [Apache Kafka](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/kafka/) | ✅ Tayyor | 17 500 so‘z | Commit log, partition, ISR va high watermark, consumer group, exactly-once, KRaft |
 | 15 | [Fond birjasi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/stock-exchange/) | ✅ Tayyor | 17 500 so‘z | Buyurtmalar kitobi, matching engine, sekvenser va deterministik jurnal, bozor ma’lumotlari oqimi, adolat |
 | 16 | [Bluesky](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/bluesky/) | ✅ Tayyor | 16 500 so‘z | AT Protocol, imzolangan repo va MST, DID va handle, firehose, relay va AppView, maxsus feed’lar |
-| 17 | Meta Serverless | ⏳ Rejada | | XFaaS, sovuq start, rejalashtirish |
+| 17 | [Meta Serverless](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/meta-serverless/) | ✅ Tayyor | 15 500 so‘z | XFaaS, sovuq start va universal ishchi, muddat va kvota bilan rejalashtirish, vaqt bo‘yicha surish, AIMD |
 
 ## Har bir dars o‘z UI‘sida
 
