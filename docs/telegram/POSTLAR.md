@@ -42,7 +42,7 @@ Darslik to'liq tayyor — 17 ta dars:
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
 02 — URL qisqartiruvchi qanday ishlaydi (16 400 so'z)
 03 — Redis: 12 ta asosiy stsenariy (14 800 so'z)
-04 — Twitter tasmasi qanday ishlaydi (10 200 so'z)
+04 — Twitter tasmasi qanday ishlaydi (13 400 so'z)
 05 — Reddit qanday ishlaydi (14 000 so'z)
 06 — Slack qanday ishlaydi (19 500 so'z)
 07 — WhatsApp qanday ishlaydi (20 000 so'z)
@@ -57,7 +57,7 @@ Darslik to'liq tayyor — 17 ta dars:
 16 — Bluesky qanday ishlaydi (16 500 so'z)
 17 — Meta Serverless qanday ishlaydi (15 500 so'z)
 
-Jami ~290 000 so'z; har darsda amaliyot, 15 tasida — tayyor kod va avtomatik tekshiruvlar.
+Jami ~293 000 so'z; har darsda amaliyot, 16 tasida — tayyor kod va avtomatik tekshiruvlar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -528,7 +528,7 @@ router. Bir kunlik simulyatsiyada cho'qqi sig'imdan 1.5 barobar ko'p —
 lekin hech qanday qo'shimcha server kerak bo'lmaydi.
 
 Bu — darslikning oxirgi, 17-darsi. ChatGPT'dan Meta Serverless'gacha:
-17 ta tizim, ~290 000 so'z, har birida hisob-kitob, intervyu savollari
+17 ta tizim, ~293 000 so'z, har birida hisob-kitob, intervyu savollari
 va amaliyot.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/meta-serverless/

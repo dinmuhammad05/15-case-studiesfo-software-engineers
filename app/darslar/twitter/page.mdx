@@ -1,12 +1,28 @@
 ## Bu darsda nima o‘rganasiz
 
-“Twitter tasmasini loyihalang” — bu tizim dizayni intervyularidagi eng mashhur savol.
-Va u aldamchi: masala oddiy ko‘rinadi (“obunachilarim yozgan narsalarni vaqt bo‘yicha
-ko‘rsat”), lekin ichida **taqsimlangan tizimlarning eng nozik kelishuvlari** yotadi.
+Oddiy tilda: siz har kuni ertalab o‘zingizga yoqqan 200 ta muallifning
+yangi maqolalarini o‘qimoqchisiz. Ikki yo‘l bor. Birinchisi — har ertalab
+200 ta gazeta do‘koniga borib, har biridan oxirgi sonni olish. Ikkinchisi —
+mualliflar yangi maqola yozishi bilan uni **sizning pochta qutingizga**
+tashlab ketishlari, siz esa ertalab faqat qutini ochasiz. Ikkinchisi siz
+uchun ancha qulay. Lekin muallifning 100 million o‘quvchisi bo‘lsa, u bitta
+maqolani 100 million qutiga tashlashi kerak bo‘ladi.
 
-Bu darsda asosiy savol bitta: **ishni qachon bajaramiz — yozishda yoki o‘qishda?**
-Javob “ikkalasida ham, lekin har xil odamlar uchun har xil” bo‘lib chiqadi, va nima uchun
-aynan shunday ekanini raqamda ko‘ramiz.
+**Twitter tasmasi** aynan shu ikki yo‘l orasidagi tanlov. “Twitter tasmasini
+loyihalang” — tizim dizayni intervyularidagi eng mashhur savol. U aldamchi:
+masala oddiy ko‘rinadi (“obunalarim yozgan narsalarni vaqt bo‘yicha
+ko‘rsat”), lekin ichida **taqsimlangan tizimlarning eng nozik kelishuvlari**
+yotadi.
+
+Bu darsda asosiy savol bitta: **ishni qachon bajaramiz — yozishda yoki
+o‘qishda?** Javob “ikkalasida ham, lekin har xil odamlar uchun har xil”
+bo‘lib chiqadi. Nima uchun aynan shunday ekanini raqamda ko‘ramiz.
+
+Dars **noldan hozirgi holatigacha** boradi. 2006-yildagi bitta Rails ilova
+va bitta MySQL bazadan boshlanadi. Keyin 2012-yilgi Redis klasteriga o‘tadi:
+u sekundiga 300 ming marta tasma o‘qishga xizmat qilgan. 2023-yilda Twitter
+o‘z tavsiya algoritmini ochiq e’lon qildi va bu algoritm kuniga milliardlab
+marta ishlaydi.
 
 | Savol | Javob shu darsda | Bo‘lim |
 | --- | --- | --- |
@@ -15,17 +31,24 @@ aynan shunday ekanini raqamda ko‘ramiz.
 | 100 million obunachili akkaunt tweet yozsa nima bo‘ladi? | Mashhur akkaunt muammosi | 5.3 |
 | Tasma keshi qancha xotira yeydi? | Kesh byudjeti hisobi | 6-bo‘lim, 1-qadam |
 | Tweet ID nega shunchaki avtoinkrement emas? | Snowflake | 6-bo‘lim, 7-qadam |
-| Xronologik tartib qachon yo‘qoldi? | Reyting va uning narxi | 6-bo‘lim, 9-qadam |
-| Tasma yangilanmay qolsa nima qilamiz? | Degradatsiya tartibi | 8.3 |
+| Bitta post 5 soniyada qanday tarqaladi? | Bitta postning hayoti | 7 |
+| “Sizga tavsiya” tasmasi qanday tuziladi? | 2023-yilgi ochiq algoritm | 8 |
+| Tasma yangilanmay qolsa nima qilamiz? | Degradatsiya tartibi | 10.3 |
 
 <Callout type="maslahat" title="Qanday o'qish kerak">
-Dars uch qatlamda: **asosiy matn** hamma uchun, `Chuqurroq` bloklari ichki tafsilotlar
-uchun, **nazorat savollari** esa bo‘lim oxirida o‘zingizni tekshirish uchun. Oldingi
-darslardagi naqshlar (kesh, hot key, navbat, degradatsiya) bu yerda boshqa masshtabda
-qaytadi — ularni tanib olishga harakat qiling.
+Har yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan beriladi. `Chuqurroq` bloklari ichki tafsilotlar
+uchun, **nazorat savollari** esa bo‘lim oxirida o‘zingizni tekshirish uchun.
+Oldingi darslardagi naqshlar (kesh, hot key, navbat, degradatsiya) bu yerda
+boshqa masshtabda qaytadi. 16-bo‘lim oxirida butun darsning o‘n gaplik
+xulosasi bor.
 </Callout>
 
 ## 1. Muammo: aslida nimani qurmoqchimiz?
+
+Oddiy tilda: tasma — sizning shaxsiy gazetangiz. Uni har kim uchun alohida,
+har necha soniyada yangidan “chop etish” kerak. Bunda yuzlab million
+o‘quvchi bor va har birining “mualliflar ro‘yxati” boshqacha.
 
 ### 1.1 Funksional talablar
 
@@ -48,6 +71,13 @@ Bizni asosan **3-punkt** qiziqtiradi. Qolgan hammasi shunga xizmat qiladi.
 | Masshtab | 500M kunlik faol foydalanuvchi | Yirik ijtimoiy tarmoq tartibi |
 
 ### 1.3 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="300K/s" label="Tasma o'qish, 2012" hint="Twitter, QCon 2012" />
+  <Stat value="~4 600/s" label="Yangi tweet, o'rtacha" hint="Kuniga 400 mln+, 2012" />
+  <Stat value="800" label="Tasmadagi yozuvlar chegarasi" hint="Redis klasteridagi tasma" />
+  <Stat value="1 500" label="'Sizga tavsiya' nomzodlari" hint="Ochiq algoritm, 2023" />
+</StatGrid>
 
 <Calc title="Yozish va o'qish yuki" result="Yozish 3500/s — kichik son. O'qish 350 000/s — 100 barobar ko'p. Butun arxitektura shu nisbatga qurilgan">{`Farazlar (taxminiy, illyustratsiya uchun):
   Kunlik faol foydalanuvchi        500 000 000
@@ -77,6 +107,14 @@ odamning postlarini birlashtirishni talab qiladi.
 
 Twitter‘ning arxitektura tarixi — bu darsdagi qarorlarning **haqiqiy sabablari**.
 
+Raqamlar bilan: 2012-yilda Twitter muhandisi Raffi Krikorian QCon
+konferensiyasida tizimni ochiq tasvirlab berdi. O‘sha paytda **150 million**
+faol foydalanuvchi bor edi, tasmalar sekundiga **300 ming** marta o‘qilardi,
+kuniga **400 milliondan ortiq** tweet yozilardi (o‘rtacha ~4 600 / s). Har
+foydalanuvchining uy tasmasi Redis klasterida ko‘pi bilan **800 ta** yozuv
+sifatida saqlanardi. Maqsad esa “tweet 5 soniyada barcha obunachilarga
+yetsin” edi.
+
 <Timeline
   rows={[
     { when: "2006–2008", what: "Rails monoliti va bitta MySQL", why: "Tasma JOIN bilan quriladi. Trafik o'sgani sari sayt tez-tez tushadi — 'fail whale' davri boshlanadi." },
@@ -86,6 +124,7 @@ Twitter‘ning arxitektura tarixi — bu darsdagi qarorlarning **haqiqiy sababla
     { when: "2012", what: "Mashhur akkauntlar uchun pull", why: "Fan-out on write yirik akkauntlarda yiqilib qoladi; gibrid model paydo bo'ladi." },
     { when: "2015–2016", what: "Xronologiyadan reytingga", why: "Foydalanuvchi obunalari o'sib, hamma postni ko'rish imkonsiz bo'ladi. Tanlovni model qila boshlaydi." },
     { when: "2020+", what: "ML reyting va nomzod generatsiyasi", why: "Tasma endi faqat obunalardan emas — 'sizga qiziq bo'lishi mumkin' postlar ham qo'shiladi. Hisob narxi keskin oshadi." },
+    { when: "2023", what: "Tavsiya algoritmi ochiq e'lon qilinadi", why: "31-mart: 'Sizga tavsiya' tasmasining kodi ochiladi — har so'rovda ~1 500 nomzod, ~48 mln parametrli reyting modeli, kuniga ~5 mlrd marta (8-bo'lim)." },
   ]}
 />
 
@@ -93,7 +132,42 @@ Diqqat qiling: **har bir qadam oldingi qadamning muammosidan tug‘ilgan**. Bu d
 xuddi shu yo‘ldan boramiz — chunki qarorni uning sababisiz o‘rganish yodlashdan farq
 qilmaydi.
 
+<Calc title="2012-yilgi haqiqiy raqamlar bizning farazlarimiz bilan" result="2012-yilgi tizim bizning farazdan taxminan 1.2 barobar kichik o'qish va 1.3 barobar katta yozish bilan ishlagan — ya'ni darsdagi hisoblar real tizim tartibida">{`2012 (QCon, Raffi Krikorian):
+  Faol foydalanuvchi            150 000 000
+  Tweet / kun                   400 000 000+  ->  ~4 600 / s
+  Tasma o'qish                  300 000 / s
+  O'qish / yozish               300 000 / 4 600 = ~65 : 1
+
+Bizning farazlarimiz (1.3):
+  Tweet / s                     ~3 500
+  Tasma o'qish / s              ~347 000
+  O'qish / yozish               ~100 : 1
+
+Fan-out (2012, o'rtacha ~200 obunachi deb):
+  4 600 x 200 = ~920 000 tasma yozuvi / s
+  -> Redis klasteri, pipelining bilan`}</Calc>
+
+<Check q="2012-yilda o'qish/yozish nisbati ~65:1 edi. Nega aynan shu raqam 'ishni yozishga ko'chirish' qarorini oqladi?">
+Chunki har post bir marta yoziladi, lekin uning natijasi (obunachilarning
+tasmasi) **o‘nlab marta** o‘qiladi. Yozish paytida bir marta qilingan ish
+65 ta o‘qishda qayta ishlatiladi.
+
+Teskarisi — o‘qish paytida yig‘ish (`JOIN`) — har o‘qishda yuzlab
+mualliflarni ko‘rib chiqishni talab qiladi. Ish 65 barobar ko‘proq
+takrorlanadi va eng qimmat joyda: foydalanuvchi kutayotgan paytda.
+
+Lekin bu hisob **o‘rtacha** odam uchun. Mashhur akkauntda nisbat teskari:
+uning bitta posti 100 million yozuv talab qiladi. Ular esa shu daqiqada
+o‘qilmaydi, chunki o‘sha obunachilarning ko‘pi hozir tarmoqda emas. Gibrid
+yechim (5.4) shu ikki holatni ajratadi.
+</Check>
+
 ## 2. Nol nuqta: tasma nima degan masala
+
+Oddiy tilda: tasma uchun bor-yo‘g‘i ikki narsa kerak — postlar daftari (kim
+nima yozdi) va obunalar daftari (kim kimni o‘qiydi). Tasma — bu ikki
+daftarni “mening obunalarim yozgan oxirgi postlar” degan savol bilan birga
+ochish.
 
 ### 2.1 Ma’lumot modeli
 
@@ -101,7 +175,7 @@ Ikkita asosiy jadval yetarli:
 
 ```sql
 CREATE TABLE tweets (
-    id          BIGINT PRIMARY KEY,     -- vaqt bo'yicha tartiblanadigan ID (7-bo'lim)
+    id          BIGINT PRIMARY KEY,     -- vaqt bo'yicha tartiblanadigan ID (6-bo'lim, 7-qadam)
     author_id   BIGINT NOT NULL,
     text        VARCHAR(280) NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL,
@@ -169,7 +243,7 @@ imkoniyat bor:
 />
 
 O‘qish yozishdan 100 barobar ko‘p bo‘lgani uchun intuitsiya “push” tomonga ishora
-qiladi. Lekin u bitta halokatli holatga uchraydi — 6.3-bo‘limda ko‘ramiz.
+qiladi. Lekin u bitta halokatli holatga uchraydi — 5.3-bo‘limda ko‘ramiz.
 
 <Check q="Nima uchun 'menga kim obuna?' indeksi alohida kerak? Bitta jadval yetmaydimi?">
 Jadval bitta, lekin **kirish naqshlari ikki xil**. `PRIMARY KEY (follower_id,
@@ -235,6 +309,10 @@ saqlanadi va u ham vaqti-vaqti bilan haqiqiy son bilan solishtiriladi.
 
 ## 3. v0: eng sodda ishlaydigan yechim
 
+Oddiy tilda: har ertalab 200 ta gazeta do‘koniga borib, har biridan oxirgi
+sonni olish. Do‘konlar uyingiz yonida bo‘lsa va o‘quvchi siz yolg‘iz
+bo‘lsangiz — muammo yo‘q.
+
 ```python
 @app.post("/tweet")
 def post_tweet(user_id, text):
@@ -258,6 +336,10 @@ def timeline(user_id):
 Kod to‘g‘ri va kichik loyihada yillab ishlaydi. Endi uni raqamlar bilan buzamiz.
 
 ## 4. Nima sindi: v0 ning to‘rtta o‘limi
+
+Oddiy tilda: endi o‘quvchi siz yolg‘iz emas — yuz million. Har biri har kuni
+o‘nlab marta 200 ta do‘konni aylanib chiqyapti. Do‘konlar bir shaharda ham
+emas, va ularning soatlari ham bir xil yurmaydi.
 
 ### 4.1 `JOIN` har safar minglab qatorni ko‘radi
 
@@ -285,7 +367,7 @@ Solishtiring: yaxshi sozlangan Postgres tuguni
 - 500 million foydalanuvchi = 500 million alohida kesh yozuvi
 
 Ya’ni klassik “so‘rov natijasini keshlash” bu yerda ishlamaydi. Kesh **boshqacha**
-qurilishi kerak — va bu 7-bo‘limning 1-qadami.
+qurilishi kerak — va bu 6-bo‘limning 1-qadami.
 
 ### 4.3 Postlar va obunalar bir joyda yashay olmaydi
 
@@ -307,7 +389,7 @@ farq qiladi, bir xil millisekundda yozilgan postlar tartibi noaniq bo‘ladi va
 sahifalash (pagination) buziladi.
 
 Bu kichik detal kabi ko‘rinadi, lekin u **ID dizayni** degan alohida masalaga olib
-keladi (7-bo‘lim, 7-qadam).
+keladi (6-bo‘lim, 7-qadam).
 
 <Callout type="ogoh" title="Asosiy xulosa">
 `JOIN` bilan tasma qurish — o‘qish paytida ishni bajarish demak. O‘qish yozishdan
@@ -318,6 +400,11 @@ o‘z halokatiga olib keladi.
 </Callout>
 
 ## 5. Ikki strategiya va ularning narxi
+
+Oddiy tilda: yo do‘konlarni aylanish (pull), yo maqolani muallif darhol
+qutilarga tarqatishi (push). Birinchisi o‘quvchining vaqtini, ikkinchisi
+muallifning ishini yeydi. Mashhur muallif esa million qutiga tarqata
+olmaydi.
 
 ### 5.1 Fan-out on write: ishni yozishga ko‘chirish
 
@@ -511,7 +598,14 @@ Ko‘p tizimlar (b) ni tanlaydi: u arzon va foydalanuvchi kutganiga mos.
 
 ## 6. Evolyutsiya: o‘n to‘rt qadam
 
+Qadamlar mantiqiy tartibda: 1–5 — tasma keshi, tarqatish, gibrid, hidratsiya
+va o‘chirish; 6–8 — shardlash, ID va obunalar grafi; 9–12 — reyting, real vaqt,
+qidiruv va media; 13–14 — ko‘p mintaqa va cho‘qqidan himoya.
+
 <Step n="1" title="Tasma keshi: ID lar ro'yxati" gain="Tasma o'qish O(1) ga tushdi — bitta LRANGE" cost="Terabaytlab RAM; kesh va manba orasida izchillik masalasi">
+
+Oddiy tilda: har o‘quvchining pochta qutisi — unda maqolaning o‘zi emas,
+faqat raqami. Raqam kichik, maqola esa bir joyda turadi.
 
 Tasma **postlarning o‘zi emas, ularning ID lari** ro‘yxati sifatida saqlanadi. Bu muhim
 qaror: ID 8 bayt, postning o‘zi esa yuzlab bayt.
@@ -575,6 +669,9 @@ Narxi: ZSET ro‘yxatdan ~2 barobar ko‘p xotira yeydi.
 
 <Step n="2" title="Fan-out xizmati va navbat" gain="Post yozish 5 ms da tugaydi — tarqatish fonda ketadi" cost="Tarqatish kechikadi; navbat to'lsa postlar 'yo'qoladi'">
 
+Oddiy tilda: muallif maqolasini pochtaga topshiradi va uyiga ketadi.
+Tarqatishni pochtachilar keyin, o‘z navbati bilan qiladi.
+
 Post yozilganda 200 ta yozuvni sinxron bajarish kutish vaqtini oshiradi. Shuning uchun
 tarqatish **navbat orqali** bajariladi:
 
@@ -630,6 +727,10 @@ o‘qishda deduplikatsiya. Amalda ikkalasi ham qilinadi, chunki checkpoint ham
 
 <Step n="3" title="Dinamik chegara: kim push, kim pull" gain="Klaster sig'imining yarmi bo'shaydi" cost="Ikki xil kod yo'li; chegara atrofidagi akkauntlar bilan ehtiyot bo'lish kerak">
 
+Oddiy tilda: oddiy muallifning maqolasi qutilarga tarqatiladi, mashhurniki
+esa e’lonlar taxtasiga osiladi. Qaysi muallif “mashhur” ekanini obunachilar
+soni hal qiladi.
+
 5.4-bo‘limdagi gibrid yechimning amalga oshirilishi:
 
 ```python
@@ -644,7 +745,7 @@ def on_new_tweet(tweet):
 
 Chegara **konfiguratsiyadan** o‘qiladi va yukka qarab o‘zgartiriladi: klaster
 bo‘g‘ilganda uni pasaytirish darhol yengillik beradi. Bu — degradatsiya tutqichlaridan
-biri (8.3-bo‘lim).
+biri (10.3-bo‘lim).
 
 <Callout type="ogoh" title="Chegarani kesib o'tish">
 Akkaunt 99 999 dan 100 001 obunachiga o‘tdi. Endi u pull rejimida, lekin uning **eski
@@ -680,6 +781,10 @@ chiqqan.
 </Step>
 
 <Step n="4" title="Hidratsiya: ID lardan to'liq postgacha" gain="Tasma keshi 40 barobar kichik; post bir joyda yangilanadi" cost="Har tasma uchun qo'shimcha bir marta ommaviy o'qish">
+
+Oddiy tilda: qutida faqat raqamlar bor. Uni o‘qish uchun raqamlar bo‘yicha
+arxivdan maqolalarni olib kelish kerak — va bu ishni bitta katta buyurtma
+bilan qilish kerak, raqamma-raqam emas.
 
 Tasma ID lardan iborat, foydalanuvchiga esa to‘liq post kerak: matn, muallif, statistika,
 media. Bu bosqich **hidratsiya** deb ataladi.
@@ -733,6 +838,10 @@ joylaydi. Ya’ni hidratsiya ikkita postni oladi — bu `MGET` hajmini oshiradi.
 
 <Step n="5" title="O'chirish: tombstone va o'qishda filtrlash" gain="O'chirish O(1) — bitta yozuv" cost="Tasmalarda 'o'lik' ID lar qoladi; ular o'qishda filtrlanadi">
 
+Oddiy tilda: maqola qaytarib olindi. Million qutini ochib uni olib chiqish
+o‘rniga, arxivda “bekor qilingan” deb belgilanadi va qutini ochgan odamga
+ko‘rsatilmaydi.
+
 Post o‘chirilganda uni 100 million tasmadan olib tashlash — 5.3-bo‘limdagi bilan bir xil
 imkonsiz masala. Yechim: **umuman olib tashlamaslik**.
 
@@ -759,6 +868,10 @@ Bir xil mexanizm bloklash, yashirish va “sezgir kontent” filtrlari uchun ham
 
 <Step n="6" title="Shardlash: uch xil ma'lumot, uch xil kalit" gain="Har bir tur o'z kirish naqshiga mos taqsimlanadi" cost="Shardlararo JOIN yo'q — birlashtirish ilovada bajariladi">
 
+Oddiy tilda: arxiv uch xil javonga bo‘linadi: maqolalar raqam bo‘yicha,
+qutilar egasi bo‘yicha, obunalar o‘quvchi bo‘yicha. Har javon o‘zining eng
+ko‘p so‘raladigan savoliga moslab tartiblanadi.
+
 | Ma’lumot | Shard kaliti | Nega |
 | --- | --- | --- |
 | `tweets` | tweet ID (Snowflake) | Yozish vaqt bo‘yicha tekis tarqaladi; ID bo‘yicha o‘qish to‘g‘ridan-to‘g‘ri |
@@ -766,7 +879,7 @@ Bir xil mexanizm bloklash, yashirish va “sezgir kontent” filtrlari uchun ham
 | `follows` | foydalanuvchi ID | Bir odamning obunalari birga yotadi |
 
 Diqqat: `tweets` ni **author ID bo‘yicha** shardlash jozibali ko‘rinadi (“bir odamning
-postlari birga”), lekin bu mashhur akkaunt shardini yondiradi — 4.3-bo‘limdagi hot
+postlari birga”), lekin bu mashhur akkaunt shardini yondiradi — 5.3-bo‘limdagi hot
 key muammosining aynan o‘zi. Tweet ID bo‘yicha shardlash yukni tekis taqsimlaydi.
 
 Buning narxi: “falonchining barcha postlari” so‘rovi endi **barcha shardlarga**
@@ -775,6 +888,10 @@ boradi. Shuning uchun profil sahifasi uchun alohida indeks yuritiladi:
 </Step>
 
 <Step n="7" title="Snowflake ID: vaqt bo'yicha tartiblanadigan taqsimlangan identifikator" gain="Koordinatsiyasiz, tartiblanadigan, shardlanadigan ID" cost="Soat siljishiga sezgir; 64 bit chegarasi">
+
+Oddiy tilda: har maqola raqamining boshida vaqt yozilgan, oxirida esa qaysi
+pochta bo‘limi bergani. Shunda mingta bo‘lim bir-biridan so‘ramasdan raqam
+beradi va raqamlar vaqt bo‘yicha tartiblanadi.
 
 4.4-bo‘limdagi tartib muammosining yechimi. ID ning o‘zida vaqt bo‘lsa, `ORDER BY id`
 avtomatik ravishda xronologik tartib beradi va sahifalash barqaror bo‘ladi.
@@ -801,7 +918,7 @@ Umumiy sig'im:
 
 <Deep title="Snowflake'ning uchta nozik joyi">
 
-**1. Soat orqaga ketishi.** NTP sinxronizatsiyasi soatni orqaga surса, allaqachon
+**1. Soat orqaga ketishi.** NTP sinxronizatsiyasi soatni orqaga sursa, allaqachon
 berilgan ID lar takrorlanishi mumkin. Standart yechim: generator soat orqaga ketganini
 sezsa, **javob berishni to‘xtatadi** (soat quvib yetguncha kutadi). Bu to‘g‘ri qaror —
 takroriy ID ma’lumot buzilishiga olib keladi, qisqa to‘xtash esa faqat noqulaylik.
@@ -819,6 +936,10 @@ bir xil ID olsa — to‘qnashuv kafolatlanadi.
 
 <Step n="8" title="Graf xizmati" gain="'Kim kimga obuna' savoli millisekundlarda" cost="Yana bitta katta kesh qatlami; mashhur akkauntlarning ro'yxati juda katta">
 
+Oddiy tilda: “kim kimning o‘quvchisi” degan ulkan ma’lumotnoma. Har maqola
+tarqatilganda undan so‘raladi, shuning uchun u doim qo‘l ostida bo‘lishi
+kerak.
+
 Fan-out har bir postda “menga kim obuna?” ro‘yxatini so‘raydi — sekundiga 3500 marta.
 Bu ro‘yxatlar bazadan olinsa, baza bo‘g‘iladi.
 
@@ -835,6 +956,10 @@ ro‘yxat **umuman kerak emas** — yana bitta sabab, nega gibrid yechim to‘g�
 </Step>
 
 <Step n="9" title="Xronologiyadan reytingga" gain="Foydalanuvchi vaqti ortadi; yangi akkauntlar ham ko'rinadi" cost="Hisob qimmatlashadi; 'nega bu postni ko'rmadim?' shikoyatlari boshlanadi">
+
+Oddiy tilda: qutingizga kuniga 500 ta maqola tushadi, siz esa 50 tasini
+o‘qiysiz. Qaysi 50 tasi — tasodifmi yoki sizni yaxshi biladigan kotib
+tanlaganmi?
 
 Xronologik tasma sodda, lekin muammosi bor: kuniga 200 ta post o‘qiydigan odam 500 ta
 akkauntga obuna bo‘lsa, u ko‘p narsani ko‘rmaydi — va aynan qaysi biri ko‘rinmasligi
@@ -893,6 +1018,10 @@ birgalikda kuzatiladi — bittasini oshirib boshqasini tushirish oson.
 
 <Step n="10" title="Real vaqtda yetkazish" gain="Tasma o'zi yangilanadi, 'yangi postlar' tugmasi paydo bo'ladi" cost="Millionlab ochiq ulanish; ularning har biri xotira yeydi">
 
+Oddiy tilda: yangi maqola kelganda qo‘ng‘iroq chalinishi. Har o‘quvchiga
+alohida qo‘ng‘iroq ulash qimmat, shuning uchun ba’zan “har 30 soniyada
+qutiga qarab qo‘yish” yetarli.
+
 Foydalanuvchi tasmani ochib o‘tirgan bo‘lsa, yangi post kelganini bilishi kerak.
 Ikki yondashuv:
 
@@ -924,6 +1053,9 @@ faqat haqiqatan real vaqt kerak bo‘lganda (to‘g‘ridan-to‘g‘ri xabarlar
 
 <Step n="11" title="Qidiruv: alohida dunyo" gain="Post yozilgandan soniyalar ichida topiladi" cost="Butunlay boshqa saqlash va indekslash quvuri">
 
+Oddiy tilda: kutubxonaning so‘zlar katalogi — “bu so‘z qaysi maqolalarda
+bor”. Bu tasmadan butunlay boshqa kartoteka.
+
 Tasma va qidiruv — ikki xil masala. Tasma **kim yozgani** bo‘yicha, qidiruv esa
 **nima yozilgani** bo‘yicha ishlaydi.
 
@@ -952,6 +1084,9 @@ ajratishning aynan o‘zi.
 
 <Step n="12" title="Media quvuri" gain="Rasm va video tasmani sekinlashtirmaydi" cost="Alohida saqlash, transkodlash va CDN xarajati">
 
+Oddiy tilda: maqola matni konvertga sig‘adi, rasm va video esa yo‘q. Ular
+alohida omborda turadi, konvertda faqat ularning manzili.
+
 Post 280 belgi — bu 300 bayt. Rasm — 2 MB, video — 50 MB. Ular **hech qachon** post
 bilan birga saqlanmaydi:
 
@@ -976,6 +1111,9 @@ Tasma esa faqat **havolalarni** ko‘taradi.
 </Step>
 
 <Step n="13" title="Ko'p mintaqa" gain="Kechikish kamayadi, mintaqa tushsa tizim ishlaydi" cost="Repl kechikishi, konflikt va ikki barobar sig'im">
+
+Oddiy tilda: pochta bo‘limlari bir nechta shaharda. Maqola hamma shaharga
+ko‘chiriladi, lekin har shahar qutilarni o‘zi to‘ldiradi.
 
 O‘qish yo‘li mintaqaviy replikalardan xizmat qiladi. Yozish esa odatda bitta “uy”
 mintaqada bajariladi va boshqalarga replikatsiya qilinadi.
@@ -1008,6 +1146,10 @@ mahalliy va tez, hamda bitta mintaqa tushsa boshqalari ta’sirlanmaydi.
 </Step>
 
 <Step n="14" title="Sig'imni himoyalash" gain="Cho'qqi va hujum paytida tizim yiqilmaydi" cost="Ba'zi foydalanuvchilar sekinroq xizmat oladi">
+
+Oddiy tilda: bayram kuni pochta to‘lib-toshadi. Nimadan voz kechish oldindan
+rejalashtirilgan: avval bezaklar (tavsiyalar), keyin tezlik (real vaqt), eng
+oxirida — asosiy ish.
 
 Yirik voqea (sport finali, favqulodda holat) paytida yozish ham, o‘qish ham bir necha
 barobar oshadi. Himoya qatlamlari:
@@ -1058,7 +1200,197 @@ Amalda 1 va 2 birinchi qo‘llanadi — ular oddiy va katta yutuq beradi. 3 esa 
 murakkabligini oshiradi va faqat haqiqatan chegaraga yetganda qilinadi.
 </Check>
 
-## 7. Bugungi arxitektura
+## 7. Bitta postning hayoti
+
+Evolyutsiyadan keyin tizim ko‘p qismli bo‘lib qoldi. Endi bitta postni
+yozilgan lahzadan obunachining ekraniga chiqqungacha kuzatamiz. Shunda har
+qism nega kerakligi va “5 soniya” va’dasi qanday bajarilishi ko‘rinadi.
+
+### 7.1 Qadam-baqadam
+
+Oddiy tilda: siz xatni pochtaga topshirdingiz va chek oldingiz. Shu lahzada
+xatingiz arxivga yozildi va o‘zingizning qutingizga nusxasi tushdi. Qolgan
+ishni pochtachilar fonda qiladi: ro‘yxatdan sizning o‘quvchilaringizni
+topib, minglab qutiga bir yo‘la tashlaydi.
+
+<Flow nodes={["POST /tweet", "Snowflake ID", "Tweet xizmati: saqlash (manba haqiqat)", "Muallifning o'z tasmasi", "Fan-out navbati", "Graf: obunachilar, bo'lak-bo'lak", "Redis tasmalari: pipelining", "Obunachi: LRANGE + hidratsiya"]} caption="Muallif javobni 4-qadamdan keyin oladi. 5-7-qadamlar fonda: 2012-yilda Twitter tasmalarga bir yo'la ~4 000 manzildan pipelining bilan yozgan" />
+
+1. **ID** — Snowflake (7-qadam): koordinatsiyasiz, vaqt bo‘yicha tartiblangan.
+2. **Saqlash** — post manba bazaga yoziladi. Shu paytdan u yo‘qolmaydi.
+3. **O‘z tasmasi** — muallif o‘z postini darhol ko‘radi (10.2 dagi yagona
+   qat’iy talab). Bu tarqatishni kutmaydi.
+4. **Navbat** — tarqatish vazifasi navbatga tushadi. Muallif javobni oldi.
+5. **Graf** — “menga kim obuna?” ro‘yxati bo‘laklarda o‘qiladi.
+6. **Tasmalar** — har bo‘lakka bitta pipelined so‘rov: `LPUSH` + `LTRIM`.
+7. **O‘qish** — obunachi tasmani ochganda ID lar olinadi, hidratsiya va
+   filtr qo‘llanadi, mashhurlarning postlari pull qilinib qo‘shiladi.
+
+### 7.2 “5 soniya” byudjeti
+
+<Calc title="Post obunachilarga qancha vaqtda yetadi" result="Oddiy akkaunt — millisekundlar. 1 mln obunachi — ~1 soniya ish, lekin navbatdagi joyiga qarab soniyalar. 100 mln — butun klasterning 50 soniyasi: shuning uchun mashhurlar pull qilinadi">{`Bitta fan-out ishchisi:
+  bo'lak = 4 000 manzil, bitta pipelined so'rov ~10 ms
+  -> ~400 000 tasma yozuvi / s bitta ishchida
+
+Obunachilar (= yozuvlar)   1 ishchi    100 ishchi
+          200               0.5 ms       -
+       20 000                50 ms       -
+    1 000 000               2.5 s     25 ms
+  100 000 000               250 s     2.5 s
+  + butun klaster sig'imi ~2 mln yozuv/s (5.1)
+    -> 100 mln yozuv = 50 s, qolgan HAMMA post kutadi
+
+Navbatdagi kutish (o'rtacha yuk 70% bo'lsa) qo'shiladi:
+  oddiy post: 1-3 s -> "5 soniya" va'dasi bajariladi`}</Calc>
+
+### 7.3 Push, pull va gibrid — o‘lchovda
+
+2-daraja amaliyotida 8 000 foydalanuvchili darajali grafda (median — 9
+obunachi, eng mashhurida 6 447) bir xil yuklama turli chegaralar bilan
+o‘tkaziladi. Har foydalanuvchi 2 ta post yozadi va 20 marta tasma o‘qiydi:
+
+<Calc title="Bir xil yuklama, besh xil strategiya" result="Amallar soni bo'yicha sof push eng arzon — o'qish yozishdan 10 barobar ko'p bo'lgani uchun. Gibrid esa eng katta fan-out'ni 6 448 dan 2 948 ga tushiradi: u NARX uchun emas, KECHIKISH dumi uchun">{`              push      pull    maks    jami
+              yozuv     so'rov  fan-out (ming)
+Sof pull       16 000  3 203k       1   3 219
+Chegara 200   270 000  1 525k     200   1 794
+Chegara 1000  379 000    810k     999   1 189
+Chegara 3000  450 000    401k   2 948     851
+Sof push      504 000       0   6 448     504
+
+Sof pull / sof push = 6.4 barobar qimmat`}</Calc>
+
+Bu jadval 5-bo‘limdagi Deep bilan birga o‘qilishi kerak. Real tizimda gibrid
+narx jihatidan ham yutadi, chunki uchta omil bu modelda yo‘q:
+
+1. **Faol bo‘lmagan obunachilar** — mashhur akkauntning obunachilari orasida
+   hozir tasmani o‘qimaydiganlar ko‘p. Ularga yozish — sof isrof (6-bo‘lim
+   1-qadam).
+2. **Pull arzon o‘qish** — mashhur akkauntning oxirgi postlari juda issiq
+   kalit, u keshda va bitta `MGET` bilan olinadi. Bu tasmaga yozish bilan
+   bir xil narx emas.
+3. **Burst** — 100 mln yozuv bir lahzada tushadi va navbatni bo‘g‘adi. Narx
+   o‘rtacha yuk bilan emas, **cho‘qqi** bilan to‘lanadi.
+
+<Check q="Amaliyotdagi simulyatsiyada sof push eng kam amal qildi. Unda nega Twitter mashhur akkauntlar uchun pull'ga o'tgan?">
+Chunki “jami amallar soni” yagona mezon emas. Uchta mezon bor va sof push
+ikkitasida yutqazadi:
+
+- **Dum kechikishi** — bitta postning fan-out’i 6 448 dan (simulyatsiyada)
+  100 millionga (haqiqatda) cho‘ziladi. Bu post soniyalar emas, daqiqalarda
+  yetadi va shu paytda **boshqa hamma postlar** navbatda kutadi.
+- **Cho‘qqi sig‘imi** — tizim o‘rtacha emas, eng yomon daqiqaga qarab
+  qurilishi kerak. Mashhur akkaunt bir post bilan cho‘qqi yaratadi.
+- **Isrof** — yozuvlarning katta qismi faol bo‘lmagan obunachilarga ketadi
+  va hech qachon o‘qilmaydi.
+
+Gibrid chegarani yuqori qo‘yadi (faqat eng mashhur ~0.01–0.1% akkaunt pull
+qilinadi). Shunda o‘qishdagi qo‘shimcha narx kichik bo‘ladi, dum va cho‘qqi
+esa cheklanadi. Bu — o‘rtacha va dum orasidagi klassik kelishuv.
+</Check>
+
+## 8. “Sizga tavsiya”: 2023-yilgi ochiq algoritm
+
+### 8.1 Oddiy tilda: shaxsiy muharrir
+
+Oddiy tilda: xronologik tasma — qutingizga tushgan hamma xatni vaqt
+bo‘yicha o‘qish. “Sizga tavsiya” esa shaxsiy muharrir. U har ertalab
+siz obuna bo‘lganlarning xatlaridan, boshqa minglab mualliflarning
+xatlaridan ham bir dasta tanlaydi va sizga eng qiziq bo‘ladiganlarini
+tartib bilan qo‘yadi. Muharrir sizni qanchalik yaxshi bilsa, shuncha
+yaxshi tanlaydi — lekin u qimmat, va har ertalab yuz million odam uchun
+ishlaydi.
+
+### 8.2 Uch bosqich
+
+2023-yil 31-martda Twitter “Sizga tavsiya” tasmasini tuzadigan kodning
+katta qismini ochiq e’lon qildi va blogda uni tasvirlab berdi. Asosiy
+raqamlar: quvur kuniga **~5 milliard** marta ishlaydi, har safar
+yuzlab million postdan **~1 500** ta nomzod tanlanadi, ular **~48 million**
+parametrli neyron tarmoq bilan baholanadi. O‘rtacha foydalanuvchi
+tasmasining **taxminan yarmi** obunalaridan, yarmi esa obunadan
+tashqaridan keladi.
+
+<Flow nodes={["Nomzodlar: obunalardan (~50%)", "Nomzodlar: obunadan tashqari (~50%) — o'xshash jamoalar, siz o'qiganlarni yoqtirganlar", "~1 500 nomzod", "Og'ir reyting: ~48 mln parametrli model", "Evristika va filtrlar: bloklangan, takror, bitta muallifdan ko'p", "Aralashtirish: reklama, tavsiya qilingan akkauntlar", "Tasma"]} caption="Bu darsdagi push/pull quvuri endi faqat birinchi qadam — nomzodlar manbalaridan biri" />
+
+<Callout type="ogoh" title="Kod ochiq, lekin hammasi emas">
+2023-yilda quvur kodi, model arxitekturalari va konfiguratsiyaning bir
+qismi ochildi. Lekin model **og‘irliklari**, o‘qitish ma’lumotlari va
+ba’zi xavfsizlik filtrlari ochilmadi. Ya’ni “algoritm ochiq” degani “tasma
+qanday chiqishini to‘liq qayta tiklash mumkin” degani emas. Bundan tashqari,
+tizim o‘sha kundan beri o‘zgarib boryapti. Darsdagi raqamlar — 2023-yilgi
+blog va kodga asoslangan, bugungi holat ulardan farq qilishi mumkin.
+</Callout>
+
+1. **Nomzodlar manbalari.** Obunalardan keladiganlar — aynan shu darsda
+   qurgan tizim (push + pull) va obunalaringiz bilan aloqangiz kuchini
+   baholaydigan model. Obunadan tashqari nomzodlar uchun esa o‘xshash
+   foydalanuvchilar jamoalari, siz kuzatganlar yoqtirgan postlar va
+   embedding bo‘shliqlari ishlatiladi.
+2. **Reyting.** Har nomzod uchun model bir necha ehtimolni bashorat qiladi:
+   yoqtirish, javob yozish, repost, uzoq o‘qish va salbiy reaksiyalar. Yakuniy
+   ball — ularning og‘irlikli yig‘indisi.
+3. **Evristika.** Model yaxshi bo‘lsa ham, natija “inson qoidalari” bilan
+   tuzatiladi: bitta muallifdan ketma-ket ko‘p post bo‘lmasin, bloklangan
+   va ko‘rilgan postlar chiqmasin, obunalar va boshqalar muvozanatda bo‘lsin.
+
+### 8.3 Narxi
+
+<Calc title="'Sizga tavsiya' hisob narxi" result="Sekundiga ~87 mln nomzodni baholash — 6-bo'lim 9-qadamdagi hisob (104 mln/s) bilan bir tartibda. Bitta baholash 10 us bo'lsa — ~870 yadro faqat reyting uchun; aslida GPU va paketlab hisoblash ishlatiladi">{`Quvur ishga tushishi:     ~5 000 000 000 / kun
+                          5e9 / 86 400 = ~58 000 / s (o'rtacha)
+Nomzodlar har safar:      ~1 500
+
+Baholashlar:              58 000 x 1 500 = ~87 000 000 / s
+Cho'qqida (2x):           ~174 000 000 / s
+
+Bitta baholash (48 mln parametr, paketlab):
+  ~2 x 48e6 = ~1e8 amal (FLOP)
+  87e6 x 1e8 = ~8.7e15 FLOP/s = ~9 PFLOP/s
+  -> o'nlab-yuzlab GPU, faqat shu bosqich uchun
+
+Taqqoslang: xronologik tasma = LRANGE + MGET
+  -> deyarli faqat xotira o'qish`}</Calc>
+
+<Calc title="Nega aynan ~1 500 nomzod" result="Nomzodlar soni — sifat va narx orasidagi tutqich: 1 500 dan 15 000 ga oshirish reyting narxini 10 barobar oshiradi, tasmaning yaxshilanishi esa kichik bo'ladi — eng yaxshilari odatda birinchi minglikda">{`Foydalanuvchi bir seansda ko'radi:    ~50-100 post
+Reyting tanlovni yaxshilashi uchun:   ~15-30 barobar ko'p nomzod
+  -> 50 x 30 = 1 500
+
+Nomzodlar -> narx (chiziqli):
+     150 nomzod  ->   0.1x   (tanlov tor)
+   1 500 nomzod  ->   1x
+  15 000 nomzod  ->  10x     (manbalar ham sekinlashadi)`}</Calc>
+
+<Deep title="Ochiq algoritmdan muhandis uchun uch saboq">
+1. **Quvur — ko‘p bosqichli voronka.** Arzon manbalar ko‘p nomzod beradi,
+   qimmat model ozini baholaydi. Bu ChatGPT darsidagi RAG “retrieve →
+   rerank” naqshi bilan bir xil. 6-bo‘lim 9-qadamdagi ikki bosqichli reyting
+   2023-yilda shu shaklga yetgan.
+2. **Bu darsdagi tizim yo‘qolmadi.** Push/pull tasma keshi endi nomzodlar
+   manbalaridan biri: obunalaringizning postlarini tez yig‘ish uchun u hali
+   ham kerak. Xronologik “Kuzatilayotganlar” tasmasi esa aynan shu tizimning
+   o‘zi.
+3. **Model natijasi oxirgi so‘z emas.** Evristika va filtrlar qatlami
+   (muallif xilma-xilligi, bloklar, takrorlar) model ustida turadi. Ko‘p
+   “nega bu post chiqdi?” savollariga javob modelda emas, aynan shu qoidalarda.
+</Deep>
+
+<Check q="'Sizga tavsiya' tasmasida obunadan tashqari postlar ham bor. Bu push/pull arxitekturasini qanday o'zgartiradi?">
+Push faqat **obunalar** uchun ishlaydi: post obunachilarning tasmasiga
+yoziladi. Obunadan tashqari post — sizga obuna bo‘lmagan muallifniki. Uni
+oldindan sizning tasmangizga yozib bo‘lmaydi, chunki kimga tavsiya qilishni
+yozish paytida bilmaysiz.
+
+Shuning uchun obunadan tashqari nomzodlar **pull** qilinadi, o‘qish
+paytida, boshqa indekslardan: jamoalar bo‘yicha mashhur postlar,
+o‘xshash foydalanuvchilar yoqtirganlar, embedding qidiruvi. Ya’ni tasmaning
+yarmi o‘qish paytida yig‘iladi. O‘qish yo‘li esa yana qimmatlashdi: bu
+endi “tayyor ro‘yxatni olish” emas, balki bir nechta manbadan nomzod yig‘ish
+va ularni model bilan baholash.
+
+Tarixiy kinoya: 2009-yilda ish o‘qishdan yozishga ko‘chirilgan edi (1.4).
+Reyting esa uning katta qismini o‘qishga qaytardi. Faqat endi bu `JOIN`
+emas, ko‘p bosqichli voronka.
+</Check>
+
+## 9. Bugungi arxitektura
 
 <Arch
   title="Tasma tizimining to'liq qatlamlari"
@@ -1072,7 +1404,7 @@ murakkabligini oshiradi va faqat haqiqatan chegaraga yetganda qilinadi.
   ]}
 />
 
-### 7.1 Tasma so‘rovining kechikish byudjeti
+### 9.1 Tasma so‘rovining kechikish byudjeti
 
 <Calc title="200 ms qayerga ketadi" result="Modelning o'zi emas, hidratsiya va reyting eng qimmat. Optimallashtirish aynan shu ikkitasidan boshlanadi">{`Foydalanuvchi tasmani ochdi:
 
@@ -1090,7 +1422,7 @@ murakkabligini oshiradi va faqat haqiqatan chegaraga yetganda qilinadi.
 
 Cho'qqi yuklamada navbat kutish qo'shiladi -> 200 ms`}</Calc>
 
-### 7.2 Tasma API si
+### 9.2 Tasma API si
 
 Mijoz bilan shartnoma tizimning imkoniyatlarini belgilaydi — noto‘g‘ri API keyin
 o‘zgartirib bo‘lmaydigan cheklovlar yaratadi.
@@ -1129,9 +1461,9 @@ tasmada bir necha marta uchraydi). Yechim: `items` da faqat `author_id`, muallif
 esa alohida `users` xaritasida — bu **normallashtirilgan javob** naqshi.
 </Deep>
 
-## 8. Ishonchlilik
+## 10. Ishonchlilik
 
-### 8.1 Nosozliklar taksonomiyasi
+### 10.1 Nosozliklar taksonomiyasi
 
 | Nosozlik | Belgisi | Sabab | Chora |
 | --- | --- | --- | --- |
@@ -1170,7 +1502,7 @@ millionlab tasma kerak bo‘ladi — ular navbat orqali, tezlik cheklovi bilan, 
 foydalanuvchilardan boshlab tiklanadi.
 </Deep>
 
-### 8.2 Izchillik kelishuvlari
+### 10.2 Izchillik kelishuvlari
 
 Bu tizimda **hech narsa kuchli izchil emas** va bu ongli tanlov:
 
@@ -1185,7 +1517,7 @@ Yagona qat’iy talab: **o‘z posti darhol ko‘rinsin**. Foydalanuvchi post yo
 tasmasida uni ko‘rmasa — “ishlamadi” deb qayta yozadi. Shuning uchun o‘z posti mahalliy
 ravishda, tarqatishni kutmasdan qo‘shiladi.
 
-### 8.3 Degradatsiya tartibi
+### 10.3 Degradatsiya tartibi
 
 <Timeline
   rows={[
@@ -1193,12 +1525,12 @@ ravishda, tarqatishni kutmasdan qo‘shiladi.
     { when: "2-bosqich", what: "Fan-out chegarasini pasaytirish", why: "Yozish yuki darhol kamayadi; o'qish biroz qimmatlashadi." },
     { when: "3-bosqich", what: "Tasma uzunligini qisqartirish", why: "800 -> 200. Xotira va yozish tejaladi; chuqur varaqlash sekinlashadi." },
     { when: "4-bosqich", what: "Real vaqt yangilanishini o'chirish", why: "Polling intervali uzayadi; ochiq ulanishlar yopiladi." },
-    { when: "5-bosqich", what: "Faol bo'lmaganlarga tarqatishni to'xtatish", why: "Ular kirganda tasma qayta quriladi (8.1-bo'limdagi mexanizm)." },
+    { when: "5-bosqich", what: "Faol bo'lmaganlarga tarqatishni to'xtatish", why: "Ular kirganda tasma qayta quriladi (10.1-bo'limdagi mexanizm)." },
     { when: "6-bosqich", what: "Yozishga qattiq tezlik cheklovi", why: "Oxirgi chora: yangi postlar sekinlashadi, lekin o'qish ishlaydi." },
   ]}
 />
 
-### 8.4 Javoblar: tasmadagi eng nozik qoida
+### 10.4 Javoblar: tasmadagi eng nozik qoida
 
 Post — bu tekis ro‘yxatdagi element emas: unga javob yoziladi, javobga yana javob.
 Savol: **javob kimning tasmasiga tushishi kerak?**
@@ -1257,7 +1589,7 @@ faqat “eng yaxshi” 50 tasi olinadi va bu yana **reyting** masalasi: qaysi ja
 ko‘rsatiladi, qaysilari “ko‘proq javoblarni ko‘rish” ostida qoladi.
 </Deep>
 
-### 8.5 Bloklash, yashirish va filtrlar
+### 10.5 Bloklash, yashirish va filtrlar
 
 Foydalanuvchi kimnidir bloklasa yoki yashirsa (mute), uning postlari tasmada
 ko‘rinmasligi kerak. Savol: bu **qachon** qo‘llanadi?
@@ -1319,7 +1651,7 @@ Qat’iy talab: kirish nazorati **kontent qaytariladigan har bir joyda** bo‘li
 va u eng past qatlamda (hidratsiya xizmatida) amalga oshirilsa ishonchliroq bo‘ladi.
 </Check>
 
-## 9. Suiiste’mol va xavfsizlik
+## 11. Suiiste’mol va xavfsizlik
 
 Ijtimoiy tarmoqda asosiy tahdid — texnik emas, **ijtimoiy**:
 
@@ -1348,7 +1680,7 @@ Bu 2-darsdagi “rate limit so‘rovlar soni bo‘yicha emas, tokenlar bo‘yich
 aynan o‘zi.
 </Callout>
 
-### 9.1 Bildirishnomalar: teskari fan-out
+### 11.1 Bildirishnomalar: teskari fan-out
 
 Tasma — “men kimni o‘qiyman”. Bildirishnomalar — “menga kim murojaat qildi”. Bu
 **teskari yo‘nalish** va u boshqacha muammo tug‘diradi.
@@ -1396,7 +1728,7 @@ bosqichida asosiy nomzodlar bilan aralashtiriladi.
 Ya’ni yana o‘sha gibrid tamoyil: **qimmat fan-out — pull, arzoni — push**.
 </Check>
 
-## 10. Iqtisod
+## 12. Iqtisod
 
 <Calc title="Tasma tizimining oylik xarajati" result="Oyiga ~$300 000 tartibida. Bitta tasma yuklanishi $0.0000003 — lekin oyiga 900 milliard marta yuklanadi">{`Tasma keshi (1.6 TB RAM):
   30 tugun x 64 GB, replika bilan 60 tugun
@@ -1423,7 +1755,7 @@ Diqqat: xarajatning **yarmi o‘qish yo‘liga** ketadi va uning katta qismi rey
 Xronologik tasma bir necha barobar arzon — bu mahsulot qarorining to‘g‘ridan-to‘g‘ri
 narxi.
 
-## 11. Sig‘im rejalashtirish
+## 13. Sig‘im rejalashtirish
 
 <Calc title="Yangi mintaqa ochish uchun nima kerak" result="Har 100 million yangi faol foydalanuvchi uchun ~320 GB tasma keshi va ~200 qo'shimcha server">{`100 000 000 yangi faol foydalanuvchi:
 
@@ -1443,7 +1775,44 @@ Serverlar:
   o'qish: ~200 ta
   fan-out: ~20 ta`}</Calc>
 
-## 12. Kuzatuv
+<Calc title="Faol bo'lmagan obunachilarga yozmaslik qancha tejaydi" result="Faqat oxirgi 30 kunda kirganlarga yozish fan-out yozuvlarini ~60% ga, tasma keshini esa ~2.5 barobar kamaytiradi. Qaytgan foydalanuvchining tasmasi bir marta qayta quriladi (10.1)">{`Ro'yxatdan o'tganlar:         500 mln (faraz)
+Oxirgi 30 kunda kirganlar:    200 mln (40%)
+
+Fan-out, hammaga yozilsa:     har post x 200 obunachi = 200 yozuv
+Faqat faollarga:              200 x 0.4              =  80 yozuv
+  -> yozuvlar 60% kam: 694 000/s o'rniga ~278 000/s
+
+Tasma keshi:
+  hammaga: 500e6 x 800 x 8 x 1.25 = 4.0 TB
+  faollarga: 200e6 x ...           = 1.6 TB  (6-bo'lim 1-qadam)
+
+Narxi: qaytgan "uxlagan" foydalanuvchi
+  birinchi ochishda ~200 so'rov va bir necha yuz ms kutadi`}</Calc>
+
+<Check q="Tasma keshini faqat faol foydalanuvchilar uchun saqlaysiz. Kimdir 3 oydan keyin qaytdi va 50 million odam bir vaqtda qaytdi (masalan, katta sport finali). Nima bo'ladi?">
+Bitta qaytgan foydalanuvchi uchun hammasi joyida: tasma ~200 so‘rov bilan
+qayta quriladi, birinchi ochish biroz sekinroq.
+
+50 million bir vaqtda qaytsa — bu **qayta qurish bo‘roni**: 50 mln × 200 =
+10 milliard so‘rov graf va post indekslariga. Bu baza va kesh uchun 2-darsdagi
+cache stampede’ning ulkan versiyasi.
+
+Himoya:
+
+1. **Navbat va tezlik cheklovi** — qayta qurish ishlari navbatga tushadi va
+   eng faollardan boshlab bajariladi (10.1 Deep)
+2. **Arzon vaqtinchalik javob** — tasma tayyor bo‘lguncha “mashhur postlar”
+   yoki mintaqaviy “eng yaxshi” tasma ko‘rsatiladi (6-bo‘lim 3-qadam Deep)
+3. **Oldindan isitish** — rejalashtirilgan voqealar oldidan oxirgi 30–90
+   kunda faol bo‘lganlarning tasmalarini fonda qayta qurish
+4. **Qisqartirilgan qayta qurish** — 800 emas, 100 ta post; qolgani
+   varaqlaganda
+
+Bu — 10.3 dagi degradatsiya tartibining yana bir bosqichi: tizim to‘liq
+xizmat o‘rniga “yetarlicha yaxshi” xizmatga o‘tadi.
+</Check>
+
+## 14. Kuzatuv
 
 | Metrika | Nimani ko‘rsatadi | Chegara |
 | --- | --- | --- |
@@ -1471,7 +1840,7 @@ o‘xshaydi — shuning uchun reyting va “sizga qiziq bo‘lishi mumkin” mex
 bo‘lgan.
 </Check>
 
-## 13. Antinaqshlar
+## 15. Antinaqshlar
 
 <TradeOffs
   rows={[
@@ -1488,7 +1857,7 @@ bo‘lgan.
   ]}
 />
 
-## 14. Trade-off‘lar
+## 16. Trade-off‘lar
 
 <TradeOffs
   rows={[
@@ -1504,9 +1873,75 @@ bo‘lgan.
   ]}
 />
 
-## 15. Intervyu savollari
+### Butun dars o‘nta gapda
 
-### 15.1 Asoslar
+1. **Tasma — “ishni qachon bajarish” masalasi**: o‘qishda (pull) yoki
+   yozishda (push); o‘qish yozishdan 65–100 barobar ko‘p bo‘lgani uchun
+   asosiy yo‘l — push (1.3, 5).
+2. **`JOIN` bilan tasma shardlashdan keyin umuman ishlamaydi**: postlar va
+   obunalar turli kalitlar bo‘yicha turli mashinalarda yotadi (4).
+3. **Tasma keshi — ID lar ro‘yxati**, postning o‘zi emas: 8 bayt, 800 ta
+   chegara, faqat faol foydalanuvchilar uchun (6-bo‘lim 1-qadam).
+4. **Mashhur akkaunt sof push’ni buzadi**: bitta post — 100 mln yozuv va
+   butun navbatning kechikishi (5.3, 7.2).
+5. **Gibrid — dum uchun**: amallar soni bo‘yicha push arzonroq bo‘lishi
+   mumkin, lekin pull eng katta fan-out’ni va cho‘qqini cheklaydi (5.4, 7.3).
+6. **O‘qishda birlashtirish — k-way merge**: tayyor tasma + mashhurlar
+   ro‘yxatlari, faqat kerakli N tasini olish, keyin deduplikatsiya va
+   filtr (5.4 Deep, 2-daraja amaliyot).
+7. **O‘chirish, bloklash, yashirish — o‘qishda filtr**: millionlab tasmani
+   qayta yozish o‘rniga tombstone va ortiqcha nomzod (6-bo‘lim 5-qadam, 10.5).
+8. **Snowflake — vaqt bo‘yicha tartiblangan, koordinatsiyasiz ID**: kursor
+   bilan sahifalash va shardlash shundan oson (6-bo‘lim 7-qadam).
+9. **Tasma — hosila ma’lumot**: uni manbadan qayta qurish mumkin, va bu
+   butun tizimning xavfsizlik to‘ri (10.1).
+10. **“Sizga tavsiya” — ko‘p bosqichli voronka**: ~1 500 nomzod, og‘ir
+    model va evristikalar; push/pull tasma endi nomzodlar manbalaridan
+    biri (8).
+
+## 17. Intervyu savollari
+
+### 17.1 Asoslar
+
+<QA q="Gibrid fan-out'da chegarani qanday tanlaysiz?">
+Ikki narx muvozanatda bo‘lishi kerak:
+
+- **Yozish narxi va dum** — chegara yuqori bo‘lsa, katta akkauntlar push
+  qiladi: bitta postning fan-out’i katta, navbatda cho‘qqi va kechikish
+- **O‘qish narxi** — chegara past bo‘lsa, ko‘p akkaunt pull rejimiga
+  o‘tadi: har tasma o‘qishida ko‘proq qo‘shimcha so‘rov
+
+Amaliyotdagi simulyatsiya buni raqamda ko‘rsatadi. Sof pull sof push’dan
+6.4 barobar ko‘p amal qiladi. Chegara 3 000 bo‘lsa, eng katta fan-out ikki
+barobardan ko‘p qisqaradi, jami narx esa sof pull’dan 3.8 barobar kam. Real
+tizimda chegara yuqori qo‘yiladi: akkauntlarning ~0.01–0.1% i pull qilinadi.
+Faol bo‘lmagan obunachilar ko‘p bo‘lgani uchun gibrid narx jihatidan ham
+yutadi.
+
+Ikki muhim detal: chegara **dinamik** (cho‘qqida pasaytiriladi — degradatsiya
+tutqichi) va **gisterezisli** (chegara atrofidagi akkaunt rejimlar orasida
+tebranmasin).
+</QA>
+
+<QA q="'Sizga tavsiya' tasmasi qanday tuzilgan? Xronologik tasmadan farqi nima?">
+Uch bosqichli voronka (Twitter 2023-yilda kodini ochgan):
+
+1. **Nomzodlar** — ~1 500 ta: taxminan yarmi obunalardan (push/pull tasma
+   va obunalar bilan aloqa kuchi modeli), yarmi obunadan tashqaridan
+   (o‘xshash foydalanuvchilar jamoalari, siz kuzatganlar yoqtirganlar,
+   embedding’lar)
+2. **Reyting** — ~48 mln parametrli neyron tarmoq har nomzod uchun
+   yoqtirish, javob, repost va salbiy reaksiya ehtimolini bashorat qiladi;
+   ball — og‘irlikli yig‘indi
+3. **Evristika** — muallif xilma-xilligi, bloklar, takrorlar, obunalar
+   muvozanati
+
+Xronologik tasma — `LRANGE` va hidratsiya, deyarli faqat xotira o‘qish.
+Tavsiya esa kuniga ~5 mlrd marta ishlaydi: sekundiga ~87 mln baholash, bu
+o‘nlab-yuzlab GPU degani. Arxitektura nuqtai nazaridan tasmaning yarmi
+yana o‘qish paytida yig‘iladigan bo‘ldi. Faqat endi bu `JOIN` emas, ko‘p
+bosqichli voronka.
+</QA>
 
 <QA q="Twitter tasmasini loyihalang. Birinchi savolingiz nima bo'ladi?">
 Birinchi savol — **o‘qish va yozish nisbati**. Bu son butun arxitekturani belgilaydi.
@@ -1559,7 +1994,7 @@ qo‘shiladi: tasma = tayyor ro‘yxat + mashhurlarning oxirgi postlari, birlash
 tartiblanadi. O‘qish narxi 6 ta so‘rovga oshadi — bu arzon.
 </QA>
 
-### 15.2 Ma’lumot va saqlash
+### 17.2 Ma’lumot va saqlash
 
 <QA q="Tasma keshida nimani saqlaysiz — postlarnimi yoki ID larnimi?">
 **Faqat ID larni.** Uchta sabab:
@@ -1616,7 +2051,7 @@ Shuning uchun profil uchun alohida indeks yuritiladi — `user_tweets:<author>`,
 ro‘yxati, tasma keshiga o‘xshash.
 </QA>
 
-### 15.3 Kelishuvlar
+### 17.3 Kelishuvlar
 
 <QA q="Chegara (kim mashhur hisoblanadi) qanday tanlanadi?">
 Bu **optimallashtirish masalasi**: chegara oshgani sari yozish narxi o‘sadi (ko‘proq
@@ -1672,7 +2107,7 @@ foydalanuvchilardan boshlanadi, qolganlari kirganda talab bo‘yicha quriladi. F
 uchun bu birinchi yuklanishning sekinlashuvi bo‘lib ko‘rinadi.
 </QA>
 
-### 15.4 Amaliy stsenariylar
+### 17.4 Amaliy stsenariylar
 
 <QA q="Fan-out navbati orqada qoldi va postlar 30 daqiqada tarqalyapti. Nima qilasiz?">
 Avval sabab: yozish cho‘qqisimi, ishchilar tushganmi, yoki bitta yirik akkaunt navbatni
@@ -1841,7 +2276,12 @@ Shuning uchun optimallashtirish tartibi: (1) reyting nomzodlarini kamaytirish,
 u eng ko‘rinarli, lekin eng arzon qism.
 </QA>
 
-## 16. Amaliyot
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod va avtomatik tekshiruvlar
+`docs/amaliyot/twitter/` da: `snowflake.py`, `timeline.py` — TODO;
+`model.py` — tayyor soxta soat va darajali obunalar grafi; `check.py` —
+13 ta tekshiruv.
 
 <Task title="1-daraja: fan-out kalkulyatori">
 
@@ -1855,36 +2295,78 @@ keshining hajmi, va gibrid yechim uchun har bir chegara qiymatidagi umumiy narx.
 Minimal nuqta qayerda? U darsdagi 10 000 – 1 000 000 oralig‘iga tushdimi?
 </Task>
 
-<Task title="2-daraja: ishlaydigan tasma (asosiy topshiriq)">
+<Task title="2-daraja: Snowflake va gibrid tasma (tayyor tekshiruvlar bilan)">
 
-Redis va istalgan til bilan quring:
+Kod `docs/amaliyot/twitter/` da. Ikkita faylni to‘ldirasiz, `check.py` esa
+ularni 13 ta tekshiruvda sinaydi (~12 soniya, faqat Python standart
+kutubxonasi):
 
-1. `POST /tweet` — Snowflake ID generatsiyasi, postni saqlash, fan-out navbatiga qo‘yish
-2. Fan-out ishchisi — obunachilarga `LPUSH` + `LTRIM 0 799`
-3. `GET /timeline` — `LRANGE` + hidratsiya (`MGET`) + filtrlash
-4. **Gibrid**: obunachilari 1000 dan ko‘p akkauntlar push qilinmaydi, o‘qishda
-   qo‘shiladi va deduplikatsiya bilan birlashtiriladi
-5. `DELETE /tweet/:id` — tombstone, tasmalarga tegilmaydi
+1. `snowflake.py` — `next_id`: vaqt, mashina va ketma-ketlik bitlari,
+   millisekund to‘lganda kutish, soat orqaga ketganda xato; `parse`
+2. `timeline.py` — gibrid tasma xizmati: `post` (push yoki mashhurlar uchun
+   pull ro‘yxati), `_visible` (obuna vaqti, tombstone, bloklash, bekor
+   qilingan obuna), `read` (uyum bilan k-way merge, filtrdan keyin limit,
+   kursor)
 
-**Tekshiruv mezoni:** 10 000 foydalanuvchi, 100 000 obuna, 1000 post bilan yuk testi.
-O‘lchang: tasma p50/p99, fan-out kechikishi, xotira sarfi. So‘ng bitta akkauntga
-5000 obunachi qo‘shib, chegarani o‘chirib ko‘ring — fan-out kechikishi qanday o‘zgardi?
+**Tekshiruv mezoni:** `python check.py` oxirida `Jami: 13/13 OK`. Keyin
+`part_cost` dagi chegaralar va o‘qish/yozish nisbatini o‘zgartirib, 7.3 dagi
+jadvalni o‘zingiz takrorlang. O‘qishlar soni 100 barobar bo‘lsa, eng arzon
+chegara qayerga siljiydi?
 </Task>
 
-<Task title="3-daraja: nosozlik va tiklanish">
+<Deep title="check.py qanday tekshiradi: JOIN — eng yaxshi test oracle">
+Gibrid tasmani tekshirishning qiyin joyi — to‘g‘ri javobni bilish. Bu
+yerda v0 (3-bo‘lim) yordamga keladi: sekin, lekin aniq `JOIN`.
+`check.py` dagi `Naive` klass har o‘qishda barcha postlarni ko‘rib chiqadi
+va qoidalarni so‘zma-so‘z qo‘llaydi: muallif o‘zi yoki hozir obuna bo‘lgan,
+post obunadan keyin yozilgan, o‘chirilmagan, muallif bloklanmagan.
 
-2-darajani kengaytiring:
+- **Fuzz**: 50 ta tasodifiy ketma-ketlikda (obuna, bekor qilish, qayta
+  obuna, bloklash, post, o‘chirish) chegara 1 dan cheksizgacha o‘zgaradi.
+  Har o‘qish natijasi `JOIN` natijasi bilan **aynan** bir xil bo‘lishi kerak.
+  Ya’ni push, pull va ularning aralashmasi foydalanuvchiga **sezilmasligi**
+  shart.
+- **Sahifalash**: barcha sahifalar ketma-ket o‘qiladi va ularning
+  birlashmasi to‘liq tasmaga teng bo‘lishi kerak — takrorsiz va bo‘shliqsiz.
+- **Murakkablik**: 300 ta mashhur obunali foydalanuvchida har o‘qish faqat
+  20 ta postni olishi kerak. Hammasini yig‘ib saralash (600 000 element)
+  vaqt chegarasidan oshadi.
 
-1. **Tasmani qayta qurish** funksiyasini yozing (manbadan)
-2. Redis dan tasodifiy 20% tasmani o‘chiring va tizim qanday tiklanishini o‘lchang
-3. **Bo‘shliq aniqlash**: fan-out ishchisi ataylab 1% hodisani tashlab yuborsin;
-   uni aniqlaydigan va tuzatadigan mexanizm yozing
-4. **Degradatsiya**: navbat chuqurligi chegaradan oshsa, chegarani avtomatik pasaytiring
-   va ta’sirini o‘lchang
+Bu — katta tizimlarni tekshirishning umumiy usuli: optimallashtirilgan
+yo‘lni **sodda va aniq** yo‘l bilan solishtirish (shadow testing).
+</Deep>
 
-**Tekshiruv mezoni:** bitta grafikda ko‘rsating — nosozlik boshlangan lahza, degradatsiya
-yoqilgan lahza, va tizim normal holatga qaytgan lahza. Foydalanuvchi tajribasi (p99)
-har bir bosqichda qanday o‘zgardi?
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan yigirmata
+varianti bilan sinalgan. Snowflake uchun: soat orqaga ketishini
+tekshirmaslik, millisekund to‘lganda kutmaslik, ketma-ketlikni yangi ms da
+nolga qaytarmaslik, bitlar o‘rnini almashtirish, epoch’siz vaqt, `parse` da
+niqobsiz mashina, mashina ID tekshiruvisiz. Tasma uchun: mashhurlarni ham
+push qilish, o‘z tasmasiga yozmaslik, chegarada `>` va `>=` xatosi, obuna
+paytidagi postni ko‘rsatish, bekor qilingan obunani e’tiborsiz qoldirish,
+bloklash va tombstone filtrlarisiz, kursorni kiritish, cap’da yangilarini
+tashlash, kursorni har doim qaytarish, hammasini yig‘ib saralash, limitni
+filtrdan oldin qo‘llash, pull so‘rovlarini noto‘g‘ri sanash. Har biri kamida
+bitta testni yiqitadi.
+</Callout>
+
+<Task title="3-daraja: Redis bilan ishlaydigan tasma va nosozliklar">
+
+2-darajadagi mantiqni haqiqiy Redis ustiga ko‘chiring:
+
+1. `POST /tweet` — Snowflake, saqlash, fan-out navbati. Fan-out ishchisi —
+   1000 tadan bo‘lak, pipelining bilan `LPUSH` + `LTRIM 0 799`
+2. `GET /timeline` — `LRANGE` + mashhurlar ro‘yxatlari + birlashtirish +
+   `MGET` hidratsiya + filtrlar
+3. **Tasmani qayta qurish** funksiyasi (manbadan). Redis’dan tasodifiy 20%
+   tasmani o‘chirib, tiklanishni o‘lchang
+4. **Degradatsiya**: navbat chuqurligi chegaradan oshsa, fan-out chegarasini
+   avtomatik pasaytiring
+
+**Tekshiruv mezoni:** 10 000 foydalanuvchi, 100 000 obuna, 1000 post bilan
+yuk testi: tasma p50/p99, fan-out kechikishi, xotira. Bitta grafikda
+ko‘rsating: nosozlik boshlangan lahza, degradatsiya yoqilgan lahza va tizim
+normal holatga qaytgan lahza.
 </Task>
 
 <Task title="4-daraja: reyting va uning narxi">
@@ -1900,7 +2382,7 @@ sarfini solishtiring. Reyting necha barobar qimmat? Bir foydalanuvchi uchun ikka
 tasmani yonma-yon chiqarib, farqni ko‘rsating.
 </Task>
 
-## 17. Lug‘at
+## 19. Lug‘at
 
 | Atama | Ma’nosi |
 | --- | --- |
@@ -1923,17 +2405,46 @@ tasmani yonma-yon chiqarib, farqni ko‘rsating.
 | Nomzodlar (candidates) | Reytinggacha bo‘lgan postlar to‘plami |
 | Darajali taqsimot | Obunachilar sonining notekis tarqalishi |
 | Read your own writes | Foydalanuvchi o‘z yozganini darhol ko‘rishi |
+| k-way merge | k ta tartiblangan ro‘yxatni uyum bilan birlashtirib, faqat kerakli qismini olish |
+| Kursor | “Shu ID dan kichiklar” ko‘rinishidagi barqaror sahifalash nuqtasi |
+| Obunadan tashqari nomzod | Siz obuna bo‘lmagan muallifning tavsiya qilingan posti |
+| Og‘ir reyting (heavy ranker) | Nomzodlarni baholovchi katta neyron tarmoq (~48 mln parametr) |
+| Voronka (funnel) | Arzon bosqichlar ko‘p, qimmatlari oz element bilan ishlaydigan quvur |
+| Evristika qatlami | Model natijasini tuzatuvchi qoidalar: xilma-xillik, filtrlar |
+| Shadow testing | Optimallashtirilgan yo‘lni sodda va aniq yo‘l bilan solishtirish |
 
-## 18. Manbalar
+## 20. Raqamlar manbasi
 
-| Manba | Nima beradi |
-| --- | --- |
-| *Designing Data-Intensive Applications*, 1-bob | Twitter tasmasi — fan-out kelishuvining klassik tahlili |
-| Twitter Engineering: *The Infrastructure Behind Twitter* | Tasma keshi, hidratsiya, gibrid fan-out |
-| Twitter: *Announcing Snowflake* | Taqsimlangan ID generatsiyasi |
-| Twitter: *Earlybird — Real-Time Search* | Real vaqtda teskari indeks |
-| Instagram Engineering: Sharding & IDs | O‘xshash masalaning boshqa yechimi |
-| Redis: `LPUSH`, `LTRIM`, `ZADD` hujjatlari | Tasma keshining amaliy asboblari |
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| 2012-yilgi tizim | 150 mln faol foydalanuvchi; tasma o‘qish ~300 ming / s; 400 mln+ tweet / kun (~4 600 / s); tasmada ko‘pi bilan 800 yozuv (Redis); fan-out pipelining bilan ~4 000 manzildan | Raffi Krikorian, “Timelines at Scale”, QCon SF 2012; High Scalability sharhi |
+| “5 soniyada yetkazish” maqsadi | Tweet obunachilarga 5 soniya ichida | O‘sha ma’ruza va sharh |
+| Snowflake | 2010; 41 bit vaqt, 10 bit mashina, 12 bit ketma-ketlik; epoch 2010-11-04 | Twitter Engineering, “Announcing Snowflake” |
+| Ochiq algoritm | 2023-yil 31-mart; kuniga ~5 mlrd ishga tushish; ~1 500 nomzod; ~50% obunalardan; og‘ir reyting ~48 mln parametr | Twitter Engineering blogi (2023); TechCrunch va boshqa sharhlar |
+| 2-daraja natijalari | 13/13; 20 mutatsiya; sof pull 6.4x qimmat; chegara 3 000 da eng katta fan-out 2 948 (sof push’da 6 448) | `docs/amaliyot/twitter/`, referens implementatsiya |
+
+500 mln kunlik foydalanuvchi, kuniga 300 mln post, 60 marta ochish, 200 ta
+o‘rtacha obuna, kesh va graf hajmlari, server soni va narxlar, kechikish
+byudjeti — **illyustratsiya uchun taxminiy** raqamlar. Ular 2012-yilgi
+ochiq raqamlar tartibida tanlangan (1.4 dagi hisob). Twitter (hozir X)
+ichki tizimi o‘sha davrdan beri ko‘p o‘zgargan va har detali ochiq emas.
+Asosiy xulosalar — o‘qish ustunligi, ID lar keshi, gibrid fan-out,
+o‘qishdagi filtrlar va ko‘p bosqichli reyting — bu raqamlarning bir necha
+barobarlik xatosiga ham chidamli.
+
+## 21. Manbalar
+
+- Raffi Krikorian (2012), “Timelines at Scale”, QCon San Francisco — slaydlar
+  va video; High Scalability: “The Architecture Twitter Uses to Deal with
+  150M Active Users, 300K QPS…”
+- Twitter Engineering (2010), “Announcing Snowflake”
+- Twitter Engineering (2023), “Twitter’s Recommendation Algorithm” va
+  `the-algorithm` ochiq repozitoriysi
+- Martin Kleppmann (2017), *Designing Data-Intensive Applications*, 1-bob —
+  Twitter tasmasi fan-out kelishuvining klassik tahlili
+- Twitter Engineering, “Earlybird: Real-Time Search at Twitter” (ICDE 2012)
+- Instagram Engineering, “Sharding & IDs at Instagram”
+- Redis hujjatlari: `LPUSH`, `LTRIM`, `LRANGE`, `ZADD`, pipelining
 
 <Callout type="maslahat" title="Keyingi qadam">
 Bu darsdagi asosiy g‘oya — **ishni qachon bajarish** — keyingi darslarda boshqa shaklda

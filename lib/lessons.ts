@@ -102,11 +102,11 @@ export const lessons: Lesson[] = [
     slug: "twitter",
     title: "Twitter tasmasi qanday ishlaydi",
     summary:
-      "Ishni qachon bajarish kerak — yozishdami yoki o'qishda? 100 million obunachili akkaunt bu savolni qanday o'zgartiradi.",
+      "Ishni qachon bajarish kerak — yozishdami yoki o'qishda? 2012-yilgi 300K QPS Redis tasmasidan 2023-yilgi ochiq tavsiya algoritmigacha: 100 million obunachili akkaunt bu savolni qanday o'zgartiradi.",
     accent: "#1d9bf0",
     status: "tayyor",
     level: "o'rta",
-    minutes: 125,
+    minutes: 160,
     topics: [
       "Fan-out on write",
       "Fan-out on read",
@@ -116,6 +116,8 @@ export const lessons: Lesson[] = [
       "Hidratsiya",
       "Tombstone",
       "Reyting",
+      "k-way merge",
+      "Sizga tavsiya (2023)",
       "Qayta qurish",
     ],
   },
