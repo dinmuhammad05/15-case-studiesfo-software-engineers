@@ -54,7 +54,7 @@ kalkulyatorda takrorlash mumkin.
 | --- | --- | --- | --- | --- |
 | 01 | [ChatGPT qanday ishlaydi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/chatgpt/) | ✅ Tayyor | 12 200 so‘z | Tokenizatsiya, attention, KV cache, continuous batching, roofline, inference iqtisodi |
 | 02 | [URL qisqartiruvchi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/) | ✅ Tayyor | 16 400 so‘z | Base62, Feistel, tug‘ilgan kun paradoksi, Zipf va yarim yemirilish, cache stampede, Bloom filtri, goo.gl saboqi |
-| 03 | [Redis: 12 ta stsenariy](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/redis/) | ✅ Tayyor | 11 100 so‘z | Event loop, xotira modeli, TTL va eviction, fork/COW, ZSET, Streams, klaster |
+| 03 | [Redis: 12 ta stsenariy](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/redis/) | ✅ Tayyor | 14 800 so‘z | Event loop, xotira modeli, TTL va eviction, fork/COW, skiplist va HyperLogLog ichidan, Streams, klaster, Valkey |
 | 04 | [Twitter tasmasi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/twitter/) | ✅ Tayyor | 10 200 so‘z | Fan-out on write vs read, mashhur akkauntlar, tasma keshi, reyting |
 | 05 | [Reddit](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/reddit/) | ✅ Tayyor | 14 000 so‘z | Ovoz berish, kommentariya daraxti, “hot” reytingi, moderatsiya |
 | 06 | [Slack](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/slack/) | ✅ Tayyor | 19 500 so‘z | WebSocket shlyuzlari, presence, kanal tarixi, yetkazish tartibi |

@@ -78,11 +78,11 @@ export const lessons: Lesson[] = [
     slug: "redis",
     title: "Redis'ning 12 ta asosiy stsenariysi",
     summary:
-      "Event loop va xotira modelidan klasterga qadar: 12 ta amaliy stsenariy va ularning har biridagi tuzoqlar.",
+      "LLOOGG'dan Valkey'gacha: event loop, xotira modeli, skiplist va HyperLogLog ichidan, 12 ta amaliy stsenariy va ularning har biridagi tuzoqlar.",
     accent: "#dc382d",
     status: "tayyor",
     level: "o'rta",
-    minutes: 130,
+    minutes: 165,
     topics: [
       "Event loop",
       "Xotira modeli",
@@ -90,7 +90,7 @@ export const lessons: Lesson[] = [
       "TTL va eviction",
       "RDB va AOF",
       "fork va COW",
-      "ZSET",
+      "ZSET va skiplist",
       "Streams",
       "HyperLogLog",
       "Taqsimlangan lock",

@@ -1,32 +1,61 @@
 ## Bu darsda nima o‘rganasiz
 
-Redis haqida ko‘p yozilgan, lekin deyarli hammasi bir xil: “tez kesh, kalit-qiymat, `GET`
-va `SET`”. Bu ta’rif Redis‘ning nima ekanini emas, **nima ko‘rinishini** tasvirlaydi.
+Oddiy tilda: katta ofisda o‘nlab xodim bir xil savollarga javob qidiradi —
+“bugun kim navbatchi?”, “mijozning oxirgi buyurtmasi qaysi?”, “bu hujjatni
+kim tahrirlayapti?”. Har safar arxivga tushib, papkalarni varaqlash sekin.
+Shuning uchun dahlizga **umumiy oq doska** osiladi: eng kerakli ma’lumotlar
+shu yerda, hamma ko‘radi, hamma yozadi va har yozuv bir lahzada ko‘rinadi.
+Doska arxivni almashtirmaydi — u arxivning **tezkor nusxasi va umumiy
+xotirasi**.
 
-Aslida Redis — bu **xotiradagi ma’lumot strukturalari serveri**. Uning kuchi tezlikda emas
-(tez narsalar ko‘p), balki shunda: server tomonida atomik ishlaydigan ro‘yxat, to‘plam,
-tartiblangan to‘plam, bitmap va oqim bor. Aynan shu 12 ta amaliy stsenariyni tug‘diradi.
+**Redis** — dasturlar uchun aynan shunday doska. Lekin oddiy doska emas:
+unda tayyor “jadvallar” bor — navbat, reyting, to‘plam, hisoblagich, oqim.
+Va eng muhimi, ikki kishi bir vaqtda yozsa ham doska chalkashmaydi: har
+yozuv **bitta-bitta**, navbat bilan bajariladi.
+
+Redis haqida ko‘p yozilgan, lekin deyarli hammasi bir xil: “tez kesh,
+kalit-qiymat, `GET` va `SET`”. Bu ta’rif Redis’ning nima ekanini emas,
+**nima ko‘rinishini** tasvirlaydi. Aslida Redis — **xotiradagi ma’lumot
+strukturalari serveri**. Uning kuchi tezlikda emas (tez narsalar ko‘p),
+balki server tomonida atomik ishlaydigan ro‘yxat, to‘plam, tartiblangan
+to‘plam, bitmap va oqimda. Aynan shular 12 ta amaliy stsenariyni tug‘diradi.
+
+Dars **noldan hozirgi holatigacha** boradi. 2009-yilda bitta dasturchi o‘z
+analitika xizmati uchun yozgan kichik serverdan boshlaymiz. Keyin u
+dunyodagi eng ko‘p ishlatiladigan xotiradagi bazaga aylanadi va 2024-yilda
+litsenziya bo‘yicha bo‘linadi (Valkey). Ichkariga ham kiramiz: skiplist
+reytingni qanday tez saralaydi, HyperLogLog 12 KB da milliardlab odamni
+qanday sanaydi, muddati o‘tgan kalitlar qanday tozalanadi.
 
 | Savol | Javob shu darsda | Bo‘lim |
 | --- | --- | --- |
-| Nega bitta ipli server 100 000 ops/s beradi? | Event loop va vaqt byudjeti | 2.1 |
+| Nega bitta ipli server 100 000 ops/s beradi? | Event loop va vaqt byudjeti | 2.1, 6 |
 | `KEYS *` nega ishlab chiqarishda taqiqlangan? | Bloklovchi komandalar | 2.6 |
 | 10 million kalit qancha xotira yeydi? | Kalit ustama xarajati hisobi | 2.4 |
 | Nega kichik hash 5 barobar arzon? | Kodlashlar (listpack) | 2.5 |
 | RDB saqlashda xotira nega ikki barobar oshadi? | fork va copy-on-write | 4.2 |
 | Taqsimlangan lock ishonchlimi? | Redlock munozarasi va fencing | 5 (7-stsenariy) |
-| 100M foydalanuvchi faolligi 12 MB da? | Bitmap hisobi | 5 (9-stsenariy) |
-| Failover‘da nechta yozuv yo‘qoladi? | Asinxron replikatsiya | 6.2 |
+| Reyting jadvalida “mening o‘rnim” qanday O(log N)? | Skiplist va span | 7.1 |
+| 12 KB da milliard noyob foydalanuvchi? | HyperLogLog ichidan | 7.2 |
+| Failover‘da nechta yozuv yo‘qoladi? | Asinxron replikatsiya | 8.2 |
 
 <Callout type="maslahat" title="Qanday o'qish kerak">
-Dars uch qatlamda: **asosiy matn** hamma uchun, `Chuqurroq` bloklari ichki tuzilish va
-matematika uchun, **nazorat savollari** esa bo‘lim oxirida o‘zingizni tekshirish uchun.
-5-bo‘limdagi 12 ta stsenariyni alohida ma’lumotnoma sifatida ham ishlatish mumkin.
+Har yangi tushuncha avval **oddiy tilda**, keyin **mexanizm** sifatida,
+oxirida **raqam** bilan beriladi. `Chuqurroq` bloklari ichki tuzilish va
+matematika uchun — birinchi o‘qishda tashlab ketsangiz ham mantiq uzilmaydi.
+5-bo‘limdagi 12 ta stsenariyni alohida ma’lumotnoma sifatida ham ishlatish
+mumkin. 16-bo‘lim oxirida butun darsning o‘n gaplik xulosasi bor.
 </Callout>
 
 ## 1. Muammo: nega umuman Redis kerak?
 
 ### 1.1 Hamma narsa bitta jadvaldan boshlanadi
+
+Oddiy tilda: ma’lumotni olish — narsani olib kelishga o‘xshaydi. Cho‘ntakdagi
+narsa — bir soniya. Uydagi javon — bir daqiqa. Shahar chetidagi ombor — bir
+soat. Boshqa shahardagi ombor — bir kun. Kompyuterda ham xuddi shunday
+“masofalar” bor, va farq **millionlab barobar**. Redis’ning butun ma’nosi —
+kerakli narsani “ombor”dan “javon”ga olib kelish.
 
 Kechikish raqamlari — bu darsning asosi. Ularni yodda tutish kerak:
 
@@ -130,6 +159,19 @@ Redis‘ni “tez kesh” deb ta’riflash uning yarmini ko‘rmaslik demak.
 
 ### 1.5 Redis qanday shakllandi
 
+Redis bitta aniq muammodan tug‘ildi. Italiyalik dasturchi Salvatore
+Sanfilippo (taxallusi **antirez**) **LLOOGG** degan real vaqtdagi veb-analitika
+xizmatini yuritardi: saytga kim kirdi, qaysi sahifani ochdi — darhol
+ko‘rsatish kerak edi. Har tashrif bazaga yozilar va “oxirgi N ta tashrif”
+ro‘yxati doim yangilanardi. Yuk oshgach MySQL buni ko‘tara olmadi.
+
+Antirez xotirada ishlaydigan kichik server yozdi. U oddiy kalit-qiymat
+emas edi: unda **ro‘yxat** bor edi va “ro‘yxat boshiga qo‘sh, oxirini kes”
+amali server ichida bajarilardi. Bir necha hafta ichki ishlatishdan keyin,
+**2009-yil 25-fevralda** u loyihani Hacker News’da e’lon qildi va kodni
+ochdi. Shu bitta qaror — ma’lumot strukturalari serverning ichida — keyingi
+o‘n besh yil davomida Redis’ni oddiy keshlardan ajratib turdi.
+
 <Timeline
   rows={[
     { when: "2009", what: "Birinchi versiya", why: "Salvatore Sanfilippo o'z veb-analitika mahsuloti uchun yozadi: MySQL yozish yukini ko'tara olmagan. Boshidanoq ma'lumot strukturalari bilan — bu uni memcached'dan ajratadi." },
@@ -139,7 +181,8 @@ Redis‘ni “tez kesh” deb ta’riflash uning yarmini ko‘rmaslik demak.
     { when: "5.0 (2018)", what: "Streams", why: "Pub/Sub'ning yo'qotish muammosiga javob: tasdiqlash, iste'molchi guruhlari, tarix." },
     { when: "6.0 (2020)", what: "ACL, TLS, I/O threads", why: "Xavfsizlik jiddiy qabul qilindi va tarmoq qismi bir necha yadroga taqsimlandi." },
     { when: "7.x (2022+)", what: "Functions, listpack, sharded Pub/Sub", why: "Xotira kodlashlari yaxshilandi; klasterda Pub/Sub slotlar bo'yicha bo'lindi." },
-    { when: "2024", what: "Litsenziya o'zgarishi va Valkey", why: "Redis ochiq litsenziyadan chiqdi; Linux Foundation ostida Valkey forki paydo bo'ldi. Ko'p bulut provayderlari o'shanga o'tdi — texnik jihatdan API bir xil." },
+    { when: "2024", what: "Litsenziya o'zgarishi va Valkey", why: "Mart: Redis BSD'dan RSALv2/SSPL ga o'tdi. Bir haftada Linux Foundation ostida Valkey forki (Redis 7.2.4 asosida, BSD) paydo bo'ldi; ko'p bulut provayderlari va Linux distributivlari o'shanga o'tdi." },
+    { when: "2025", what: "Redis 8 va AGPLv3", why: "Antirez 2024-yil oxirida kompaniyaga qaytdi; Redis 8 da AGPLv3 ochiq litsenziya varianti qo'shildi. API ikkala loyihada ham deyarli bir xil." },
   ]}
 />
 
@@ -173,9 +216,56 @@ bo‘lmasa, memcached hali ham to‘g‘ri tanlov — u soddaroq va ko‘p ipli.
 holatlarda Redis‘ning strukturalari uni ancha ustun qiladi. Aynan shu sabab bu darsning
 asosiy qismi (5-bo‘lim) **strukturalarga** bag‘ishlangan.
 
+### 1.7 Konvert orqasidagi hisob
+
+<StatGrid>
+  <Stat value="~1 µs" label="Bitta komanda serverda" hint="GET, SET, INCR" />
+  <Stat value="~200 µs" label="Tarmoq borish-kelishi" hint="Bir ma'lumot markazida" />
+  <Stat value="~100 000+" label="ops/s bitta yadroda" hint="Pipelining bilan — bir necha barobar ko'p" />
+  <Stat value="12 KB" label="HyperLogLog hajmi" hint="Milliardlab noyob element, 0.81% xato" />
+</StatGrid>
+
+<Calc title="Bitta Redis qancha ilovaga xizmat qila oladi" result="Bitta yadro ~100 ming ops/s; o'rtacha veb-sahifa 5 ta Redis chaqiruvi qilsa — sekundiga ~20 ming sahifa. Ko'p loyihalar uchun bitta instansiya + replika yetadi">{`Bitta komanda serverda:             ~1-5 µs
+  (parse + bajarish + javob yozish, tarmoq ishlovi bilan)
+Bitta yadro: 1 / 10 µs              = ~100 000 ops/s
+
+Odatiy veb-sahifa Redis'ga:
+  sessiya (1) + kesh (2) + rate limit (1) + hisoblagich (1) = 5 chaqiruv
+
+100 000 / 5                          = ~20 000 sahifa / s
+Kuniga (o'rtacha 20% yuk bilan):
+  20 000 x 0.2 x 86 400              = ~350 mln sahifa / kun
+
+Xulosa: Redis'ni masshtablashdan oldin
+  ilovaning o'zi ko'p marta yiqiladi`}</Calc>
+
+<Check q="Jamoadoshingiz 'jarayon ichidagi dict Redis'dan 1000 barobar tez, Redis'ga nima hojat?' deyapti. U haqmi?">
+Tezlik bo‘yicha — **haq**: lug‘atga murojaat ~100 ns, Redis’ga esa tarmoq
+bilan ~200 µs. Lekin u noto‘g‘ri savolga javob beryapti.
+
+Redis tezlik uchun emas, **umumiylik** uchun kerak (1.4):
+
+- 50 ta server bitta keshni baham ko‘radi — xotira takrorlanmaydi va urish
+  darajasi yuqori
+- bitta yozuvni o‘zgartirsangiz, hamma darhol yangisini ko‘radi —
+  invalidatsiya muammosi yo‘q
+- rate limit, sessiya, lock — **hamma serverlar uchun bitta haqiqat**
+  talab qiladi, va bu jarayon ichida imkonsiz
+
+Eng yaxshi javob — **ikkalasi birga**: juda issiq va kam o‘zgaradigan
+narsalar (konfiguratsiya) jarayon ichida, qolgani Redis’da. Redis 6 dagi
+mijoz tomonidagi kesh (2.7 dagi Deep) aynan shu ikkisini birlashtiradi.
+</Check>
+
 ## 2. Nol nuqta: Redis ichkarida qanday ishlaydi
 
 ### 2.1 Bitta ip: nega bu kamchilik emas
+
+Oddiy tilda: bankda bitta kassir bor, lekin u har mijozga bir soniyada
+xizmat qiladi. Navbatdagi odamlar uni kutadi, lekin kutish juda qisqa. Va
+bitta kassir bo‘lgani uchun “ikki kassir bir vaqtda bitta hisobdan pul berib
+yubordi” degan xato hech qachon bo‘lmaydi. Faqat bitta qoida bor: hech kim
+kassir oldida yarim soat turib qolmasin.
 
 Redis komandalarni **bitta ipda**, navbat bilan bajaradi. Intuitsiya bunga qarshi
 chiqadi: 32 yadroli serverda bitta yadro ishlatilsa, isrof emasmi?
@@ -249,6 +339,11 @@ Javob turlari bitta belgi bilan ajratiladi: `+` oddiy satr, `-` xato, `:` butun 
 1 mikrosoniyalik byudjetning bir qismi.
 
 ### 2.3 Kalitlar va qiymatlar: xotirada nima yotadi
+
+Oddiy tilda: pochta orqali bitta tugma yuborsangiz ham, quti, yorliq, manzil
+va muhr kerak bo‘ladi. Kichik narsalarda qadoq narsaning o‘zidan qimmatroq.
+Redis’da ham har kalitning “qadog‘i” bor — va kichik qiymatlarda u
+ma’lumotning o‘zidan katta.
 
 Har bir kalit-qiymat juftligi bir necha strukturadan iborat va **ularning har biri joy
 egallaydi**:
@@ -459,10 +554,16 @@ Uch yechim, tartib bo‘yicha:
    bitta hash bo‘lishi kerak: `HGETALL user:42:settings`
 
 Klaster rejimida qo‘shimcha nuqta: `MGET` faqat bir xil slotdagi kalitlar uchun ishlaydi
-(6.3-bo‘lim), shuning uchun pipeline ko‘pincha universalroq yechim.
+(8.3-bo‘lim), shuning uchun pipeline ko‘pincha universalroq yechim.
 </Check>
 
 ## 3. Ekspirasiya va siqib chiqarish
+
+Oddiy tilda: muzlatgichda ikki xil sabab bilan narsa chiqarib tashlanadi.
+Birinchisi — yaroqlilik muddati tugadi (siz o‘zingiz shu sanani yozgansiz).
+Ikkinchisi — joy qolmadi va yangi narsa sig‘mayapti, shuning uchun eng kam
+ishlatilganini olib tashlaysiz. Birinchisi — **ekspirasiya**, ikkinchisi —
+**siqib chiqarish**. Ular butunlay boshqa mexanizmlar.
 
 Redis xotirasi cheklangan. Ikkita mustaqil mexanizm undan nima chiqib ketishini
 boshqaradi va ularni chalkashtirish keng tarqalgan xato.
@@ -571,6 +672,12 @@ unutilgan kalit tez chiqib ketadi.
 </Check>
 
 ## 4. Doimiylik: xotiradagi ma’lumotni qanday saqlash
+
+Oddiy tilda: oq doskadagi yozuvni saqlashning ikki yo‘li bor. Birinchisi —
+har kecha doskani suratga olish (tez tiklanadi, lekin oxirgi suratdan
+keyingi yozuvlar yo‘qoladi). Ikkinchisi — doskaga yozilgan har bir gapni
+daftarga ham yozib borish (hech narsa yo‘qolmaydi, lekin daftar qalinlashadi
+va tiklash uchun hammasini qayta o‘qish kerak).
 
 Redis xotirada ishlaydi, lekin qayta ishga tushganda ma’lumot yo‘qolmasligi uchun ikki
 mexanizm bor. Ular bir-birini almashtirmaydi — ko‘pincha **ikkalasi birga** ishlatiladi.
@@ -686,10 +793,18 @@ kechikish diskning kechikishiga tenglashadi.
 
 ## 5. 12 ta asosiy stsenariy
 
+Oddiy tilda: bitta doskani o‘n ikki xil maqsadda ishlatish mumkin — eslatma,
+navbat ro‘yxati, musobaqa jadvali, “kim keldi” belgisi, xona kaliti
+kimdaligi. Har maqsad uchun doskada boshqa shakl kerak: ro‘yxat, jadval,
+katakchalar. Redis’dagi turlar — aynan shu shakllar.
+
 Bu bo‘lim darsning yuragi. Har bir stsenariyda: qanday muammo, qaysi struktura, aniq
 komandalar va **eng ko‘p qilinadigan xato**.
 
 <Step n="1" title="Kesh: eng keng tarqalgan stsenariy" gain="Bazaga yuk 10-100 barobar kamayadi" cost="Izchillik kechikishi, invalidatsiya mantiqi, stampede xavfi">
+
+Oddiy tilda: tez-tez so‘raladigan javobni doskaga yozib qo‘yish — har safar
+arxivga tushmaslik uchun.
 
 ```
 GET article:1042                      -> kesh
@@ -720,6 +835,9 @@ qiymat yangisidan keyin yozilib qolishi mumkin), o‘chirish esa har doim xavfsi
 
 <Step n="2" title="Sessiya saqlash" gain="Serverlar holatsiz bo'ladi, istalganiga yo'naltirish mumkin" cost="Redis tushsa hamma tizimdan chiqib ketadi">
 
+Oddiy tilda: ofisga kirish kartasi. Har eshik sizdan parol so‘ramaydi —
+kartangizni o‘qiydi va umumiy ro‘yxatdan kimligingizni biladi.
+
 ```
 HSET session:a9f3... user_id 42 role admin csrf x7k2
 EXPIRE session:a9f3... 1800
@@ -737,6 +855,10 @@ xato; **ularni alohida instansiyada saqlash** to‘g‘riroq.
 </Step>
 
 <Step n="3" title="Tezlik cheklovi (rate limiting)" gain="Atomik, taqsimlangan, arzon" cost="Noto'g'ri yozilsa poyga holati; oyna chegarasi muammosi">
+
+Oddiy tilda: kafeda “bir kishiga bir soatda ko‘pi bilan uchta bepul qahva”
+qoidasi. Kassir har mijoz uchun hisob yuritadi va hisob har soatda
+yangilanadi.
 
 Eng oddiy va eng ko‘p uchraydigan variant — sobit oyna:
 
@@ -790,6 +912,9 @@ qimmat operatsiyalar uchun ishlatiladi.
 
 <Step n="4" title="Reyting jadvali (leaderboard)" gain="O'rin va diapazon so'rovlari O(log N) da" cost="Katta ZSET xotira yeydi; 'mening o'rnim' so'rovi tez, lekin sahifalash qimmat">
 
+Oddiy tilda: sport musobaqasidagi jadval. Har yangi natijada jadval o‘zi
+tartiblanadi va “men nechanchi o‘rindaman?” degan savolga darhol javob bor.
+
 `ZSET` — skiplist va hashtable birgalikda: ball bo‘yicha tartib va a’zo bo‘yicha
 `O(1)` qidiruv.
 
@@ -832,6 +957,10 @@ tekshirish shart, aks holda ballar sekin-asta buzila boshlaydi va buni sezish ju
 </Step>
 
 <Step n="5" title="Navbat va fon vazifalari" gain="Oddiy, tez, ishonchli (to'g'ri qilinganda)" cost="List bilan xabar yo'qolishi mumkin; Streams murakkabroq, lekin to'g'ri">
+
+Oddiy tilda: oshxonadagi buyurtma qog‘ozlari ilgichi. Ofitsiant qog‘ozni
+ilib qo‘yadi, oshpaz bo‘shaganda oladi. Muhimi — oshpaz qog‘ozni olib,
+ovqatni tugatmay ketib qolsa, buyurtma yo‘qolmasligi kerak.
 
 **Sodda variant — List:**
 
@@ -896,6 +1025,10 @@ qisqartiradi. Bu ancha arzon va amalda deyarli har doim to‘g‘ri tanlov.
 
 <Step n="6" title="Pub/Sub: real-time bildirishnomalar" gain="Eng past kechikish, juda oddiy" cost="Hech qanday kafolat yo'q: obunachi yo'q bo'lsa xabar yo'qoladi">
 
+Oddiy tilda: radio. Diktor gapiradi, eshitayotganlar eshitadi. Kim radioni
+o‘chirib qo‘ygan bo‘lsa — o‘sha xabarni hech qachon eshitmaydi, yozuv
+qolmaydi.
+
 ```
 SUBSCRIBE notifications:user:42
 PUBLISH notifications:user:42 '{"type":"new_message"}'
@@ -930,6 +1063,10 @@ xotirasiga ta’sir qiladi. Ko‘p obunachili tizimda bu chegaralarni kuzatib tu
 </Step>
 
 <Step n="7" title="Taqsimlangan qulf (lock)" gain="Bir vaqtda bitta jarayon ishlashini ta'minlaydi" cost="To'liq kafolat BERMAYDI — bu darsdagi eng nozik mavzu">
+
+Oddiy tilda: hammomning bitta kaliti. Kim kalitni olgan bo‘lsa, o‘sha
+ichkarida. Lekin kalit egasi ichkarida uxlab qolsa, muddat tugagach kalit
+boshqasiga beriladi — va endi ichkarida ikki kishi bo‘lishi mumkin.
 
 Asosiy naqsh:
 
@@ -984,6 +1121,10 @@ tranzaksiya yoki idempotentlik kaliti kerak.
 
 <Step n="8" title="Hisoblagichlar va HyperLogLog" gain="Atomik hisob; noyob sanash 12 KB da" cost="HLL taxminiy (0.81% xato) va elementlarni qaytarib bermaydi">
 
+Oddiy tilda: stadion kirishidagi hisoblagich va “necha xil odam keldi” degan
+savol. Birinchisi oson — har kirganni sanaysiz. Ikkinchisi qiyin — bir odam
+ikki marta kirsa, ikki marta sanamaslik kerak.
+
 Oddiy hisoblagichlar atomik va arzon:
 
 ```
@@ -1015,6 +1156,10 @@ mumkin emas, chunki kunlik summalar bir xil odamni bir necha marta hisoblaydi.
 </Step>
 
 <Step n="9" title="Bitmap: ulkan mantiqiy massivlar" gain="100 million foydalanuvchi holati 12 MB da" cost="Faqat ketma-ket ID lar uchun samarali; siyrak ma'lumotda isrof">
+
+Oddiy tilda: sinf jurnali. Har o‘quvchining joyi raqami bilan belgilangan,
+va kelgan-kelmaganini bitta belgi — “+” yoki bo‘sh katak — ko‘rsatadi. Yuz
+million o‘quvchi uchun ham bitta qalin daftar yetadi.
 
 Har bir foydalanuvchi — bitta bit. Foydalanuvchi ID si — bit pozitsiyasi.
 
@@ -1049,6 +1194,9 @@ band bo‘lganda.
 
 <Step n="10" title="Geografik qidiruv" gain="'Yaqin atrofdagilar' so'rovi bitta komandada" cost="Faqat ikki o'lchov; murakkab filtr bilan birlashtirib bo'lmaydi">
 
+Oddiy tilda: xaritadagi tugmachalar. “Menga eng yaqin uchta taksi qayerda?”
+— xaritaga qarab darhol ko‘rasiz.
+
 ```
 GEOADD drivers 69.2401 41.2995 driver:88
 GEOSEARCH drivers FROMLONLAT 69.24 41.30 BYRADIUS 3 km ASC COUNT 10 WITHDIST
@@ -1066,6 +1214,10 @@ darsida yana qaytadi.
 </Step>
 
 <Step n="11" title="Deduplikatsiya va idempotentlik" gain="Takroriy hodisa ikki marta ishlanmaydi" cost="TTL tugagach kafolat ham tugaydi">
+
+Oddiy tilda: pochta bo‘limi har posilkani “topshirildi” deb belgilaydi.
+Kuryer adashib bir posilkani ikki marta olib kelsa, belgi bor — ikkinchisi
+qabul qilinmaydi.
 
 Navbatlar “kamida bir marta” (at-least-once) yetkazadi, ya’ni bir xil xabar ikki marta
 kelishi mumkin. Redis buni bitta komandada yechadi:
@@ -1091,6 +1243,9 @@ ketma-ketlik:
 </Step>
 
 <Step n="12" title="Asosiy saqlash sifatida Redis" gain="Eng past kechikish, murakkab tuzilmalar" cost="RAM narxi, doimiylik kafolatining chegaralari">
+
+Oddiy tilda: doskani arxiv o‘rnida ishlatish. Mumkin — agar doska katta
+bo‘lsa, har kuni suratga olinsa va undagi narsa yo‘qolsa halokat bo‘lmasa.
 
 Redis‘ni birlamchi baza sifatida ishlatish mumkin, lekin faqat aniq shartlarda:
 
@@ -1147,9 +1302,236 @@ To‘g‘ri: kamida uchta alohida instansiya (yoki bitta serverdagi uchta jarayo
 farqi kichik, xavf farqi juda katta.
 </Check>
 
-## 6. Masshtablash: replikatsiya, failover, klaster
+## 6. Bitta komandaning hayoti
 
-### 6.1 Replikatsiya
+Endi bitta komandani — `INCR views:1042` — mijozdan diskka va replikagacha
+kuzatamiz. Shunda “bitta ip”, “atomik”, “1 soniyagacha yo‘qotish” degan
+gaplar aniq rasmga aylanadi.
+
+### 6.1 Qadam-baqadam
+
+Oddiy tilda: siz kassaga chek uzatdingiz. Kassir uni oladi, bajaradi,
+javobni yozib qo‘yadi va keyingi odamga o‘tadi. Kechqurun buxgalter kunlik
+cheklar nusxasini arxivga topshiradi, filialdagi hamkasbi esa har chekning
+nusxasini biroz kechikib oladi. Siz javobni darhol olasiz — arxivlash va
+nusxalash sizni kutdirmaydi.
+
+<Flow nodes={["Mijoz: INCR views:1042", "RESP: *2 $4 INCR $10 views:1042", "Yadro: socket buferi", "epoll: 'o'qishga tayyor'", "Parse + komandalar jadvali", "Bajarish: ~1 us", "Javob buferi: :1043", "Keyingi sikl: socketga yozish"]} caption="Hammasi bitta ipda, navbat bilan. Komanda o'rtasida boshqa mijozning komandasi bajarilmaydi — atomiklik shundan" />
+
+1. **RESP** (2.2) komandani baytlarga aylantiradi. Bir nechta komanda bitta
+   paketda kelishi mumkin — pipelining (2.7).
+2. **Event loop** `epoll` dan qaysi socketlarda ma’lumot borligini so‘raydi
+   va har birini navbat bilan o‘qiydi.
+3. Komanda **jadvaldan** topiladi (`INCR` → uning funksiyasi), argumentlar
+   tekshiriladi, ACL ruxsati ko‘riladi (11.2).
+4. **Bajarish**: kalit lug‘atdan topiladi, son 1 ga oshiriladi. Shu lahzada
+   o‘zgarish faqat **xotirada**.
+5. **Javob** mijozning chiqish buferiga yoziladi va keyingi sikl boshida
+   socketga ketadi.
+6. Yozish komandasi bo‘lgani uchun u **AOF buferiga** va **replikalar
+   oqimiga** ham qo‘shiladi (6.3).
+
+### 6.2 Bitta ipning vaqt byudjeti
+
+Bitta ip — bitta navbat. Shuning uchun **eng sekin komanda hammaning
+kechikishini** belgilaydi.
+
+<Calc title="Bitta sekin komanda qancha odamni kutdiradi" result="2 soniyalik KEYS — 200 ming so'rov navbatda. Ularning hammasi kamida bir necha yuz millisekund kechikadi, ko'pi timeout bo'ladi va qayta urinish to'lqinini boshlaydi">{`Yuk: 100 000 ops/s, oddiy komanda ~5 us
+
+Kimdir ishlab chiqarishda KEYS * yubordi:
+  10 mln kalit, har biri ~0.2 us -> ~2 soniya bloklash
+
+2 soniyada kelgan so'rovlar:
+  100 000 x 2 = 200 000 ta navbatda
+
+Mijoz timeout'i 200 ms bo'lsa:
+  ~180 000 tasi timeout -> qayta urinish
+  bloklash tugagach: 200 000 + 180 000 so'rov birdaniga
+  -> yana bir necha yuz ms navbat
+
+O(1) komanda bilan solishtiring:
+  10 000 ta komanda x 5 us = 50 ms
+  — hech kim sezmaydi`}</Calc>
+
+Bu hisob 2.6 dagi qoidani raqam bilan tushuntiradi: bitta ipli serverda
+`O(N)` komanda — bu **butun tizim uchun** `O(N)` to‘xtash.
+
+### 6.3 Yozuv qayerga ketadi va qachon xavfsiz
+
+<Flow nodes={["Bajarildi — faqat xotirada", "Mijozga javob (:1043)", "AOF buferi", "write(): OT sahifa keshi", "fsync: diskda (everysec — har soniyada)", "Replika oqimi (asinxron)", "Replika qo'lladi"]} caption="Mijoz javobni ikkinchi qadamda oladi. Undan keyingi hamma narsa — FONDA. 'OK oldim' degani 'saqlandi' degani emas" />
+
+<Calc title="'+OK' olgandan keyin yozuv qancha xavf ostida" result="appendfsync everysec bilan: server tushsa — oxirgi ~1 soniya; master tushsa va failover bo'lsa — replikatsiya kechikishi oralig'idagi yozuvlar. Ikkalasi ham 0 emas">{`Yozish tezligi: 50 000 ops/s
+
+Server jarayoni tushdi (OT ishlayapti):
+  write() qilingan hamma narsa OT keshida -> yo'qolmaydi
+Server elektr bilan o'chdi (everysec):
+  oxirgi fsync'dan beri <= 1 s -> <= 50 000 yozuv
+
+Master tushdi, replika ko'tarildi:
+  replikatsiya kechikishi 2 ms -> ~100 yozuv
+  tarmoq muammosida 500 ms     -> ~25 000 yozuv
+
+appendfsync always:
+  har yozuvda fsync -> yo'qotish ~0,
+  lekin throughput disk kechikishiga bog'lanadi
+  (NVMe ~20-100 us -> 10-50 ming ops/s, guruhlab yozish bilan ko'proq)`}</Calc>
+
+<Check q="Mijoz `INCR balance:42` ga javob oldi. Bu yozuv endi xavfsiz saqlandimi?">
+Yo‘q — bu faqat **xotirada** bajarilganini anglatadi. Keyingi qadamlar
+fonda:
+
+1. AOF buferiga qo‘shildi; `write()` keyingi sikl atrofida
+2. `fsync` — `everysec` da sekundiga bir marta. Elektr o‘chsa, shu oraliq
+   yo‘qolishi mumkin
+3. Replikaga asinxron ketadi. Master shu lahzada tushib, replika
+   ko‘tarilsa — yozuv yo‘qolishi mumkin (8.2)
+
+Kuchliroq kafolat kerak bo‘lsa: `WAIT 1 100` (kamida bitta replika
+tasdiqlaguncha kutish — bu ham to‘liq kafolat emas), `appendfsync always`
+(sekinroq), yoki — pul kabi ma’lumot uchun — **Redis emas, tranzaksion
+baza**. Redis’dagi balans — kesh yoki tezkor nusxa bo‘lishi mumkin, lekin
+manba haqiqat emas.
+</Check>
+
+## 7. Strukturalar ichidan: skiplist, HyperLogLog va namunali LRU
+
+5-bo‘limda strukturalardan **foydalandik**. Endi uchtasining ichiga
+kiramiz — 2-daraja amaliyotida aynan shularni o‘zingiz yozasiz.
+
+### 7.1 Skiplist: reyting qanday O(log N)
+
+Oddiy tilda: shahar metrosida ikki xil poyezd bor. Oddiy poyezd har
+bekatda to‘xtaydi, **ekspress** esa faqat har to‘rtinchisida. Uzoq bekatga
+borish uchun avval ekspressda yaqinlashasiz, keyin oddiy poyezdga o‘tib,
+kerakli bekatda tushasiz. Skiplist — ko‘p qavatli “ekspress”lar: har
+qavatda bekatlar to‘rt barobar siyrak.
+
+Mexanizm: har yangi elementga tasodifiy **daraja** beriladi. 1-daraja —
+hamma; 2-darajaga 25% ehtimol bilan chiqadi, 3-darajaga — 6.25% va hokazo
+(Redis’da `P = 0.25`, ko‘pi bilan 32 daraja). Qidiruv eng yuqori qavatdan
+boshlanadi va “keyingisi kerakligidan katta bo‘lsa — bir qavat pastga”
+qoidasi bilan tushadi.
+
+Redis’ning qo‘shimchasi — **span**: har ko‘rsatkich nechta elementni sakrab
+o‘tishini eslab qoladi. Yo‘l bo‘yidagi span’larni qo‘shsangiz — elementning
+**o‘rni** (rank) chiqadi. Shu sabab `ZRANK` va `ZRANGE 1000 1009` ham
+O(log N).
+
+<Calc title="10 million o'yinchida 'mening o'rnim' nechta qadam" result="~12 qavat, har qavatda o'rtacha ~2-3 qadam: jami ~30-40 ta taqqoslash. Balanslangan daraxt bilan deyarli bir xil, lekin kodi ancha sodda">{`P = 0.25, N = 10 000 000
+
+Kutilgan eng yuqori qavat: log_4(N) = log(1e7) / log(4) = ~11.6
+
+Har qavatda o'rtacha qadamlar: 1 / P = 4 dan oshmaydi,
+  amalda ~2-3 (tepadagi qavatlarda kamroq)
+
+Jami: ~12 x 3 = ~36 taqqoslash
+
+Xotira: o'rtacha ko'rsatkichlar soni tugunga
+  1 / (1 - P) = 1.33 ta (forward + span) -> ~21 bayt
+  (5-bo'lim 4-stsenariydagi ~56 bayt — Redis'ning boshqa maydonlari bilan)`}</Calc>
+
+<Deep title="Nega balanslangan daraxt emas">
+Antirez skiplist’ni tanlaganini uchta sabab bilan tushuntirgan:
+
+1. **Diapazon so‘rovlari tabiiy** — `ZRANGE` va `ZRANGEBYSCORE` 0-qavatdagi
+   bog‘langan ro‘yxat bo‘ylab yurishdan iborat. Daraxtda bu ancha
+   murakkabroq.
+2. **Kod sodda** — qo‘shish va o‘chirish lokal: aylantirish (rotation) va
+   qayta balanslash yo‘q. Span qo‘shish ham bir necha qator.
+3. **Xotira sozlanadi** — `P` ni o‘zgartirib, tezlik va xotira orasida
+   tanlash mumkin. `P = 0.25` — o‘rtacha 1.33 ko‘rsatkich, ya’ni
+   balanslangan daraxtdan (2 ko‘rsatkich) arzonroq.
+
+Narxi — **tasodif**: eng yomon holatda qidiruv uzun bo‘lishi mumkin, lekin
+uning ehtimoli N o‘sgan sari keskin kamayadi. Amaliyotdagi tekshiruv
+20 000 elementda darajalar taqsimotini (≥2 qavat: ~25%, ≥3: ~6%) va har
+qidiruvdagi ko‘rsatkichlar sonini o‘lchaydi.
+</Deep>
+
+### 7.2 HyperLogLog: 12 KB da milliardni qanday sanash
+
+Oddiy tilda: do‘stingiz tanga tashlab, “ketma-ket nechta gerb tushdi”
+seriyasini yozib boradi va sizga faqat **eng uzun seriyani** aytadi —
+masalan, 10. Ketma-ket 10 ta gerb taxminan har mingtadan bir urinishda
+tushadi. Demak, u taxminan **ming marta** tashlagan. Bitta raqamdan butun
+sonni taxmin qildingiz. HyperLogLog aynan shu fikrga tayanadi.
+
+Mexanizm (Redis):
+
+1. Har element 64 bitli xeshga aylantiriladi.
+2. Quyi **14 bit** — 16 384 ta registrdan qaysi biri (taxminni 16 384
+   ta mustaqil “do‘st”ga bo‘lamiz).
+3. Qolgan 50 bitdagi oxirgi nollar soni + 1 — **rank** (“seriya uzunligi”).
+   Registr eng katta rankni eslaydi.
+4. Hisob: registrlar bo‘yicha **garmonik o‘rtacha**. Bitta tasodifan
+   juda katta registr natijani buzmaydi.
+5. Kichik sonlarda ko‘p registr bo‘sh qoladi — u yerda **“linear
+   counting”** aniqroq: `M · ln(M / bo‘sh_registrlar)`.
+
+<Calc title="Nega aynan 12 KB va 0.81%" result="16 384 registr x 6 bit = 12 KB. Standart xato 1.04 / 128 = 0.81% — bu 'odatda'; ~95% hollarda xato 1.6% dan oshmaydi">{`Registrlar: M = 2^14 = 16 384
+Har registr: rank <= 51 -> 6 bit yetadi (2^6 = 64)
+Hajm: 16 384 x 6 / 8 = 12 288 bayt = 12 KB
+
+Standart xato: 1.04 / sqrt(M) = 1.04 / 128 = 0.81%
+  ~68% hollarda xato  <= 0.81%
+  ~95% hollarda       <= 1.6%
+
+Aniq sanash bilan solishtiring (10 mln foydalanuvchi):
+  SET: ~560 MB (5-bo'lim, 8-stsenariy)
+  HLL: 12 KB  -> ~45 000 barobar kam`}</Calc>
+
+Bitta nozik joy amaliyotda ko‘rinadi. Oddiy HLL formulasi bilan linear
+counting o‘rtasidagi **o‘tish oralig‘ida** (bu yerda ~40–70 ming element)
+xato ~3% gacha ko‘tariladi. Redis 2014-yilda HLL’ni empirik tuzatish bilan
+qo‘shgan. **Redis 5.0 (2018)** esa Otmar Ertl’ning yangi baholovchisiga
+o‘tdi: u butun oraliqda xolis va empirik jadvallarga tayanmaydi. Amaliyotda
+siz klassik variantni yozasiz va bu farqni o‘z ko‘zingiz bilan ko‘rasiz.
+
+### 7.3 Namunali LRU va faol ekspirasiya — raqamlarda
+
+3-bo‘limdagi ikki mexanizm “taxminan to‘g‘ri” ishlaydi. Qanchalik taxminan
+— amaliyotdagi simulyatsiyada o‘lchanadi.
+
+<Calc title="Namunali LRU haqiqiy LRU'ga qanchalik yaqin" result="5 ta namuna haqiqiy LRU'dan atigi 0.4 punkt orqada; 10 ta namunada farq 0.1 punkt. Har kalitga 16 baytlik ro'yxat ko'rsatkichi o'rniga — 24 bitlik vaqt belgisi">{`2-daraja amaliyoti: 50 000 kalit, kesh 5 000 (10%),
+200 000 so'rov, Zipf s = 1.0
+
+                         urish darajasi
+Haqiqiy LRU                  71.4%
+Tasodifiy siqib chiqarish    68.0%
+Namunali LRU, 5 namuna       71.0%
+Namunali LRU, 10 namuna      71.3%
+
+Xotira (10 mln kalit):
+  haqiqiy LRU: 2 ko'rsatkich x 8 bayt x 1e7 = 160 MB
+  namunali:    24 bit (robj ichida bor)    = 0 qo'shimcha`}</Calc>
+
+Faol ekspirasiya ham shunday: 60 000 TTL li kalitning yarmi bir lahzada
+eskirganda va yana 100 000 ta TTL siz kalit bo‘lganda, amaliyotdagi sikl
+eskirgan kalitlar ulushini **~25%** atrofida ushlab turadi. Ya’ni xotirada
+“o‘lik” kalitlar bo‘ladi, lekin chegaralangan. Va tinch paytda sikl bir
+necha o‘nta kalitni tekshiradi — CPU deyarli sarflanmaydi.
+
+<Check q="Nega Redis TTL li kalitlarni alohida massivda saqlaydi (amaliyotdagi vkeys)? Hamma kalitlardan namuna olish soddaroq emasmi?">
+Sodda, lekin **foydasiz**. Tasavvur qiling: 100 million kalit, ulardan
+atigi 1 milliontasida TTL bor (1%). Hamma kalitlardan 20 ta namuna olsangiz,
+o‘rtacha 0.2 tasi TTL li bo‘ladi va deyarli hech qachon muddati o‘tganini
+topmaysiz. 25% qoidasi “eskirganlar kam” deb siklni darhol to‘xtatadi —
+va million eskirgan kalit xotirada qoladi.
+
+Redis buni hal qilish uchun TTL li kalitlarni **alohida lug‘atda**
+(`expires`) saqlaydi va namunani faqat shu yerdan oladi. Amaliyotdagi
+mutatsiya testi aynan shu xatoni ushlaydi: “hamma kalitlardan namuna” bilan
+eskirgan kalitlar ulushi 25% o‘rniga ~48% da qoladi.
+</Check>
+
+## 8. Masshtablash: replikatsiya, failover, klaster
+
+### 8.1 Replikatsiya
+
+Oddiy tilda: bosh doskaning yonida yordamchi nusxa-doskalar turadi. Kotib
+bosh doskaga yozilgan har gapni ularga ko‘chirib boradi — lekin bir oz
+kechikib. Bosh doska yiqilsa, nusxalardan biri bosh bo‘ladi, va oxirgi bir
+necha gap ko‘chirilmay qolgan bo‘lishi mumkin.
 
 ```
 REPLICAOF master.host 6379
@@ -1180,10 +1562,12 @@ Ko'p ishlatiladigan 10 MB         -> 1 soniya
 60 soniyalik uzilishga chidash uchun:
   10 MB/s x 60 = 600 MB`}</Calc>
 
-### 6.2 Failover: nechta yozuv yo‘qoladi
+### 8.2 Failover: nechta yozuv yo‘qoladi
 
 Master tushdi, replika ko‘tarildi. Asinxron replikatsiya tufayli **replikaga yetib
 ulgurmagan yozuvlar yo‘qoladi**.
+
+<Flow nodes={["Master javob bermayapti", "Har Sentinel: 'menimcha tushdi' (down-after-milliseconds)", "Kvorum: 'haqiqatan tushdi'", "Sentinel'lar lider saylaydi", "Eng yangi (offset katta) replika tanlanadi", "REPLICAOF NO ONE — yangi master", "Qolgan replikalar va mijozlar yangi manzilga"]} caption="Odatda 5-30 soniya. Shu oraliqda yozish ishlamaydi; eski masterdagi replikaga yetmagan yozuvlar yo'qoladi" />
 
 <Calc title="Failover'dagi yo'qotish oynasi" result="Odatiy sozlamada 10-50 ming yozuv yo'qolishi mumkin. 'Redis ma'lumot yo'qotmaydi' degan taxmin - eng qimmat xato">{`Replikatsiya kechikishi (odatiy): 1-5 ms
 Master tushishi aniqlanishi (Sentinel): 5-30 soniya
@@ -1221,7 +1605,12 @@ Sentinel uchun ham to‘g‘ri kvorum shart: 3 ta Sentinel va `quorum 2`. Ikkita
 bilan kvorum ma’nosini yo‘qotadi.
 </Deep>
 
-### 6.3 Klaster: 16384 slot
+### 8.3 Klaster: 16384 slot
+
+Oddiy tilda: doska bitta devorga sig‘may qoldi. Uni 16 384 ta raqamlangan
+katakka bo‘lamiz va kataklarni bir nechta devorga taqsimlaymiz. Har
+yozuvning qaysi katakka tushishi uning nomidan hisoblanadi — shuning uchun
+hamma qaysi devorga borishni biladi.
 
 Bitta instansiya RAM va bitta yadro bilan cheklangan. Redis Cluster ma’lumotni
 **16384 ta slot** ga bo‘lib, ularni tugunlar orasida taqsimlaydi.
@@ -1285,7 +1674,7 @@ MIGRATE tezligi (kalitlar bittalab, tarmoq va CPU bilan):
 Vaqt: 3277 x 6 MB / 10 MB/s = ~1966 s = ~33 daqiqa
 Amalda (katta kalitlar va sekinlashuv bilan): 1-2 soat`}</Calc>
 
-### 6.4 Klaster kerakmi yoki katta instansiya yetarlimi?
+### 8.4 Klaster kerakmi yoki katta instansiya yetarlimi?
 
 <Versus
   left={{
@@ -1313,7 +1702,7 @@ oldindan qo‘yib, keyin `CROSSSLOT` xatolari va murakkab migratsiyalar bilan ku
 Alternativ — **funksional bo‘lish**: sessiyalar bitta instansiyada, kesh boshqasida,
 navbatlar uchinchisida. Bu ko‘pincha soddaroq va yetarli.
 
-## 7. Bugungi arxitektura
+## 9. Bugungi arxitektura
 
 <Arch
   title="Ishlab chiqarishdagi odatiy Redis topologiyasi"
@@ -1330,9 +1719,41 @@ Sentinel**, va Redis maqsadi bo‘yicha ajratilgan instansiyalar (kesh alohida, 
 alohida, navbat alohida). Bu topologiya 100 GB gacha va 100 000 ops/s gacha bemalol
 xizmat qiladi.
 
-## 8. Ishonchlilik: nima buziladi
+<Calc title="Kesh, sessiya va navbat — uchta instansiya qancha" result="Ajratish qo'shimcha ~$150/oy turadi, lekin har biri o'z siyosati va doimiyligi bilan ishlaydi. Bitta umumiy instansiyaning 'tejamkorligi' birinchi xotira bosimida sessiyalar yo'qolishi bilan tugaydi">{`Faraz (o'rta loyiha):
+  Kesh:     8 GB issiq ma'lumot, allkeys-lru, doimiyliksiz
+  Sessiya:  1 mln x ~1 KB = ~1 GB, volatile-lru, AOF everysec
+  Navbat:   Streams, MAXLEN ~ 2 mln x 0.5 KB = ~1 GB, noeviction, AOF
 
-### 8.1 Nosozliklar taksonomiyasi
+Tugun hajmi (fork zaxirasi bilan, 13-bo'lim):
+  Kesh:     8 x 1.3 / 0.55  = ~19 GB -> 2 x 24 GB (master + replika)
+  Sessiya:  1 x 1.3 / 0.55  = ~2.4 GB -> 2 x 4 GB
+  Navbat:   1 x 1.3 / 0.55  = ~2.4 GB -> 2 x 4 GB
+
+RAM jami: 64 GB, ~$10/GB/oy -> ~$640 / oy
+Bitta umumiy instansiya: 2 x 32 GB = 64 GB -> deyarli bir xil narx,
+  lekin bitta siyosat, bitta doimiylik, bitta nosozlik nuqtasi`}</Calc>
+
+<Check q="Startapda bitta Redis bor: kesh, sessiyalar va Sidekiq/Celery navbati. Birinchi xotira inqirozida nima bo'ladi va qanday ajratasiz?">
+**Nima bo‘ladi** siyosatga bog‘liq. `allkeys-lru` bo‘lsa — sessiyalar va
+navbatdagi vazifalar siqib chiqariladi: foydalanuvchilar tizimdan chiqadi,
+xatlar yuborilmaydi. `noeviction` bo‘lsa — kesh o‘sishi **hamma** yozishni
+to‘xtatadi: navbatga ham vazifa qo‘shib bo‘lmaydi.
+
+**Ajratish tartibi** (xavf kamayishi bo‘yicha):
+
+1. **Navbatni** alohida instansiyaga — `noeviction` va AOF bilan. Bu eng
+   qimmat yo‘qotish
+2. **Sessiyalarni** alohida — `volatile-lru`, TTL majburiy, AOF `everysec`
+3. Qolgan instansiya — sof **kesh**: `allkeys-lfu`, doimiyliksiz
+
+Migratsiya yangi kalitlar yangi instansiyaga yozilishi bilan boshlanadi.
+Eskilari TTL bilan o‘zi yo‘qoladi; navbatda esa avval eski navbat
+bo‘shatiladi. Narx deyarli o‘zgarmaydi — 9-bo‘limdagi hisobga qarang.
+</Check>
+
+## 10. Ishonchlilik: nima buziladi
+
+### 10.1 Nosozliklar taksonomiyasi
 
 | Nosozlik | Belgisi | Sabab | Chora |
 | --- | --- | --- | --- |
@@ -1368,7 +1789,7 @@ user:42:events:2026-09      ->  oyma-oy, har biri ~300k
 ```
 </Deep>
 
-### 8.2 Degradatsiya tartibi
+### 10.2 Degradatsiya tartibi
 
 <Timeline
   rows={[
@@ -1389,9 +1810,9 @@ Redis siz uchun kesh emas — u ma’lumotlar bazasi, va unga mos ishonchlilik t
 qo‘yilishi kerak.
 </Callout>
 
-## 9. Xavfsizlik
+## 11. Xavfsizlik
 
-### 9.1 Tarixiy muammo: himoyasiz Redis
+### 11.1 Tarixiy muammo: himoyasiz Redis
 
 Redis uzoq vaqt **standart holda parolsiz** ishlagan va bu internetga ochiq qolgan
 minglab serverning buzilishiga olib kelgan. Klassik hujum:
@@ -1416,7 +1837,7 @@ Himoya qatlamlari:
 | `rename-command CONFIG ""` | Xavfli komandalarni o‘chirish |
 | TLS | Tarmoqdagi tinglash va o‘zgartirishga qarshi |
 
-### 9.2 ACL: foydalanuvchi darajasidagi cheklov
+### 11.2 ACL: foydalanuvchi darajasidagi cheklov
 
 Redis 6 dan boshlab har bir mijozga alohida huquq berish mumkin:
 
@@ -1429,7 +1850,7 @@ ACL SETUSER cache_app on >parol123 ~cache:* +get +set +del +expire
 Bu eng kam imtiyoz prinsipini amalga oshiradi: ilova buzilsa ham, hujumchi `FLUSHALL`
 qila olmaydi yoki boshqa xizmatning kalitlarini o‘qiy olmaydi.
 
-### 9.3 Lua va boshqa nozik joylar
+### 11.3 Lua va boshqa nozik joylar
 
 - **Lua sandbox** — skriptlar fayl tizimiga va tarmoqqa kira olmaydi, lekin ular
   **serverni bloklashi** mumkin. Foydalanuvchi kiritgan ma’lumotdan skript qurish
@@ -1476,7 +1897,7 @@ Bu yerda 1 va 2 to‘g‘ri; 3 faqat mantiqan bog‘liq kalitlar uchun (bitta fo
 profili va sozlamalari kabi).
 </Check>
 
-## 10. Iqtisod: RAM qancha turadi
+## 12. Iqtisod: RAM qancha turadi
 
 Redis qarorlarining aksariyati bitta faktdan kelib chiqadi: **RAM diskdan ~100 barobar
 qimmat**.
@@ -1494,7 +1915,7 @@ Nisbat: RAM / SSD  = ~100x
   Redis (replika bilan, 2 x 94 GB tugun)  ~ $1400 / oy
   Postgres SSD da                          ~ $200 / oy`}</Calc>
 
-### 10.1 Qaysi ma’lumot RAM ga arziydi
+### 12.1 Qaysi ma’lumot RAM ga arziydi
 
 Oddiy mezon: **saqlash narxi tejagan hisob narxidan kam bo‘lsa** arziydi.
 
@@ -1510,7 +1931,7 @@ Va bazani masshtablash Redis'ni masshtablashdan qimmatroq
 
 Foyda: $350 tejash uchun $120 sarf`}</Calc>
 
-### 10.2 Xarajatni kamaytirish vositalari
+### 12.2 Xarajatni kamaytirish vositalari
 
 | Vosita | Kutilayotgan yutuq | Narxi |
 | --- | --- | --- |
@@ -1536,7 +1957,7 @@ Muvozanat: qisqartirish debug‘ni qiyinlashtiradi. Amaliy kelishuv — prefiksl
 qisqartirish (`session:` → `s:`), lekin identifikatorlarni to‘liq qoldirish.
 </Deep>
 
-## 11. Sig‘im rejalashtirish
+## 13. Sig‘im rejalashtirish
 
 <Calc title="Qanday tugun kerak" result="40 GB ma'lumot uchun 96 GB li tugun kerak. 'Ma'lumotim 40 GB, 48 GB li tugun olaman' - fork paytida yiqiladigan klassik xato">{`Ma'lumot hajmi (o'lchangan, MEMORY USAGE bilan):  40 GB
 
@@ -1559,9 +1980,23 @@ Qachon klasterga o‘tish kerak:
 | Fork davomiyligi | 500 ms dan oshsa (`latest_fork_usec`) |
 | Tiklash vaqti | Qabul qilinmas darajada uzun (100 GB RDB ~ 10 daqiqa) |
 
-## 12. Kuzatuv
+<Calc title="fork o'zi qancha bloklaydi" result="fork() sahifalar jadvalini nusxalaydi: ~10-20 ms / GB. 40 GB da ~0.5-1 soniya — shu vaqtda Redis hech kimga javob bermaydi. Klasterga o'tishning eng aniq signali shu">{`fork() paytida yadro ota jarayonning sahifalar jadvalini nusxalaydi
+(ma'lumotning o'zini emas — u copy-on-write).
 
-### 12.1 Eng muhim metrikalar
+4 KB sahifa, har biriga ~8 baytlik yozuv:
+  1 GB  = 262 144 sahifa -> ~2 MB sahifa jadvali
+  40 GB = ~80 MB sahifa jadvali
+
+Odatiy tezlik (apparat va virtualizatsiyaga qarab): ~10-20 ms / GB
+  10 GB   -> 0.1-0.2 s
+  40 GB   -> 0.4-0.8 s
+  100 GB  -> 1-2 s   <- har BGSAVE da shuncha to'xtash
+
+latest_fork_usec > 500 000 -> ma'lumotni bo'lish vaqti keldi`}</Calc>
+
+## 14. Kuzatuv
+
+### 14.1 Eng muhim metrikalar
 
 ```
 INFO stats | grep keyspace
@@ -1597,7 +2032,7 @@ Ya'ni 95% dan 90% ga tushish - bazaga yuk 2x
 Baza sig'imi 8 000 so'rov/s bo'lsa, tizim
 urish darajasi 92% dan pastga tushganda YIQILADI`}</Calc>
 
-### 12.2 Diagnostika vositalari
+### 14.2 Diagnostika vositalari
 
 ```
 SLOWLOG GET 10           # eng sekin 10 komanda (standart chegara 10 ms)
@@ -1617,7 +2052,7 @@ tushiradi. Bundan tashqari, u barcha ma’lumotni (parollar, tokenlar) ochiq ko�
 O‘rniga: `SLOWLOG`, `LATENCY`, `INFO commandstats` va namuna olish.
 </Callout>
 
-## 13. Antinaqshlar
+## 15. Antinaqshlar
 
 <TradeOffs
   rows={[
@@ -1634,7 +2069,7 @@ O‘rniga: `SLOWLOG`, `LATENCY`, `INFO commandstats` va namuna olish.
   ]}
 />
 
-## 14. Trade-off‘lar
+## 16. Trade-off‘lar
 
 <TradeOffs
   rows={[
@@ -1651,9 +2086,34 @@ O‘rniga: `SLOWLOG`, `LATENCY`, `INFO commandstats` va namuna olish.
   ]}
 />
 
-## 15. Intervyu savollari
+### Butun dars o‘nta gapda
 
-### 15.1 Asoslar
+1. **Redis — xotiradagi ma’lumot strukturalari serveri**, “tez kesh” emas:
+   uning qiymati server tomonidagi atomik ro‘yxat, ZSET, bitmap, HLL va
+   oqimlarda (kirish, 1.2).
+2. **Vaqtning 99% i tarmoqqa ketadi**: Redis’ni tezlashtirish — chaqiruvlar
+   sonini kamaytirish (pipelining, `MGET`, to‘g‘ri modellashtirish) (1.1, 2.7).
+3. **Bitta ip — atomiklik va oddiylik**, narxi esa: bitta `O(N)` komanda
+   butun serverni to‘xtatadi (2.1, 2.6, 6.2).
+4. **Kichik qiymatlarda “qadoq” ma’lumotdan katta**: hash ichida guruhlash
+   va listpack kodlashi xotirani 3–5 barobar tejaydi (2.4, 2.5).
+5. **TTL va siqib chiqarish — ikki xil mexanizm**: passiv + namunali faol
+   ekspirasiya, va `maxmemory` bo‘yicha namunali LRU/LFU (3, 7.3).
+6. **“+OK” — “saqlandi” emas**: AOF `everysec` ~1 soniya, asinxron
+   replikatsiya esa failover’da yozuvlarni yo‘qotadi (4, 6.3, 8.2).
+7. **fork xotirani ikki barobargacha oshiradi**: `maxmemory` RAM ning
+   50–60% idan oshmasin (4.2, 13).
+8. **Har stsenariyga o‘z strukturasi**: reyting — skiplist (span bilan
+   O(log N) rank), noyob sanash — HLL (12 KB), faollik — bitmap, navbat —
+   Streams (5, 7).
+9. **Redis lock — samaradorlik uchun, to‘g‘rilik uchun emas**: to‘g‘rilik
+   resursdagi fencing token yoki tranzaksiyada (5, 7-stsenariy).
+10. **Kesh, sessiya va navbatni ajrating**: ularning siqib chiqarish,
+    doimiylik va o‘sish talablari qarama-qarshi (5-bo‘lim Check, 9).
+
+## 17. Intervyu savollari
+
+### 17.1 Asoslar
 
 <QA q="Redis nima uchun tez? 'Xotirada' degan javob yetarlimi?">
 Yetarli emas — xotirada ishlaydigan tizimlar ko‘p. Redis‘ning tezligi to‘rtta omildan:
@@ -1710,7 +2170,7 @@ faol sikl ularni tozalayotganda kechikish oshadi — shuning uchun TTL ga **jitt
 kerak.
 </QA>
 
-### 15.2 Xotira
+### 17.2 Xotira
 
 <QA q="10 million kalit qancha xotira yeydi? Hisobingizni ko'rsating.">
 Bitta oddiy kalit-qiymat (kalit ~13 bayt, qiymat 50 bayt):
@@ -1763,7 +2223,7 @@ Chora: `maxmemory` ni pasaytirish, serverga RAM qo‘shish, va Redis serverlarid
 yuqori bo‘lsa — bu boshqa muammo: fragmentatsiya, `activedefrag yes` yordam beradi.
 </QA>
 
-### 15.3 Doimiylik va ishonchlilik
+### 17.3 Doimiylik va ishonchlilik
 
 <QA q="RDB va AOF farqi nima? Qaysi birini tanlaysiz?">
 **RDB** — belgilangan vaqtdagi butun ma’lumotning ixcham binar surati. Fayl kichik,
@@ -1819,7 +2279,7 @@ Sentinel uchun toq sonli va tarqoq joylashgan tugunlar kerak (3 ta, `quorum 2`).
 Ikkita Sentinel bilan kvorum ma’nosini yo‘qotadi.
 </QA>
 
-### 15.4 Amaliy stsenariylar
+### 17.4 Amaliy stsenariylar
 
 <QA q="Taqsimlangan lock yasang. Qanday kafolat bera olasiz?">
 Asosiy naqsh: `SET lock:X <unikal-token> NX PX 30000`, ochish esa Lua orqali (token
@@ -2006,11 +2466,49 @@ Keyingi navbatda: `latest_fork_usec`, `rejected_connections`, `blocked_clients`,
 replikatsiya kechikishi va `SLOWLOG` yozuvlari soni.
 </QA>
 
+<QA q="ZSET ichida nega skiplist? ZRANK qanday O(log N) bo'ladi?">
+ZSET ikki strukturadan iborat: **lug‘at** (a’zo → ball, `ZSCORE` uchun
+O(1)) va **skiplist** (ball bo‘yicha tartib). Skiplist — ko‘p qavatli
+bog‘langan ro‘yxat: har element tasodifiy darajaga ega (`P = 0.25`),
+yuqori qavatlarda elementlar siyrak, qidiruv tepadan pastga tushadi —
+o‘rtacha O(log N).
+
+**Rank** uchun Redis har ko‘rsatkichga **span** qo‘shgan: u 0-qavatda
+nechta elementni sakrab o‘tishini saqlaydi. Qidiruv yo‘lidagi span’lar
+yig‘indisi — elementning o‘rni. Xuddi shu mantiq bilan `ZRANGE 1000 1009`
+avval 1000-o‘ringa span bo‘yicha sakraydi, keyin 10 qadam yuradi.
+
+Nega daraxt emas: diapazon so‘rovlari tabiiy (0-qavat — tayyor tartiblangan
+ro‘yxat), kod sodda (aylantirish yo‘q), va `P` bilan xotira sozlanadi
+(o‘rtacha 1.33 ko‘rsatkich).
+</QA>
+
+<QA q="HyperLogLog qanday ishlaydi va qachon xato beradi?">
+Har element xeshlanadi. Quyi 14 bit — 16 384 registrdan birini tanlaydi,
+qolgan bitlardagi oxirgi nollar soni + 1 — “rank”. Registr eng katta
+rankni eslaydi. Fikr: ketma-ket k ta nol taxminan har 2^k elementda bir
+uchraydi, demak eng katta rank to‘plam hajmini “eslab qoladi”. 16 384
+registr bo‘yicha **garmonik o‘rtacha** tasodifiy chetlanishlarni
+tekislaydi. Hajm — 12 KB, standart xato — 0.81%.
+
+Qachon yomon ishlaydi:
+- **Elementlarni qaytarib bermaydi** va “falonchi bormi?” degan savolga
+  javob bermaydi
+- **Kesishma** (`A ∩ B`) uchun mos emas: birlashma — `PFMERGE` bilan aniq,
+  kesishma esa inkluziya-ekskluziya bilan va xatosi katta
+- Klassik formulada **o‘tish oralig‘ida** (taxminan 2.5·M atrofi) xato
+  sezilarli oshadi — Redis 5.0 dan beri Ertl’ning baholovchisi buni
+  yo‘qotadi
+- Kimdir xeshni bilsa, ataylab tanlangan elementlar bilan hisobni sun’iy
+  oshirishi mumkin — ochiq hisoblagichlarda buni hisobga olish kerak
+</QA>
+
 <QA q="Redis 2024 yilda litsenziyasini o'zgartirdi. Bu sizga qanday ta'sir qiladi?">
-Redis ochiq (BSD) litsenziyadan cheklovli litsenziyalarga o‘tdi — asosan bulut
-provayderlariga Redis‘ni xizmat sifatida sotishni cheklash uchun. Javoban Linux
-Foundation ostida **Valkey** forki paydo bo‘ldi va ko‘p provayderlar hamda distributivlar
-o‘shanga o‘tdi.
+2024-yil martida Redis ochiq (BSD) litsenziyadan cheklovli litsenziyalarga
+(RSALv2/SSPL) o‘tdi — asosan bulut provayderlariga Redis‘ni xizmat sifatida sotishni
+cheklash uchun. Javoban Linux Foundation ostida **Valkey** forki paydo bo‘ldi va ko‘p
+provayderlar hamda distributivlar o‘shanga o‘tdi. 2025-yilda Redis 8 da AGPLv3 —
+ochiq litsenziya varianti qaytdi.
 
 Amaliy jihatdan: **API, komandalar va protokol bir xil** — bu darsdagi hamma narsa
 ikkalasiga ham tegishli. Farq huquqiy va yo‘l xaritasida.
@@ -2021,7 +2519,12 @@ boshqariladigan xizmat tanlashda qaysi implementatsiya ishlatilayotganini bilib 
 foydali.
 </QA>
 
-## 16. Amaliyot
+## 18. Amaliyot
+
+To‘rt daraja. Ikkinchi daraja uchun kod va avtomatik tekshiruvlar
+`docs/amaliyot/redis/` da: `skiplist.py`, `hll.py`, `keyspace.py` — TODO;
+`model.py` — tayyor skiplist tuguni, barqaror xesh va Zipf trafigi;
+`check.py` — 15 ta tekshiruv.
 
 <Task title="1-daraja: xotira detektivi">
 
@@ -2038,37 +2541,87 @@ Mahalliy Redis‘da o‘lchov o‘tkazing:
 2.4 va 2.5-bo‘limlardagi hisoblarga mos keldimi? Farq bo‘lsa, sababini tushuntiring.
 </Task>
 
-<Task title="2-daraja: rate limiter va lock (asosiy topshiriq)">
+<Task title="2-daraja: skiplist, HyperLogLog va kalit maydoni (tayyor tekshiruvlar bilan)">
 
-Uchta variantda tezlik cheklovini yozing va solishtiring:
+Kod `docs/amaliyot/redis/` da. Uchta faylni to‘ldirasiz, `check.py` esa
+ularni 15 ta tekshiruvda sinaydi (~9 soniya, faqat Python standart
+kutubxonasi):
 
-1. **Sobit oyna** — `INCR` + `EXPIRE` (avval ikki alohida komanda bilan, keyin Lua bilan)
-2. **Siljituvchi oyna** — `ZSET` bilan aniq variant
-3. **Token bucket** — Lua skriptda
+1. `skiplist.py` — ZSET ichidagi skiplist: `insert`, `delete`, `rank`,
+   `by_rank`, `range_by_score`; span’lar bilan, Redis’dagi kabi. Ustidagi
+   `ZSet` qobig‘i tayyor
+2. `hll.py` — HyperLogLog: `index_rank`, `add`, `count` (garmonik o‘rtacha
+   va linear counting), `merge`
+3. `keyspace.py` — kalit maydoni: O(1) tasodifiy tanlash uchun massivlar,
+   passiv va faol ekspirasiya (20 lik namuna, 25% qoidasi, CPU budjeti),
+   `noeviction` / `allkeys-*` / `volatile-*` siyosatlari va namunali LRU
 
-Har biri uchun o‘lchang: 1000 ta parallel so‘rovda **haqiqiy** o‘tkazilgan so‘rovlar soni
-(limit 100 bo‘lsa), sarflangan xotira, va bitta so‘rovga ketgan vaqt.
-
-So‘ng taqsimlangan lock yozing (`SET NX PX` + Lua unlock) va **buzib ko‘ring**: qulfni
-olgach jarayonni `SIGSTOP` bilan to‘xtating, TTL tugashini kuting, ikkinchi jarayonga
-qulfni oldiring, keyin birinchisini davom ettiring.
-
-**Tekshiruv mezoni:** ikki jarayon bir vaqtda kritik bo‘limda bo‘lganini logda
-ko‘rsating. So‘ng fencing token qo‘shib, ikkinchi yozuvning rad etilishini ko‘rsating.
+**Tekshiruv mezoni:** `python check.py` oxirida `Jami: 15/15 OK`. Keyin
+7.3 dagi jadvalni o‘zingiz takrorlang: `samples` ni 1, 3, 5, 10 qilib,
+urish darajasini haqiqiy LRU bilan solishtiring.
 </Task>
 
-<Task title="3-daraja: xotira va nosozlik simulyatsiyasi">
+<Deep title="check.py qanday tekshiradi: natija emas, tuzilma">
+Skiplistni “natijasi to‘g‘ri” deb tekshirish yetarli emas: tartiblangan
+Python ro‘yxati ham to‘g‘ri natija beradi. Shuning uchun `check.py`
+tuzilmaning **ichiga** qaraydi:
 
-1. 2 GB ma’lumot yozing, `maxmemory` ni 2.5 GB qilib qo‘ying, `maxmemory-policy` ni
-   `allkeys-lru` ga o‘rnating. Yozishda davom eting va `evicted_keys` o‘sishini kuzating
-2. Siyosatni `noeviction` ga o‘zgartiring va yozishda nima bo‘lishini ko‘ring
-3. Og‘ir yozish yuki ostida `BGSAVE` ni ishga tushiring. `used_memory_rss` va
-   `latest_fork_usec` ni o‘lchang — 4.2-bo‘limdagi cho‘qqini ko‘rasizmi?
-4. 10 million elementli ZSET yarating va `DEL` bilan o‘chiring, `--latency` bilan
-   kechikishni o‘lchang. So‘ng `UNLINK` bilan takrorlang
+- **Sodda model bilan solishtirish**: 40 ta tasodifiy ketma-ketlikda (har
+  birida 300 amal: qo‘shish, o‘chirish, rank, diapazonlar, manfiy
+  indekslar) natijalar aynan bir xil bo‘lishi kerak.
+- **Invariantlar**: har 25 amalda har qavatdagi zanjir tartiblanganmi,
+  har ko‘rsatkichning span’i 0-qavatdagi haqiqiy masofaga tengmi, backward
+  va tail to‘g‘rimi, `level` eng baland tugunga tengmi.
+- **Ehtimollik**: 20 000 tugunda ≥2 qavatlilar ~25%, ≥3 qavatlilar ~6.25%.
+- **Murakkablik**: `rank` paytida forward ko‘rsatkichlar necha marta
+  o‘qilganini sanaydi — chiziqli yurish darhol ushlanadi.
 
-**Tekshiruv mezoni:** to‘rtta o‘lchovning grafigi. `DEL` va `UNLINK` farqini
-millisekundlarda ko‘rsating.
+HLL uchun registrlar **bitta-bitta** solishtiriladi. Kalit maydoni uchun
+esa statistik testlar bor: eskirgan kalitlar ulushi, tinch sikldagi
+tekshiruvlar soni va urish darajasi haqiqiy LRU bilan. Oxirida **bir o‘yin
+kuni** uchala tuzilmani birga sinaydi: 180 000 ta ball yangilanishi
+(reyting aniq javob bilan solishtiriladi), kunlik va haftalik noyob
+o‘yinchilar (HLL ≤ 2%) va sessiyalar (`volatile-lru`, chegara 20 000).
+</Deep>
+
+<Callout type="maslahat" title="Testlar ham sinovdan o'tgan">
+2-daraja tekshiruvlari referens yechim va uning ataylab buzilgan variantlari
+bilan sinalgan. Skiplist uchun: yuqori qavatlarda span’ni yangilamaslik,
+teng balllarda a’zo nomini e’tiborsiz qoldirish, bo‘sh qavatlarni
+qisqartirmaslik, `P = 0.5`, 1 dan boshlanadigan rank, chiziqli `by_rank`
+va `rank`, o‘chirishda backward’ni tuzatmaslik, `range_by_score` da pastki
+chegarani chiqarib tashlash, manfiy `stop`. HLL uchun: registr raqamini
+yuqori bitlardan olish, 0 dan boshlanadigan rank, linear counting’siz,
+arifmetik o‘rtacha, `merge` da maksimum o‘rniga ustidan yozish, `add` doim
+True, `alpha` siz. Kalit maydoni uchun: muddat tengligida eskirmaslik, TTL
+siz SET eski TTL’ni saqlashi, eng yangisini siqib chiqarish, `volatile-*`
+da hamma kalitlardan tanlash, faol siklda hamma kalitlardan namuna, 50%
+qoidasi, budjetsiz sikl, `get` da vaqtni yangilamaslik, O(N) o‘chirish,
+`noeviction` da siqib chiqarish, doim bitta namuna. Har biri kamida bitta
+testni yiqitadi.
+</Callout>
+
+<Task title="3-daraja: haqiqiy Redis — rate limiter, lock va nosozliklar">
+
+Mahalliy Redis’da:
+
+1. Uch xil tezlik cheklovi: sobit oyna (`INCR` + `EXPIRE` — avval ikki
+   komanda, keyin Lua), siljituvchi oyna (`ZSET`), token bucket (Lua). 1000
+   ta parallel so‘rovda limit 100 bo‘lsa, haqiqatan nechta o‘tdi, qancha
+   xotira va vaqt ketdi
+2. Taqsimlangan lock (`SET NX PX` + Lua unlock) va uni **buzing**: qulfni
+   olgach jarayonni `SIGSTOP` bilan to‘xtating, TTL tugashini kuting,
+   ikkinchi jarayonga qulfni oldiring, birinchisini davom ettiring. Keyin
+   fencing token qo‘shing
+3. 2 GB ma’lumot bilan `maxmemory` va siyosatlarni sinang; og‘ir yozish
+   ostida `BGSAVE` qilib, `used_memory_rss` va `latest_fork_usec` ni
+   o‘lchang; 10 mln elementli ZSET’ni `DEL` va `UNLINK` bilan o‘chirib,
+   `--latency` ni solishtiring
+
+**Tekshiruv mezoni:** ikki jarayon bir vaqtda kritik bo‘limda bo‘lganini
+logda ko‘rsating va fencing token ikkinchi yozuvni rad etganini isbotlang.
+4.2 dagi fork cho‘qqisini va `DEL` / `UNLINK` farqini millisekundlarda
+grafikda ko‘rsating.
 </Task>
 
 <Task title="4-daraja: sig'im va narx modeli">
@@ -2086,7 +2639,7 @@ dan kam bo‘lsin. So‘ng sezgirlik tahlili: qaysi parametr narxga eng ko‘p t
 kalitlar soni, qiymat hajmi yoki ma’lumot turi?
 </Task>
 
-## 17. Lug‘at
+## 19. Lug‘at
 
 | Atama | Ma’nosi |
 | --- | --- |
@@ -2127,20 +2680,58 @@ kalitlar soni, qiymat hajmi yoki ma’lumot turi?
 | Bitmap | Bitlar massivi — zich mantiqiy holatlar uchun |
 | Streams | Iste’molchi guruhlari va tasdiqlash bilan hodisalar jurnali |
 | Fencing token | Qulf bilan beriladigan o‘suvchi raqam — to‘g‘rilik kafolati |
+| Span | Skiplist ko‘rsatkichi 0-qavatda nechta elementni sakrab o‘tishi — rank uchun |
+| Rank (HLL) | Xeshning qolgan bitlaridagi oxirgi nollar soni + 1 |
+| Garmonik o‘rtacha | Teskari qiymatlar o‘rtachasining teskarisi — katta chetlanishlarga chidamli |
+| Linear counting | Bo‘sh registrlar ulushidan kichik to‘plam hajmini baholash |
+| `PFMERGE` | HLL larni registrlar bo‘yicha maksimum bilan birlashtirish |
+| `maxmemory-samples` | Namunali LRU/LFU dagi tasodifiy namunalar soni |
+| CPU budjeti (faol ekspirasiya) | Bitta siklda ekspirasiyaga ajratilgan vaqt chegarasi |
+| Valkey | 2024-yilda Linux Foundation ostida yaratilgan BSD litsenziyali Redis forki |
 
-## 18. Manbalar
+## 20. Raqamlar manbasi
 
-| Manba | Nima beradi |
-| --- | --- |
-| Redis rasmiy hujjatlari: Data types | Har bir turning komandalari va murakkabligi |
-| Redis: Memory optimization | Kodlashlar, chegaralar va tejash usullari |
-| Redis: Persistence | RDB, AOF, fork va ularning kelishuvlari |
-| Redis: Cluster specification | Slotlar, `MOVED`/`ASK`, resharding |
-| *How to do distributed locking* (Martin Kleppmann) | Redlock tanqidi va fencing token g‘oyasi |
-| Redis: Distributed locks (rasmiy javob) | Munozaraning ikkinchi tomoni |
-| *HyperLogLog in Practice* (Google) | HLL ning amaliy versiyasi va aniqligi |
-| Antirez blogi (Redis muallifi) | Ko‘p qarorlarning asl sabablari |
-| `redis-cli --latency`, `--bigkeys`, `--memkeys` | Amaliy diagnostika vositalari |
+| Raqam | Qiymat | Manba |
+| --- | --- | --- |
+| Redis e’loni | 2009-yil 25-fevral, Hacker News; LLOOGG analitika xizmati uchun | Wikipedia; Valkey hujjatlari (History); redis.io blogi |
+| Litsenziya | 2024-yil mart: RSALv2/SSPLv1; Valkey — Redis 7.2.4 asosida, BSD; 2025-yil may: Redis 8 da AGPLv3 varianti | redis.io/legal/licenses; texnik matbuot |
+| HyperLogLog | 16 384 registr, 6 bit, 12 KB, standart xato 0.81% | antirez blogi (2014); Redis hujjatlari |
+| HLL baholovchisi | Redis 5.0 (2018) — Ertl usuli | Ertl (2017); Redis 5 o‘zgarishlari |
+| Skiplist | `P = 0.25`, ko‘pi bilan 32 qavat | Redis manba kodi (`t_zset.c`, `server.h`) |
+| Faol ekspirasiya | 20 lik namuna, 25% chegara, `hz 10` | Redis hujjatlari va manba kodi (`expire.c`) |
+| Namunali LRU | `maxmemory-samples 5`, 24 bitlik vaqt belgisi | Redis hujjatlari (key eviction) |
+| Kodlash chegaralari | hash/list/zset: 128 element / 64 bayt; intset: 512 | `redis.conf` standart qiymatlari |
+| Klaster | 16 384 slot, `CRC16 mod 16384` | Redis Cluster spetsifikatsiyasi |
+| 2-daraja natijalari | 15/15; 28 mutatsiya; LRU(5) 71.0% vs haqiqiy 71.4% | `docs/amaliyot/redis/`, referens implementatsiya |
+
+Kechikishlar (RTT ~200 µs, komanda ~1 µs), xotira ustamalari (har kalitga
+~100 bayt), ops/s, fork cho‘qqisi, AOF hajmi, RAM va disk narxlari —
+**illyustratsiya uchun taxminiy** raqamlar. Ular versiya, apparat va bulut
+provayderiga qarab bir necha barobar farq qiladi. Aniq qiymatlarni o‘z
+muhitingizda `redis-benchmark`, `MEMORY USAGE` va `INFO` bilan o‘lchang.
+Asosiy xulosalar — tarmoq hukmronligi, bitta ipning narxi, `maxmemory`
+zaxirasi, asinxron replikatsiyadagi yo‘qotish — bu farqlarga chidamli.
+
+## 21. Manbalar
+
+- Redis rasmiy hujjatlari: Data types, Memory optimization, Persistence,
+  Key eviction, Cluster specification
+- Salvatore Sanfilippo (antirez), blog: “Redis new data structure: the
+  HyperLogLog” (2014) va boshqa yozuvlar — ko‘p qarorlarning asl sabablari
+- Philippe Flajolet va boshq. (2007), “HyperLogLog: the analysis of a
+  near-optimal cardinality estimation algorithm”, AofA
+- Stefan Heule, Marc Nunkesser, Alexander Hall (2013), “HyperLogLog in
+  Practice”, EDBT (Google)
+- Otmar Ertl (2017), “New cardinality estimation algorithms for HyperLogLog
+  sketches”, arXiv
+- William Pugh (1990), “Skip Lists: A Probabilistic Alternative to Balanced
+  Trees”, Communications of the ACM
+- Martin Kleppmann (2016), “How to do distributed locking” — Redlock tanqidi
+  va fencing token
+- Redis: “Distributed Locks with Redis” — munozaraning ikkinchi tomoni
+- Valkey hujjatlari: History — loyiha tarixi va fork
+- `redis-cli --latency`, `--bigkeys`, `--memkeys`, `LATENCY DOCTOR` —
+  amaliy diagnostika vositalari
 
 <Callout type="maslahat" title="Keyingi qadam">
 Bu darsdagi naqshlar — atomiklik, TTL va siqib chiqarish, asinxron replikatsiya va
