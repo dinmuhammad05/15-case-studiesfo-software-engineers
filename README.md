@@ -53,7 +53,7 @@ kalkulyatorda takrorlash mumkin.
 | № | Dars | Holat | Hajm | Nimani o‘rgatadi |
 | --- | --- | --- | --- | --- |
 | 01 | [ChatGPT qanday ishlaydi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/chatgpt/) | ✅ Tayyor | 12 200 so‘z | Tokenizatsiya, attention, KV cache, continuous batching, roofline, inference iqtisodi |
-| 02 | [URL qisqartiruvchi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/) | ✅ Tayyor | 11 600 so‘z | Base62, tug‘ilgan kun paradoksi, cache stampede, hot key, Bloom filtri, ochiq redirect |
+| 02 | [URL qisqartiruvchi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/) | ✅ Tayyor | 16 400 so‘z | Base62, Feistel, tug‘ilgan kun paradoksi, Zipf va yarim yemirilish, cache stampede, Bloom filtri, goo.gl saboqi |
 | 03 | [Redis: 12 ta stsenariy](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/redis/) | ✅ Tayyor | 11 100 so‘z | Event loop, xotira modeli, TTL va eviction, fork/COW, ZSET, Streams, klaster |
 | 04 | [Twitter tasmasi](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/twitter/) | ✅ Tayyor | 10 200 so‘z | Fan-out on write vs read, mashhur akkauntlar, tasma keshi, reyting |
 | 05 | [Reddit](https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/reddit/) | ✅ Tayyor | 14 000 so‘z | Ovoz berish, kommentariya daraxti, “hot” reytingi, moderatsiya |

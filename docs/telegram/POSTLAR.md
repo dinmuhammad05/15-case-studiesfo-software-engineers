@@ -40,7 +40,7 @@ GPU'ning 0.3% i ishlatilyapti. Har bir hisobni kalkulyatorda takrorlash mumkin.
 Darslik to'liq tayyor — 17 ta dars:
 
 01 — ChatGPT qanday ishlaydi (12 200 so'z)
-02 — URL qisqartiruvchi qanday ishlaydi (11 600 so'z)
+02 — URL qisqartiruvchi qanday ishlaydi (16 400 so'z)
 03 — Redis: 12 ta asosiy stsenariy (11 100 so'z)
 04 — Twitter tasmasi qanday ishlaydi (10 200 so'z)
 05 — Reddit qanday ishlaydi (14 000 so'z)
@@ -57,7 +57,7 @@ Darslik to'liq tayyor — 17 ta dars:
 16 — Bluesky qanday ishlaydi (16 500 so'z)
 17 — Meta Serverless qanday ishlaydi (15 500 so'z)
 
-Jami ~280 000 so'z; har darsda amaliyot, 13 tasida — tayyor kod va avtomatik tekshiruvlar.
+Jami ~285 000 so'z; har darsda amaliyot, 14 tasida — tayyor kod va avtomatik tekshiruvlar.
 
 📱 Internetsiz ishlaydi — telefonga ilova sifatida o'rnatsa bo'ladi
 🎨 Har bir dars o'sha mahsulotning interfeysi uslubida
@@ -127,7 +127,7 @@ Bir nechta savol beraman:
 
 Bularning har biriga javob — hisob-kitob bilan.
 
-11 600 so'z, 19 ta hisob bloki:
+16 400 so'z, 28 ta hisob bloki, tayyor kod va 17 ta avtomatik tekshiruv:
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/url-shortener/
 ```
@@ -528,7 +528,7 @@ router. Bir kunlik simulyatsiyada cho'qqi sig'imdan 1.5 barobar ko'p —
 lekin hech qanday qo'shimcha server kerak bo'lmaydi.
 
 Bu — darslikning oxirgi, 17-darsi. ChatGPT'dan Meta Serverless'gacha:
-17 ta tizim, ~280 000 so'z, har birida hisob-kitob, intervyu savollari
+17 ta tizim, ~285 000 so'z, har birida hisob-kitob, intervyu savollari
 va amaliyot.
 
 https://dinmuhammad.uz/15-case-studiesfo-software-engineers/darslar/meta-serverless/
